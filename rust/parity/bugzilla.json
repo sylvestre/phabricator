@@ -1,6 +1,6 @@
 [
   {"name": "bugzilla accounts by id", "method": "bugzilla.account.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": ["1", "2", "3"]}},
-  {"name": "bugzilla accounts by user", "method": "bugzilla.account.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["$PHAB_REPLAY_USER_PHID"]}},
+  {"name": "bugzilla accounts of an unknown user", "method": "bugzilla.account.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-USER-nobody"]}},
   {"name": "bugzilla accounts without a filter", "method": "bugzilla.account.search", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
   {"name": "bmo accounts by id", "method": "bmoexternalaccount.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"accountids": ["1", "2"]}},
   {"name": "bmo accounts with integer ids", "method": "bmoexternalaccount.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"accountids": [1]}}
