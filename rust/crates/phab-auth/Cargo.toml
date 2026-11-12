@@ -1,0 +1,24 @@
+[package]
+name = "phab-auth"
+description = "Conduit API token and session cookie authentication compatible with the PHP application"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hex.workspace = true
+phab-core.workspace = true
+phab-db.workspace = true
+phab-policy.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+phab-db = { workspace = true, features = ["test-support"] }
+rstest.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

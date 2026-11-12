@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy"]
+members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth"]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,6 +13,7 @@ publish = false
 phab-core = { path = "crates/phab-core" }
 phab-db = { path = "crates/phab-db" }
 phab-policy = { path = "crates/phab-policy" }
+phab-auth = { path = "crates/phab-auth" }
 
 hex = "0.4"
 hmac = "0.12"
@@ -41,3 +42,5 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
+# Row structs mirror the boolean columns of the PHP schema.
+struct_excessive_bools = "allow"
