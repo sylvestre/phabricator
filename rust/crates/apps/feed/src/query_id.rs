@@ -295,24 +295,40 @@ struct Paged<T> {
     previous: Option<T>,
 }
 
-/// `AphrontCursorPagerView::sliceResults()` and the cursors
-/// `executeWithCursorPager()` sets. `results` holds up to `page + 1` items.
-fn slice<T: Clone>(mut results: Vec<T>, page: usize, after: bool, before: bool) -> Paged<T> {
-    let more = results.len() > page;
-    if more {
-        let offset = if before { results.len() - page } else { 0 };
-        results.drain(..offset);
-        results.truncate(page);
-    }
-    let next = results.last().filter(|_| before || more).cloned();
-    let previous = results
-        .first()
-        .filter(|_| after || (before && more))
-        .cloned();
-    Paged {
-        items: results,
-        next,
-        previous,
+/// The state of `AphrontCursorPagerView` once the query ran.
+#[derive(Debug, Clone, Copy)]
+struct Pager {
+    page_size: usize,
+    /// Whether `getAfterID()` is truthy.
+    after: bool,
+    /// Whether `getBeforeID()` is truthy.
+    before: bool,
+}
+
+impl Pager {
+    /// `sliceResults()` and the cursors `executeWithCursorPager()` sets.
+    /// `results` holds up to `page_size + 1` items.
+    fn slice<T: Clone>(self, mut results: Vec<T>) -> Paged<T> {
+        let more = results.len() > self.page_size;
+        if more {
+            let offset = if self.before {
+                results.len() - self.page_size
+            } else {
+                0
+            };
+            results.drain(..offset);
+            results.truncate(self.page_size);
+        }
+        let next = results.last().filter(|_| self.before || more).cloned();
+        let previous = results
+            .first()
+            .filter(|_| self.after || (self.before && more))
+            .cloned();
+        Paged {
+            items: results,
+            next,
+            previous,
+        }
     }
 }
 
@@ -350,14 +366,14 @@ impl Method for FeedQueryId {
                 (None, None) => (None, Order::Oldest),
             };
             let stories = execute(request, external, order, size.value + 1).await?;
-            let paged = slice(
-                stories,
-                size.value,
-                after.as_ref().is_some_and(|after| after.truthy),
-                before.as_ref().is_some_and(|before| before.truthy),
-            );
+            let pager = Pager {
+                page_size: size.value,
+                after: after.as_ref().is_some_and(|after| after.truthy),
+                before: before.as_ref().is_some_and(|before| before.truthy),
+            };
+            let page = pager.slice(stories);
 
-            let data = paged
+            let data = page
                 .items
                 .iter()
                 .map(|story| match view {
@@ -374,8 +390,8 @@ impl Method for FeedQueryId {
                 "data": data,
                 "cursor": {
                     "limit": size.shown,
-                    "after": cursor(paged.next),
-                    "before": cursor(paged.previous),
+                    "after": cursor(page.next),
+                    "before": cursor(page.previous),
                 },
             }))
         })
@@ -459,7 +475,12 @@ mod tests {
         #[case] previous: Option<u32>,
     ) {
         assert_eq!(
-            slice(results, page, after, before),
+            Pager {
+                page_size: page,
+                after,
+                before
+            }
+            .slice(results),
             Paged {
                 items,
                 next,

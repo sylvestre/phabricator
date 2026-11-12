@@ -69,12 +69,17 @@ fn into_map(value: Value) -> Map<String, Value> {
     }
 }
 
-fn split_metadata(mut params: Map<String, Value>) -> (Map<String, Value>, Map<String, Value>) {
+/// Moves `__conduit__` out of strictly typed parameters.
+fn split_metadata(mut params: Map<String, Value>) -> Params {
     let metadata = params
         .shift_remove("__conduit__")
         .map(into_map)
         .unwrap_or_default();
-    (metadata, params)
+    Params {
+        metadata,
+        params,
+        strictly_typed: true,
+    }
 }
 
 pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Result<Params, DecodeError> {
@@ -112,25 +117,13 @@ pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Result<Pa
                 }
             }
         }
-        let (metadata, params) = split_metadata(params);
-        return Ok(Params {
-            metadata,
-            params,
-            strictly_typed: true,
-        });
+        return Ok(split_metadata(params));
     }
 
     // A single `params` field holding the JSON-encoded dictionary.
     if let Some(json) = get_str(data, "params").filter(|json| !json.is_empty()) {
         return match serde_json::from_str::<Value>(&json) {
-            Ok(value @ (Value::Object(_) | Value::Array(_))) => {
-                let (metadata, params) = split_metadata(into_map(value));
-                Ok(Params {
-                    metadata,
-                    params,
-                    strictly_typed: true,
-                })
-            }
+            Ok(value @ (Value::Object(_) | Value::Array(_))) => Ok(split_metadata(into_map(value))),
             _ => Err(DecodeError::Core(format!(
                 "Invalid parameter information was passed to method '{method}'."
             ))),

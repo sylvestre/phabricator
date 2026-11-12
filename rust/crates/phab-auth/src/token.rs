@@ -37,16 +37,22 @@ pub fn check_token_format(token: &str) -> Result<(), InvalidAuth> {
     Ok(())
 }
 
+/// Which tokens a lookup considers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Expiry {
+    Live,
+    Expired,
+}
+
 async fn find_token(
     database: &Database,
     token: &str,
     now: i64,
-    expired: bool,
+    expiry: Expiry,
 ) -> Result<Option<TokenRow>, AuthError> {
-    let expiry = if expired {
-        "expires <= ?"
-    } else {
-        "(expires IS NULL OR expires > ?)"
+    let expiry = match expiry {
+        Expiry::Live => "(expires IS NULL OR expires > ?)",
+        Expiry::Expired => "expires <= ?",
     };
     let sql = format!(
         "SELECT id, tokenType, objectPHID, expires FROM {} WHERE (token IN (?)) AND {expiry} \
@@ -98,7 +104,7 @@ pub async fn authenticate_token(
     }
 
     let mut found = None;
-    if let Some(row) = find_token(database, token, now, false).await? {
+    if let Some(row) = find_token(database, token, now, Expiry::Live).await? {
         match token_owner(database, &row).await? {
             Outcome::Unsupported(reason) => return Ok(Outcome::Unsupported(reason)),
             Outcome::Done(Some(user)) => found = Some((row, user)),
@@ -108,7 +114,7 @@ pub async fn authenticate_token(
 
     let Some((row, user)) = found else {
         let mut previously_valid = false;
-        if let Some(row) = find_token(database, token, now, true).await? {
+        if let Some(row) = find_token(database, token, now, Expiry::Expired).await? {
             match token_owner(database, &row).await? {
                 Outcome::Unsupported(reason) => return Ok(Outcome::Unsupported(reason)),
                 Outcome::Done(owner) => previously_valid = owner.is_some(),

@@ -167,7 +167,7 @@ async fn sessions() {
             .await
             .unwrap()
         {
-            Outcome::Done(found) => found.map(|(user, session)| (user.user_name, session.phid)),
+            Outcome::Done(found) => found.map(|found| (found.user.user_name, found.session.phid)),
             Outcome::Unsupported(reason) => panic!("unsupported: {reason}"),
         }
     };

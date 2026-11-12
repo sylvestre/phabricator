@@ -2,6 +2,8 @@
 //! a feed story is shown (`PhabricatorApplicationTransactionFeedStory::
 //! isVisibleInFeed()`).
 
+use std::borrow::Cow;
+
 use serde_json::Value;
 
 use crate::storage::{Comment, Transaction};
@@ -57,35 +59,41 @@ fn edge_type(transaction: &Transaction) -> Option<i64> {
     }
 }
 
-/// PHP's `array_diff()` count for two lists of strings.
-fn count_missing(from: &[Value], other: &[Value]) -> Option<(usize, Option<String>)> {
+/// What PHP's `array_diff()` leaves of a list of strings.
+struct Missing {
+    count: usize,
+    first: Option<String>,
+}
+
+/// `array_diff($from, $other)`; `None` if a value isn't a scalar.
+fn missing(from: &[&Value], other: &[&Value]) -> Option<Missing> {
     let mut count = 0;
     let mut first = None;
     for value in from {
         let text = scalar_string(value)?;
         let present = other
             .iter()
-            .any(|candidate| scalar_string(candidate).as_deref() == Some(text.as_str()));
+            .any(|candidate| scalar_string(candidate).as_deref() == Some(&*text));
         if !present {
             count += 1;
-            first.get_or_insert(text);
+            first.get_or_insert_with(|| text.into_owned());
         }
     }
-    Some((count, first))
+    Some(Missing { count, first })
 }
 
-fn scalar_string(value: &Value) -> Option<String> {
+fn scalar_string(value: &Value) -> Option<Cow<'_, str>> {
     match value {
-        Value::String(text) => Some(text.clone()),
-        Value::Number(number) => Some(number.to_string()),
+        Value::String(text) => Some(Cow::Borrowed(text)),
+        Value::Number(number) => Some(Cow::Owned(number.to_string())),
         _ => None,
     }
 }
 
-fn as_list(value: &Value) -> Option<Vec<Value>> {
+fn as_list(value: &Value) -> Option<Vec<&Value>> {
     match value {
-        Value::Array(items) => Some(items.clone()),
-        Value::Object(entries) => Some(entries.values().cloned().collect()),
+        Value::Array(items) => Some(items.iter().collect()),
+        Value::Object(entries) => Some(entries.values().collect()),
         _ => None,
     }
 }
@@ -97,12 +105,12 @@ fn is_self_subscription(transaction: &Transaction) -> Option<bool> {
     }
     let old = as_list(&transaction.old_value)?;
     let new = as_list(&transaction.new_value)?;
-    let (added, first_added) = count_missing(&old, &new)?;
-    let (removed, first_removed) = count_missing(&new, &old)?;
-    if added + removed != 1 {
+    let added = missing(&old, &new)?;
+    let removed = missing(&new, &old)?;
+    if added.count + removed.count != 1 {
         return Some(false);
     }
-    let affected = first_added.or(first_removed).unwrap_or_default();
+    let affected = added.first.or(removed.first).unwrap_or_default();
     Some(affected == transaction.author_phid)
 }
 

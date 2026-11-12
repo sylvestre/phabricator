@@ -29,12 +29,20 @@ impl SessionType {
         }
     }
 
-    /// `PhabricatorAuthSession::getSessionTypeTTL()`.
-    pub fn ttl(self, is_partial: bool) -> i64 {
-        match (self, is_partial) {
-            (Self::Web, true) => 30 * 60,
-            (Self::Web, false) => 30 * 24 * 60 * 60,
-            (Self::Conduit, _) => 24 * 60 * 60,
+    /// `PhabricatorAuthSession::getSessionTypeTTL()` of a full session.
+    pub fn ttl(self) -> i64 {
+        match self {
+            Self::Web => 30 * 24 * 60 * 60,
+            Self::Conduit => 24 * 60 * 60,
+        }
+    }
+
+    /// `PhabricatorAuthSession::getSessionTypeTTL()` of a partial session,
+    /// which has not passed multi-factor authentication yet.
+    pub fn partial_ttl(self) -> i64 {
+        match self {
+            Self::Web => 30 * 60,
+            Self::Conduit => self.ttl(),
         }
     }
 }
@@ -86,6 +94,13 @@ async fn named_hmac_key(database: &Database, name: &str) -> Result<Option<Vec<u8
     Ok(hex::decode(value).ok().filter(|key| !key.is_empty()))
 }
 
+/// A session and the user it belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionUser {
+    pub user: User,
+    pub session: Session,
+}
+
 /// Loads the user for a session token, extending the session like PHP.
 pub async fn load_user_for_session(
     database: &Database,
@@ -94,7 +109,7 @@ pub async fn load_user_for_session(
     token: &str,
     now: i64,
     writes: Writes,
-) -> Result<Outcome<Option<(User, Session)>>, AuthError> {
+) -> Result<Outcome<Option<SessionUser>>, AuthError> {
     if session_kind(token) != SessionKind::User {
         return Ok(Outcome::Done(None));
     }
@@ -159,7 +174,7 @@ pub async fn load_user_for_session(
         }
     }
 
-    Ok(Outcome::Done(Some((user, session))))
+    Ok(Outcome::Done(Some(SessionUser { user, session })))
 }
 
 /// Whether a session should be pushed back to its full lifetime: sessions
@@ -168,7 +183,7 @@ pub fn needs_extension(session: &Session, now: i64) -> bool {
     if session.is_partial {
         return false;
     }
-    let ttl = session.session_type.ttl(false);
+    let ttl = session.session_type.ttl();
     // `$now + (0.80 * $ttl) <= $expires` means no refresh; keep the
     // comparison in integers (ttl is a multiple of 5).
     now + (ttl / 5) * 4 > session.session_expires
@@ -183,7 +198,7 @@ async fn extend_session(database: &Database, session: &Session, now: i64) -> Res
         database.table("user", "phabricator_session")
     );
     phab_db::sqlx::query(&sql)
-        .bind(session.session_type.ttl(false))
+        .bind(session.session_type.ttl())
         .bind(session.id)
         .execute(database.pool())
         .await?;
