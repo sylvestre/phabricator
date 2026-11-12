@@ -1,0 +1,10 @@
+//! Building blocks shared by every Phabricator Rust crate: PHIDs, the digests
+//! from `PhabricatorHash` and the layered configuration from `PhabricatorEnv`.
+
+pub mod config;
+pub mod hash;
+pub mod phid;
+pub mod random;
+
+pub use config::Config;
+pub use phid::{Phid, PhidType};
