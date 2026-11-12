@@ -4,6 +4,7 @@
 pub mod config;
 pub mod hash;
 pub mod phid;
+pub mod php;
 pub mod random;
 
 pub use config::Config;

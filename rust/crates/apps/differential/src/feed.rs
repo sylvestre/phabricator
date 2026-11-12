@@ -39,7 +39,7 @@ pub fn story_visibility(transactions: &[FeedVisibility]) -> FeedVisibility {
 }
 
 fn truthy(value: Option<&Value>) -> bool {
-    value.is_some_and(phab_core::config::is_truthy)
+    value.is_some_and(phab_core::php::is_truthy)
 }
 
 /// The integer value of an edge type, which PHP compares loosely.

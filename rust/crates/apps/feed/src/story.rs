@@ -7,7 +7,7 @@ use phab_app_differential::feed::FeedVisibility;
 
 use phab_app_differential::{Comment, Repositories, Revision, Transaction, feed, storage};
 use phab_conduit::MethodError;
-use phab_core::{Config, Phid, PhidType, config};
+use phab_core::{Config, Phid, PhidType, php};
 use phab_db::{Database, DbError, rows};
 use phab_policy::loader::LoaderError;
 use phab_policy::{Capability, PolicyError, PolicySubject, Viewer, loader};
@@ -187,10 +187,8 @@ impl Candidate {
             return Ok(None);
         }
         let object = match data.get("objectPHID") {
-            Some(Value::String(phid)) if config::is_truthy(&Value::from(phid.as_str())) => {
-                Phid::new(phid)
-            }
-            Some(value) if config::is_truthy(value) => {
+            Some(Value::String(phid)) if php::is_truthy_str(phid) => Phid::new(phid),
+            Some(value) if php::is_truthy(value) => {
                 return Err(StoryError::Unsupported("feed story with an invalid object"));
             }
             // renderView() fails without the object's handle, and the method

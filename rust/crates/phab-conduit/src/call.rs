@@ -18,7 +18,7 @@ use crate::{
     request,
 };
 use phab_auth::token;
-use phab_core::config;
+use phab_core::php;
 use phab_policy::{filter, loader};
 
 /// Result of `dispatch`, with what the call log needs.
@@ -50,17 +50,6 @@ impl From<DecodeError> for Failure {
 fn internal(context: &str, error: impl std::fmt::Display) -> Failure {
     tracing::error!(%error, "{context}");
     Failure::Fallback("internal error")
-}
-
-/// Text PHP would print for a scalar with `%s`.
-fn php_string(value: &Value) -> String {
-    match value {
-        Value::Null | Value::Bool(false) => String::new(),
-        Value::Bool(true) => "1".to_owned(),
-        Value::String(text) => text.clone(),
-        Value::Array(_) | Value::Object(_) => "Array".to_owned(),
-        Value::Number(number) => number.to_string(),
-    }
 }
 
 pub async fn dispatch(
@@ -225,14 +214,17 @@ async fn authenticate(
                 "ERR-INVALID-AUTH",
                 format!(
                     "Provided \"auth.type\" (\"{}\") is not recognized.",
-                    php_string(other)
+                    php::string_cast(other)
                 ),
             )
             .into());
         }
     }
 
-    let token = metadata.get("token").map(php_string).unwrap_or_default();
+    let token = metadata
+        .get("token")
+        .map(php::string_cast)
+        .unwrap_or_default();
     if !token.is_empty() {
         let outcome =
             token::authenticate_token(&context.database, &context.config, &token, now, writes)
@@ -253,7 +245,7 @@ async fn authenticate(
     if metadata.contains_key("authUser") {
         return Err(Failure::Fallback("certificate authentication"));
     }
-    if metadata.get("sessionKey").is_some_and(config::is_truthy) {
+    if metadata.get("sessionKey").is_some_and(php::is_truthy) {
         return Err(Failure::Fallback("Conduit session"));
     }
     Err(Envelope::error("ERR-INVALID-SESSION", "Session key is not present.").into())

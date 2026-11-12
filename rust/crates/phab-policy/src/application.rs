@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{Capability, ObjectKind, POLICY_ADMIN, POLICY_PUBLIC, POLICY_USER, PolicySubject};
 
-use phab_core::config;
+use phab_core::php;
 
 /// Applications whose `canUninstall()` returns false: always installed and
 /// always visible.
@@ -71,7 +71,7 @@ impl ApplicationPolicies {
             .object("phabricator.uninstalled-applications")
             .map(|map| {
                 map.iter()
-                    .filter(|(_, value)| config::is_truthy(value))
+                    .filter(|(_, value)| php::is_truthy(value))
                     .map(|(class, _)| class.clone())
                     .collect()
             })

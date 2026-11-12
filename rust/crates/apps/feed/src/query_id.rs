@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 use crate::story::{Order, Page, StoryRow};
 use crate::{APPLICATION, story};
-use phab_core::config;
+use phab_core::php;
 
 const QUERY_CLASS: &str = "PhabricatorFeedIDQuery";
 const DEFAULT_LIMIT: usize = 100;
@@ -36,7 +36,7 @@ impl Default for PageSize {
 impl PageSize {
     /// The `limit` parameter; falsy means the default.
     fn parse(limit: Option<&Value>) -> Result<Self, MethodError> {
-        let Some(limit) = limit.filter(|limit| config::is_truthy(limit)) else {
+        let Some(limit) = limit.filter(|limit| php::is_truthy(limit)) else {
             return Ok(Self::default());
         };
         let value: i64 = match limit {
@@ -97,7 +97,7 @@ impl Cursor {
         };
         Ok(Some(Self {
             text,
-            truthy: config::is_truthy(value),
+            truthy: php::is_truthy(value),
         }))
     }
 
@@ -126,7 +126,7 @@ enum View {
 impl View {
     /// Falsy means `data`.
     fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
-        match value.filter(|value| config::is_truthy(value)) {
+        match value.filter(|value| php::is_truthy(value)) {
             None => Ok(Self::Data),
             Some(Value::String(text)) => Ok(match text.as_str() {
                 "data" => Self::Data,

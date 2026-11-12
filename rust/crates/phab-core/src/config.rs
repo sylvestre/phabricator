@@ -15,6 +15,8 @@ use std::{fs, io};
 use serde_json::{Map, Value, json};
 use thiserror::Error;
 
+use crate::php;
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("configuration file {path} exists but could not be read")]
@@ -72,19 +74,6 @@ fn default_values() -> Map<String, Value> {
     match defaults {
         Value::Object(map) => map,
         _ => Map::new(),
-    }
-}
-
-/// PHP truthiness, which is what `if (PhabricatorEnv::getEnvConfig(...))`
-/// tests.
-pub fn is_truthy(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(flag) => *flag,
-        Value::Number(number) => number.as_f64().is_some_and(|float| float != 0.0),
-        Value::String(text) => !text.is_empty() && text != "0",
-        Value::Array(items) => !items.is_empty(),
-        Value::Object(entries) => !entries.is_empty(),
     }
 }
 
@@ -164,7 +153,7 @@ impl Config {
     }
 
     pub fn truthy(&self, key: &str) -> bool {
-        self.value(key).is_some_and(is_truthy)
+        self.value(key).is_some_and(php::is_truthy)
     }
 
     pub fn object(&self, key: &str) -> Option<&Map<String, Value>> {
@@ -181,7 +170,7 @@ impl Config {
 
     pub fn hmac_key(&self) -> Result<&str, ConfigError> {
         self.value("security.hmac-key")
-            .filter(|value| is_truthy(value))
+            .filter(|value| php::is_truthy(value))
             .and_then(Value::as_str)
             .ok_or(ConfigError::MissingHmacKey)
     }
@@ -190,7 +179,7 @@ impl Config {
     /// Rust services always run with `phabricator.base-uri` set.
     pub fn base_uri(&self) -> Result<&str, ConfigError> {
         self.value("phabricator.base-uri")
-            .filter(|value| is_truthy(value))
+            .filter(|value| php::is_truthy(value))
             .and_then(Value::as_str)
             .ok_or(ConfigError::MissingBaseUri)
     }
@@ -205,7 +194,7 @@ impl Config {
     pub fn cdn_uri(&self, path: &str) -> Result<String, ConfigError> {
         let alternate = self
             .value("security.alternate-file-domain")
-            .filter(|value| is_truthy(value))
+            .filter(|value| php::is_truthy(value))
             .and_then(Value::as_str);
         let base = match alternate {
             Some(alternate) => alternate,
@@ -267,23 +256,6 @@ mod tests {
             crate::hash::weak_digest(b"abc", key.as_bytes()).unwrap(),
             "a2a5ca838a594a487bc0cd185017e4d2bf6601dc"
         );
-    }
-
-    #[rstest]
-    #[case(json!(null), false)]
-    #[case(json!(false), false)]
-    #[case(json!(0), false)]
-    #[case(json!(0.0), false)]
-    #[case(json!(""), false)]
-    #[case(json!("0"), false)]
-    #[case(json!([]), false)]
-    #[case(json!({}), false)]
-    #[case(json!(true), true)]
-    #[case(json!(2), true)]
-    #[case(json!("false"), true)]
-    #[case(json!([0]), true)]
-    fn truthiness_matches_php(#[case] value: Value, #[case] expected: bool) {
-        assert_eq!(is_truthy(&value), expected);
     }
 
     #[rstest]
