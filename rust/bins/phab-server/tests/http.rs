@@ -19,6 +19,7 @@ async fn app() -> Option<(TestDatabase, axum::Router)> {
             hostname: "web1".to_owned(),
         },
         registry: Registry::default(),
+        shadow: None,
     });
     Some((test_db, router(state)))
 }

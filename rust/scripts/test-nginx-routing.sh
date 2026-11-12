@@ -68,6 +68,7 @@ check() {
 url="http://127.0.0.1:$port/api/conduit.ping"
 check "routed method goes to Rust" "rust" -X POST -d 'x=1' "$url"
 check "421 is replayed against PHP" "php /api/conduit.ping x=fallback" -X POST -d 'x=fallback' "$url"
+check "skip header goes to PHP" "php /api/conduit.ping x=1" -X POST -H 'X-Phab-Skip-Rust: 1' -d 'x=1' "$url"
 check "other methods go to PHP" "php /api/user.search x=1" -X POST -d 'x=1' "http://127.0.0.1:$port/api/user.search"
 docker stop routing-rust >/dev/null
 docker exec routing-nginx nginx -s reload >/dev/null 2>&1

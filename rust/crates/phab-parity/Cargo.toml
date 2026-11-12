@@ -1,0 +1,17 @@
+[package]
+name = "phab-parity"
+description = "Compares Conduit answers of the PHP and Rust implementations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+
+[lints]
+workspace = true

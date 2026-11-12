@@ -50,6 +50,7 @@ async fn main() -> std::process::ExitCode {
     let state = Arc::new(AppState {
         context,
         registry: methods(),
+        shadow: phab_server::shadow::Shadow::from_env(),
     });
 
     let listener = match tokio::net::TcpListener::bind(listen).await {

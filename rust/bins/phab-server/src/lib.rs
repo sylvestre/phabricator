@@ -5,6 +5,8 @@
 //! answers `421 Misdirected Request` with an `X-Phab-Fallback` header and
 //! nginx replays the request against PHP.
 
+pub mod shadow;
+
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -45,6 +47,7 @@ pub enum StartupError {
 pub struct AppState {
     pub context: Context,
     pub registry: Registry,
+    pub shadow: Option<shadow::Shadow>,
 }
 
 /// Builds the configuration stack like `PhabricatorEnv` (defaults,
@@ -102,6 +105,7 @@ async fn status(State(state): State<Arc<AppState>>) -> Response {
         "status": if database.is_ok() { "ok" } else { "error" },
         "database": database.map_or_else(|error| error.to_string(), |()| "ok".to_owned()),
         "methods": state.registry.names(),
+        "shadow": state.shadow.as_ref().map(shadow::Shadow::counts),
     });
     (code, Json(body)).into_response()
 }
@@ -155,12 +159,27 @@ pub fn envelope_response(envelope: &Envelope) -> Response {
 
 async fn conduit(
     State(state): State<Arc<AppState>>,
+    http_method: axum::http::Method,
     UrlPath(method): UrlPath<String>,
     RawQuery(query): RawQuery,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let request = http_request(&headers, query, &body);
+    let request = http_request(&headers, query.clone(), &body);
+    if state
+        .shadow
+        .as_ref()
+        .is_some_and(|shadow| shadow.shadows(&method))
+    {
+        let forwarded = shadow::ForwardedRequest {
+            http_method,
+            method,
+            query,
+            headers,
+            body,
+        };
+        return shadow::handle(state, forwarded, request).await;
+    }
     let Dispatched { response, .. } = dispatch(
         &state.context,
         &state.registry,

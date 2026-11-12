@@ -21,6 +21,24 @@ tool. The tables and columns the Rust code uses are listed in
 `crates/phab-db/src/schema.rs` and checked against
 `resources/sql/quickstart.sql`.
 
+## Checking parity with PHP
+
+A method is moved in three steps:
+
+1. **Shadow.** List it in `rust/nginx/rust-routes.conf` and in the service's
+   `PHAB_SHADOW_METHODS`. The service forwards each call to PHP
+   (`PHAB_PHP_URL`, with `X-Phab-Skip-Rust` so nginx sends it to PHP),
+   returns PHP's answer, computes its own without writing anything and logs
+   the differences. `GET /status` counts matching, differing and skipped
+   calls per method.
+2. **Replay.** `phab-replay <php-url> <rust-url> rust/parity/*.json` sends
+   the calls of the scenario files to both stacks and reports differences;
+   it exits with 1 if any.
+3. **Serve.** Once shadow traffic shows no differences, remove the method
+   from `PHAB_SHADOW_METHODS`: the Rust answer goes to clients.
+
+`rust/scripts/test-nginx-routing.sh` checks the nginx side with stand-ins.
+
 ## Layout
 
 | Crate | Role |
@@ -30,8 +48,10 @@ tool. The tables and columns the Rust code uses are listed in
 | `crates/phab-policy` | Port of `PhabricatorPolicyFilter` (security boundary) |
 | `crates/phab-auth` | Conduit API tokens and session cookies |
 | `crates/phab-conduit` | Conduit request decoding, dispatch and response envelope |
+| `crates/phab-parity` | Compares PHP and Rust answers |
 | `crates/apps/conduit` | `conduit.ping` |
 | `bins/phab-server` | The axum HTTP service |
+| `bins/phab-replay` | Replays scenario files against both stacks |
 
 ## Development
 

@@ -1,0 +1,4 @@
+[
+  {"name": "ping", "method": "conduit.ping"},
+  {"name": "ping with an unknown parameter", "method": "conduit.ping", "params": {"nope": 1}}
+]
