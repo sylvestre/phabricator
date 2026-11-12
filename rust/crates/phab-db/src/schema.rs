@@ -182,4 +182,21 @@ pub const CONTRACT: &[TableContract] = &[
             "spacePHID",
         ],
     },
+    TableContract {
+        database: "feed",
+        table: "feed_storydata",
+        columns: &[
+            "id",
+            "phid",
+            "chronologicalKey",
+            "storyType",
+            "storyData",
+            "authorPHID",
+        ],
+    },
+    TableContract {
+        database: "feed",
+        table: "feed_storyreference",
+        columns: &["chronologicalKey"],
+    },
 ];

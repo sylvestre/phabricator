@@ -1429,6 +1429,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-feed"
+version = "0.1.0"
+dependencies = [
+ "phab-app-differential",
+ "phab-conduit",
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "rstest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "phab-app-people"
 version = "0.1.0"
 dependencies = [
@@ -1538,6 +1552,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "phab-app-conduit",
+ "phab-app-feed",
  "phab-app-people",
  "phab-auth",
  "phab-conduit",

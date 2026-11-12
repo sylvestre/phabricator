@@ -1,0 +1,11 @@
+[
+  {"name": "feed first page", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 20}},
+  {"name": "feed after a story", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": 1, "limit": 5}},
+  {"name": "feed before a story", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"before": 50, "limit": 5}},
+  {"name": "feed with a string limit", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": "3"}},
+  {"name": "feed with a negative limit", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": -4}},
+  {"name": "feed with an invalid cursor", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": 0}},
+  {"name": "feed with an unknown view", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"view": "bogus", "limit": 1}},
+  {"name": "feed with an unknown parameter", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "newest"}},
+  {"name": "feed without a token", "method": "feed.query_id"}
+]
