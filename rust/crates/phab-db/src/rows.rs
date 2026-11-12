@@ -5,6 +5,7 @@
 //! helpers accept the column types the Phabricator schema uses (`varbinary`
 //! for PHIDs, signed and unsigned integers of every width).
 
+use phab_core::Phid;
 use serde_json::Value;
 use sqlx::Row;
 use sqlx::mysql::MySqlRow;
@@ -58,6 +59,13 @@ pub fn opt_int(row: &MySqlRow, column: &str) -> Result<Option<i64>, DbError> {
 
 pub fn int(row: &MySqlRow, column: &str) -> Result<i64, DbError> {
     opt_int(row, column)?.ok_or_else(|| column_error(column))
+}
+
+/// A PHID column where PHP treats an empty string like `null`.
+pub fn opt_phid(row: &MySqlRow, column: &str) -> Result<Option<Phid>, DbError> {
+    Ok(opt_text(row, column)?
+        .filter(|phid| !phid.is_empty())
+        .map(Phid::new))
 }
 
 /// An unsigned column, including `bigint unsigned` values above `i64::MAX`.

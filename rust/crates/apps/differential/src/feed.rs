@@ -4,21 +4,13 @@
 
 use std::borrow::Cow;
 
+use phab_db::edges;
 use serde_json::Value;
 
 use crate::storage::{Comment, Transaction};
 
 const TYPE_SUBSCRIBERS: &str = "core:subscribers";
 const TYPE_EDGE: &str = "core:edge";
-
-const EDGE_MENTIONS: i64 = 52;
-const EDGE_MENTIONED_BY: i64 = 51;
-const EDGE_DEPENDS_ON: i64 = 5;
-const EDGE_DEPENDED_ON_BY: i64 = 6;
-const EDGE_COMMIT_HAS_REVISION: i64 = 32;
-const EDGE_REVISION_HAS_COMMIT: i64 = 31;
-const EDGE_MUTED: i64 = 67;
-const EDGE_MUTED_BY: i64 = 68;
 
 /// Whether a transaction shows in feed. `Unknown` when the answer depends on
 /// logic that is not ported (custom fields).
@@ -111,7 +103,7 @@ fn is_self_subscription(transaction: &Transaction) -> Option<bool> {
         return Some(false);
     }
     let affected = added.first.or(removed.first).unwrap_or_default();
-    Some(affected == transaction.author_phid)
+    Some(affected == transaction.author_phid.as_str())
 }
 
 /// `PhabricatorApplicationTransaction::shouldHide()`.
@@ -169,9 +161,11 @@ fn should_hide(transaction: &Transaction, comment: Option<&Comment>) -> FeedVisi
         }
         "core:customfield" => FeedVisibility::Unknown,
         TYPE_EDGE => match edge_type(transaction) {
-            Some(EDGE_MENTIONS | EDGE_MUTED | EDGE_MUTED_BY) => FeedVisibility::Hidden,
+            Some(edges::OBJECT_MENTIONS_OBJECT | edges::MUTED | edges::MUTED_BY) => {
+                FeedVisibility::Hidden
+            }
             // Depends on whether the viewer can see the mentioning object.
-            Some(EDGE_MENTIONED_BY) => FeedVisibility::Unknown,
+            Some(edges::OBJECT_MENTIONED_BY_OBJECT) => FeedVisibility::Unknown,
             _ => FeedVisibility::Visible,
         },
         // Hidden by `shouldHideForFeed()` before reaching here.
@@ -205,19 +199,19 @@ pub fn feed_visibility(transaction: &Transaction, comment: Option<&Comment>) -> 
     }
     match kind {
         "token:give" | "core:mfa" | "core:inlinestate" => return FeedVisibility::Hidden,
-        TYPE_SUBSCRIBERS if transaction.author_phid.starts_with("PHID-APPS-") => {
+        TYPE_SUBSCRIBERS if transaction.author_phid.as_str().starts_with("PHID-APPS-") => {
             return FeedVisibility::Hidden;
         }
         TYPE_EDGE => {
             if matches!(
                 edge_type(transaction),
                 Some(
-                    EDGE_MENTIONS
-                        | EDGE_MENTIONED_BY
-                        | EDGE_DEPENDS_ON
-                        | EDGE_DEPENDED_ON_BY
-                        | EDGE_COMMIT_HAS_REVISION
-                        | EDGE_REVISION_HAS_COMMIT
+                    edges::OBJECT_MENTIONS_OBJECT
+                        | edges::OBJECT_MENTIONED_BY_OBJECT
+                        | edges::REVISION_DEPENDS_ON_REVISION
+                        | edges::REVISION_DEPENDED_ON_BY_REVISION
+                        | edges::COMMIT_HAS_REVISION
+                        | edges::REVISION_HAS_COMMIT
                 )
             ) {
                 return FeedVisibility::Hidden;
@@ -245,7 +239,7 @@ mod tests {
     fn transaction(kind: &str, old: Value, new: Value, metadata: Value) -> Transaction {
         Transaction {
             phid: Phid::new("PHID-XACT-DREV-1"),
-            author_phid: "PHID-USER-alice".to_owned(),
+            author_phid: Phid::new("PHID-USER-alice"),
             object_phid: Phid::new("PHID-DREV-1"),
             view_policy: "users".to_owned(),
             edit_policy: "users".to_owned(),
@@ -260,7 +254,7 @@ mod tests {
     fn comment(content: &str) -> Comment {
         Comment {
             phid: Phid::new("PHID-XCMT-1"),
-            author_phid: "PHID-USER-alice".to_owned(),
+            author_phid: Phid::new("PHID-USER-alice"),
             view_policy: "users".to_owned(),
             edit_policy: "users".to_owned(),
             content: content.to_owned(),

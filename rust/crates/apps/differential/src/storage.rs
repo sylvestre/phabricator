@@ -117,14 +117,10 @@ pub async fn load_revisions(database: &Database, phids: &[Phid]) -> Result<Vec<R
         .map(|row| {
             let phid = rows::text(row, "phid")?;
             Ok(Revision {
-                author_phid: rows::opt_text(row, "authorPHID")?
-                    .filter(|author| !author.is_empty())
-                    .map(Phid::new),
+                author_phid: rows::opt_phid(row, "authorPHID")?,
                 view_policy: rows::text(row, "viewPolicy")?,
                 edit_policy: rows::text(row, "editPolicy")?,
-                repository_phid: rows::opt_text(row, "repositoryPHID")?
-                    .filter(|repository| !repository.is_empty())
-                    .map(Phid::new),
+                repository_phid: rows::opt_phid(row, "repositoryPHID")?,
                 reviewers: reviewers.remove(&phid).unwrap_or_default(),
                 phid: Phid::new(phid),
             })
@@ -170,7 +166,7 @@ impl SubjectResolver for Repositories<'_> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transaction {
     pub phid: Phid,
-    pub author_phid: String,
+    pub author_phid: Phid,
     pub object_phid: Phid,
     pub view_policy: String,
     pub edit_policy: String,
@@ -181,17 +177,28 @@ pub struct Transaction {
     pub metadata: Value,
 }
 
+/// A transaction or a comment as a policy object: its author can always
+/// see and edit it.
+fn authored_subject(phid: &Phid, view: &str, edit: &str, author: &Phid) -> PolicySubject {
+    let mut subject = PolicySubject::new(Some(phid.clone()), ObjectKind::Other)
+        .with_policy(Capability::VIEW, view)
+        .with_policy(Capability::EDIT, edit);
+    subject.automatic.push(AutomaticCapability {
+        principal: author.clone(),
+        capabilities: None,
+    });
+    subject
+}
+
 impl Transaction {
     /// `PhabricatorApplicationTransaction` as a policy object.
     pub fn subject(&self) -> PolicySubject {
-        let mut subject = PolicySubject::new(Some(self.phid.clone()), ObjectKind::Other)
-            .with_policy(Capability::VIEW, self.view_policy.clone())
-            .with_policy(Capability::EDIT, self.edit_policy.clone());
-        subject.automatic.push(AutomaticCapability {
-            principal: Phid::new(self.author_phid.as_str()),
-            capabilities: None,
-        });
-        subject
+        authored_subject(
+            &self.phid,
+            &self.view_policy,
+            &self.edit_policy,
+            &self.author_phid,
+        )
     }
 
     pub fn metadata_value(&self, key: &str) -> Option<&Value> {
@@ -216,13 +223,11 @@ pub async fn load_transactions(
         .map(|row| {
             Ok(Transaction {
                 phid: Phid::new(rows::text(row, "phid")?),
-                author_phid: rows::text(row, "authorPHID")?,
+                author_phid: Phid::new(rows::text(row, "authorPHID")?),
                 object_phid: Phid::new(rows::text(row, "objectPHID")?),
                 view_policy: rows::text(row, "viewPolicy")?,
                 edit_policy: rows::text(row, "editPolicy")?,
-                comment_phid: rows::opt_text(row, "commentPHID")?
-                    .filter(|phid| !phid.is_empty())
-                    .map(Phid::new),
+                comment_phid: rows::opt_phid(row, "commentPHID")?,
                 transaction_type: rows::text(row, "transactionType")?,
                 old_value: rows::json(row, "oldValue")?,
                 new_value: rows::json(row, "newValue")?,
@@ -235,7 +240,7 @@ pub async fn load_transactions(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Comment {
     pub phid: Phid,
-    pub author_phid: String,
+    pub author_phid: Phid,
     pub view_policy: String,
     pub edit_policy: String,
     pub content: String,
@@ -243,14 +248,12 @@ pub struct Comment {
 
 impl Comment {
     pub fn subject(&self) -> PolicySubject {
-        let mut subject = PolicySubject::new(Some(self.phid.clone()), ObjectKind::Other)
-            .with_policy(Capability::VIEW, self.view_policy.clone())
-            .with_policy(Capability::EDIT, self.edit_policy.clone());
-        subject.automatic.push(AutomaticCapability {
-            principal: Phid::new(self.author_phid.as_str()),
-            capabilities: None,
-        });
-        subject
+        authored_subject(
+            &self.phid,
+            &self.view_policy,
+            &self.edit_policy,
+            &self.author_phid,
+        )
     }
 
     /// `PhabricatorApplicationTransactionComment::isEmptyComment()`.
@@ -274,7 +277,7 @@ pub async fn load_comments(database: &Database, phids: &[Phid]) -> Result<Vec<Co
         .map(|row| {
             Ok(Comment {
                 phid: Phid::new(rows::text(row, "phid")?),
-                author_phid: rows::text(row, "authorPHID")?,
+                author_phid: Phid::new(rows::text(row, "authorPHID")?),
                 view_policy: rows::text(row, "viewPolicy")?,
                 edit_policy: rows::text(row, "editPolicy")?,
                 content: rows::opt_text(row, "content")?.unwrap_or_default(),

@@ -3,23 +3,33 @@
 //! Edges are stored in an `edge` table in the database of the application
 //! owning the *source* object.
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
 
 use phab_core::{Phid, PhidType};
 
 use crate::{Database, DbError, rows};
 
-pub const PROJECT_HAS_MEMBER: u32 = 13;
-pub const MEMBER_OF_PROJECT: u32 = 14;
-pub const OBJECT_HAS_SUBSCRIBER: u32 = 21;
-pub const SUBSCRIBED_TO_OBJECT: u32 = 22;
-pub const OBJECT_HAS_PROJECT: u32 = 41;
-pub const PROJECT_MATERIALIZED_MEMBER: u32 = 60;
+// The `EDGECONST` of PHP's edge types.
+pub const REVISION_DEPENDS_ON_REVISION: i64 = 5;
+pub const REVISION_DEPENDED_ON_BY_REVISION: i64 = 6;
+pub const PROJECT_HAS_MEMBER: i64 = 13;
+pub const MEMBER_OF_PROJECT: i64 = 14;
+pub const OBJECT_HAS_SUBSCRIBER: i64 = 21;
+pub const SUBSCRIBED_TO_OBJECT: i64 = 22;
+pub const REVISION_HAS_COMMIT: i64 = 31;
+pub const COMMIT_HAS_REVISION: i64 = 32;
+pub const OBJECT_HAS_PROJECT: i64 = 41;
+pub const OBJECT_MENTIONED_BY_OBJECT: i64 = 51;
+pub const OBJECT_MENTIONS_OBJECT: i64 = 52;
+pub const PROJECT_MATERIALIZED_MEMBER: i64 = 60;
+pub const MUTED: i64 = 67;
+pub const MUTED_BY: i64 = 68;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Edge {
     pub src: Phid,
-    pub edge_type: u32,
+    pub edge_type: i64,
     pub dst: Phid,
 }
 
@@ -43,7 +53,7 @@ pub fn edge_database(phid_type: PhidType) -> Option<&'static str> {
 pub async fn load_edges(
     database: &Database,
     sources: &[Phid],
-    edge_types: &[u32],
+    edge_types: &[i64],
     destinations: Option<&[Phid]>,
 ) -> Result<Vec<Edge>, DbError> {
     if sources.is_empty() || edge_types.is_empty() || destinations.is_some_and(<[Phid]>::is_empty) {
@@ -88,7 +98,7 @@ pub async fn load_edges(
         for row in query.fetch_all(database.pool()).await? {
             edges.push(Edge {
                 src: Phid::new(rows::text(&row, "src")?),
-                edge_type: u32::try_from(rows::int(&row, "type")?).unwrap_or(u32::MAX),
+                edge_type: rows::int(&row, "type")?,
                 dst: Phid::new(rows::text(&row, "dst")?),
             });
         }
@@ -100,15 +110,14 @@ pub async fn load_edges(
 pub async fn load_destination_phids(
     database: &Database,
     sources: &[Phid],
-    edge_types: &[u32],
+    edge_types: &[i64],
     destinations: Option<&[Phid]>,
 ) -> Result<Vec<Phid>, DbError> {
     let edges = load_edges(database, sources, edge_types, destinations).await?;
-    let mut result: Vec<Phid> = Vec::with_capacity(edges.len());
-    for edge in edges {
-        if !result.contains(&edge.dst) {
-            result.push(edge.dst);
-        }
-    }
-    Ok(result)
+    let mut seen = HashSet::with_capacity(edges.len());
+    Ok(edges
+        .into_iter()
+        .map(|edge| edge.dst)
+        .filter(|dst| seen.insert(dst.clone()))
+        .collect())
 }

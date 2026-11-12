@@ -101,13 +101,9 @@ impl Database {
             .bind("default")
             .fetch_all(&self.pool)
             .await?;
-        let mut entries = Map::new();
-        for row in rows {
-            let key = rows::text(&row, "configKey")?;
-            let value = rows::json(&row, "value")?;
-            entries.insert(key, value);
-        }
-        Ok(entries)
+        rows.iter()
+            .map(|row| Ok((rows::text(row, "configKey")?, rows::json(row, "value")?)))
+            .collect()
     }
 
     /// Whether the server answers, for health checks.

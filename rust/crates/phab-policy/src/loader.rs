@@ -252,17 +252,15 @@ async fn load_custom_policies(
     let rows = phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
         .fetch_all(database.pool())
         .await?;
-    let mut policies = HashMap::new();
-    for row in rows {
-        policies.insert(
-            Phid::new(rows::text(&row, "phid")?),
-            CustomPolicy {
-                rules: rows::json(&row, "rules")?,
-                default_action: rows::text(&row, "defaultAction")?,
-            },
-        );
-    }
-    Ok(policies)
+    rows.iter()
+        .map(|row| {
+            let policy = CustomPolicy {
+                rules: rows::json(row, "rules")?,
+                default_action: rows::text(row, "defaultAction")?,
+            };
+            Ok((Phid::new(rows::text(row, "phid")?), policy))
+        })
+        .collect()
 }
 
 async fn load_spaces(database: &Database) -> Result<HashMap<Phid, Space>, LoaderError> {
