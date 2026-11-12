@@ -1,0 +1,25 @@
+# Runs the Rust service next to the PHP stack of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f rust/docker-compose.rust.yml up
+#
+# nginx then sends the routes of rust/nginx/*.conf to `phab-rust`.
+services:
+  phab-rust:
+    build:
+      context: ./rust
+    environment:
+      - PHAB_CONFIG_DIR=/app/phabricator/conf/local
+      - RUST_LOG=info
+    volumes:
+      # Shares conf/local/local.json, written by the PHP container's
+      # entrypoint, so both stacks read the same configuration.
+      - phabricator-app:/app:ro
+    depends_on:
+      - phabricator
+    restart: on-failure
+
+  phabricator.test:
+    volumes:
+      - ./rust/nginx:/app/nginx/rust:ro
+    depends_on:
+      - phab-rust

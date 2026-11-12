@@ -1,0 +1,30 @@
+[package]
+name = "phab-server"
+description = "HTTP service answering the Phabricator routes ported to Rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum.workspace = true
+phab-auth.workspace = true
+phab-conduit.workspace = true
+phab-core.workspace = true
+phab-db.workspace = true
+rustix.workspace = true
+sentry.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+phab-db = { workspace = true, features = ["test-support"] }
+tower.workspace = true
+
+[lints]
+workspace = true
