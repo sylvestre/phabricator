@@ -3,17 +3,17 @@
 
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
 use phab_core::config::is_truthy;
-use serde_json::{Map, Value};
+use serde_json::{Value, json};
 
 use crate::{
     APPLICATION,
-    story::{Page, StoryRow, load_page, visible_stories},
+    story::{Order, Page, StoryRow, load_page, visible_stories},
 };
 
 const QUERY_CLASS: &str = "PhabricatorFeedIDQuery";
-const DEFAULT_LIMIT: i64 = 100;
+const DEFAULT_LIMIT: usize = 100;
 /// The largest page `PhabricatorPolicyAwareQuery::execute()` loads.
-const MAX_RAW_ROWS: i64 = 1024;
+const MAX_RAW_ROWS: usize = 1024;
 const ERR_UNKNOWN_TYPE: &str = "ERR-UNKNOWN-TYPE";
 
 pub struct FeedQueryId;
@@ -23,46 +23,51 @@ pub struct FeedQueryId;
 struct PageSize {
     /// What `cursor.limit` shows: `max(1, $limit)` keeps a string a string.
     shown: Value,
-    value: i64,
+    value: usize,
 }
 
-fn page_size(limit: Option<&Value>) -> Result<PageSize, MethodError> {
-    let limit = match limit {
-        Some(limit) if is_truthy(limit) => limit,
-        _ => {
-            return Ok(PageSize {
-                shown: DEFAULT_LIMIT.into(),
-                value: DEFAULT_LIMIT,
+impl Default for PageSize {
+    fn default() -> Self {
+        Self {
+            shown: DEFAULT_LIMIT.into(),
+            value: DEFAULT_LIMIT,
+        }
+    }
+}
+
+impl PageSize {
+    /// The `limit` parameter; falsy means the default.
+    fn parse(limit: Option<&Value>) -> Result<Self, MethodError> {
+        let Some(limit) = limit.filter(|limit| is_truthy(limit)) else {
+            return Ok(Self::default());
+        };
+        let value: i64 = match limit {
+            Value::Number(number) => number.as_i64(),
+            Value::String(text) if is_integer(text) => text.parse().ok(),
+            _ => None,
+        }
+        .ok_or(MethodError::Unsupported(
+            "feed.query_id with an unusual limit",
+        ))?;
+        // max() returns its first argument when both are equal.
+        if value <= 1 {
+            return Ok(Self {
+                shown: 1.into(),
+                value: 1,
             });
         }
-    };
-    let value = match limit {
-        Value::Number(number) => number.as_i64(),
-        Value::String(text) => {
-            let digits = text.strip_prefix('-').unwrap_or(text);
-            if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-                None
-            } else {
-                text.parse().ok()
-            }
-        }
-        _ => None,
-    }
-    .ok_or(MethodError::Unsupported(
-        "feed.query_id with an unusual limit",
-    ))?;
-    // max() returns its first argument when both are equal.
-    if value > 1 {
-        Ok(PageSize {
+        Ok(Self {
             shown: limit.clone(),
-            value,
-        })
-    } else {
-        Ok(PageSize {
-            shown: 1.into(),
-            value: 1,
+            value: usize::try_from(value)
+                .map_err(|_| MethodError::Unsupported("feed.query_id with a huge limit"))?,
         })
     }
+}
+
+/// An optional `-` followed by digits, which PHP compares as an integer.
+fn is_integer(text: &str) -> bool {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// An `after` or `before` value given to the pager.
@@ -74,27 +79,45 @@ struct Cursor {
     truthy: bool,
 }
 
-/// `phutil_nonempty_scalar()` then `phutil_string_cast()`.
-fn cursor(value: Option<&Value>) -> Result<Option<Cursor>, MethodError> {
-    let text = match value {
-        None | Some(Value::Null | Value::Bool(false)) => return Ok(None),
-        Some(Value::String(text)) if text.is_empty() => return Ok(None),
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Bool(true)) => "1".to_owned(),
-        Some(Value::Number(number)) if number.is_i64() || number.is_u64() => number.to_string(),
-        Some(_) => {
+impl Cursor {
+    /// `phutil_nonempty_scalar()` then `phutil_string_cast()`.
+    fn parse(value: Option<&Value>) -> Result<Option<Self>, MethodError> {
+        let Some(value) = value else {
+            return Ok(None);
+        };
+        let text = match value {
+            Value::Null | Value::Bool(false) => return Ok(None),
+            Value::String(text) if text.is_empty() => return Ok(None),
+            Value::String(text) => text.clone(),
+            Value::Bool(true) => "1".to_owned(),
+            Value::Number(number) if !number.is_f64() => number.to_string(),
+            _ => {
+                return Err(MethodError::Unsupported(
+                    "feed.query_id with an unusual cursor",
+                ));
+            }
+        };
+        Ok(Some(Self {
+            text,
+            truthy: is_truthy(value),
+        }))
+    }
+
+    /// `story.id IN (%Ld)` casts the cursor to an integer.
+    fn id(&self) -> Result<u64, MethodError> {
+        if !self.text.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(MethodError::Unsupported(
-                "feed.query_id with an unusual cursor",
+                "feed.query_id with a non-numeric cursor",
             ));
         }
-    };
-    Ok(Some(Cursor {
-        truthy: value.is_some_and(is_truthy),
-        text,
-    }))
+        self.text
+            .parse()
+            .map_err(|_| MethodError::Unsupported("feed.query_id with a huge cursor"))
+    }
 }
 
-/// The `view` parameter, falsy meaning `data`.
+/// The `view` parameter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum View {
     Data,
     /// html, html-summary and text render stories.
@@ -102,35 +125,33 @@ enum View {
     Unknown,
 }
 
-fn view(value: Option<&Value>) -> Result<View, MethodError> {
-    match value {
-        Some(value) if is_truthy(value) => match value {
-            Value::String(text) => Ok(match text.as_str() {
-                "data" => View::Data,
-                "html" | "html-summary" | "text" => View::Rendered,
-                _ => View::Unknown,
+impl View {
+    /// Falsy means `data`.
+    fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
+        match value.filter(|value| is_truthy(value)) {
+            None => Ok(Self::Data),
+            Some(Value::String(text)) => Ok(match text.as_str() {
+                "data" => Self::Data,
+                "html" | "html-summary" | "text" => Self::Rendered,
+                _ => Self::Unknown,
             }),
             // switch() compares loosely: `true` matches the first case.
-            _ => Err(MethodError::Unsupported(
+            Some(_) => Err(MethodError::Unsupported(
                 "feed.query_id with an unusual view",
             )),
-        },
-        _ => Ok(View::Data),
+        }
     }
 }
 
 /// `PhutilNumber`'s default formatting.
-fn thousands(number: i64) -> String {
-    let digits = number.unsigned_abs().to_string();
-    let mut grouped = String::new();
+fn thousands(number: usize) -> String {
+    let digits = number.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
     for (index, digit) in digits.chars().enumerate() {
         if index > 0 && (digits.len() - index).is_multiple_of(3) {
             grouped.push(',');
         }
         grouped.push(digit);
-    }
-    if number < 0 {
-        grouped.insert(0, '-');
     }
     grouped
 }
@@ -146,14 +167,14 @@ fn core_error(message: String) -> MethodError {
 /// objects keyed "0", "1"... become lists.
 fn php_array(value: &Value) -> Value {
     match value {
-        Value::Array(items) => Value::Array(items.iter().map(php_array).collect()),
+        Value::Array(items) => items.iter().map(php_array).collect(),
         Value::Object(entries) => {
             let is_list = entries
                 .keys()
                 .enumerate()
                 .all(|(index, key)| *key == index.to_string());
             if is_list {
-                Value::Array(entries.values().map(php_array).collect())
+                entries.values().map(php_array).collect()
             } else {
                 Value::Object(
                     entries
@@ -169,32 +190,15 @@ fn php_array(value: &Value) -> Value {
 
 /// The `data` view of a story.
 fn story_dictionary(story: &StoryRow) -> Value {
-    let mut dictionary = Map::new();
-    dictionary.insert("id".to_owned(), story.id.to_string().into());
-    dictionary.insert("phid".to_owned(), story.phid.clone().into());
-    dictionary.insert("class".to_owned(), story.story_type.clone().into());
-    dictionary.insert("epoch".to_owned(), story.epoch().into());
-    dictionary.insert("authorPHID".to_owned(), story.author_phid.clone().into());
-    dictionary.insert(
-        "chronologicalKey".to_owned(),
-        story.chronological_key.to_string().into(),
-    );
-    dictionary.insert("data".to_owned(), php_array(&story.story_data));
-    Value::Object(dictionary)
-}
-
-/// The cursor id: `story.id IN (%Ld)` casts the cursor to an integer.
-fn cursor_id(cursor: &Cursor) -> Result<u64, MethodError> {
-    if cursor.text.bytes().all(|byte| byte.is_ascii_digit()) {
-        cursor
-            .text
-            .parse()
-            .map_err(|_| MethodError::Unsupported("feed.query_id with a huge cursor"))
-    } else {
-        Err(MethodError::Unsupported(
-            "feed.query_id with a non-numeric cursor",
-        ))
-    }
+    json!({
+        "id": story.id.to_string(),
+        "phid": story.phid,
+        "class": story.story_type,
+        "epoch": story.epoch(),
+        "authorPHID": story.author_phid,
+        "chronologicalKey": story.chronological_key.to_string(),
+        "data": php_array(&story.story_data),
+    })
 }
 
 /// `PhabricatorPolicyAwareQuery::execute()` with a limit of `need`, then
@@ -202,12 +206,12 @@ fn cursor_id(cursor: &Cursor) -> Result<u64, MethodError> {
 async fn execute(
     request: &ApiRequest<'_>,
     external: Option<&Cursor>,
-    reversed: bool,
-    need: i64,
+    order: Order,
+    need: usize,
 ) -> Result<Vec<StoryRow>, MethodError> {
     let context = request.context;
     let database = &context.database;
-    let filter = |rows| {
+    let filter = async |rows| {
         visible_stories(
             database,
             &context.config,
@@ -215,13 +219,14 @@ async fn execute(
             rows,
             request.now,
         )
+        .await
     };
 
     // newInternalCursorFromExternalCursor(): the cursor must be a story the
     // viewer can see.
     let mut after = None;
     if let Some(external) = external {
-        let id = cursor_id(external)?;
+        let id = external.id()?;
         let rows = load_page(
             database,
             Page {
@@ -244,28 +249,27 @@ async fn execute(
     let mut total_seen = 0;
     let mut results = Vec::new();
     'pages: loop {
-        let raw_limit = (need - i64::try_from(results.len()).unwrap_or(i64::MAX)).min(MAX_RAW_ROWS);
-        let limit = usize::try_from(raw_limit).unwrap_or(0);
+        let limit = (need - results.len()).min(MAX_RAW_ROWS);
         let rows = load_page(
             database,
             Page {
                 ids: None,
                 after,
-                reversed,
+                order,
                 limit: Some(limit),
             },
         )
         .await
         .map_err(MethodError::internal)?;
         let seen = rows.len();
-        total_seen += i64::try_from(seen).unwrap_or(i64::MAX);
+        total_seen += seen;
         // nextPage(): paging continues after the last raw row.
         if let Some(last) = rows.last() {
             after = Some(last.id);
         }
         for story in filter(rows).await? {
             results.push(story);
-            if i64::try_from(results.len()).unwrap_or(i64::MAX) >= need {
+            if results.len() >= need {
                 break 'pages;
             }
         }
@@ -281,10 +285,39 @@ async fn execute(
             )));
         }
     }
-    if reversed {
+    if order == Order::Newest {
         results.reverse();
     }
     Ok(results)
+}
+
+/// A page of results with the cursors to the pages around it.
+#[derive(Debug, PartialEq)]
+struct Paged<T> {
+    items: Vec<T>,
+    next: Option<T>,
+    previous: Option<T>,
+}
+
+/// `AphrontCursorPagerView::sliceResults()` and the cursors
+/// `executeWithCursorPager()` sets. `results` holds up to `page + 1` items.
+fn slice<T: Clone>(mut results: Vec<T>, page: usize, after: bool, before: bool) -> Paged<T> {
+    let more = results.len() > page;
+    if more {
+        let offset = if before { results.len() - page } else { 0 };
+        results.drain(..offset);
+        results.truncate(page);
+    }
+    let next = results.last().filter(|_| before || more).cloned();
+    let previous = results
+        .first()
+        .filter(|_| after || (before && more))
+        .cloned();
+    Paged {
+        items: results,
+        next,
+        previous,
+    }
 }
 
 impl Method for FeedQueryId {
@@ -309,62 +342,46 @@ impl Method for FeedQueryId {
 
     fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
         Box::pin(async move {
-            let view = view(request.value("view"))?;
-            let after = cursor(request.value("after"))?;
-            let before = cursor(request.value("before"))?;
-            let size = page_size(request.value("limit"))?;
+            let view = View::parse(request.value("view"))?;
+            let after = Cursor::parse(request.value("after"))?;
+            let before = Cursor::parse(request.value("before"))?;
+            let size = PageSize::parse(request.value("limit"))?;
 
             // executeWithCursorPager()
-            let (external, reversed) = match (&after, &before) {
-                (Some(after), _) => (Some(after), false),
-                (None, Some(before)) => (Some(before), true),
-                (None, None) => (None, false),
+            let (external, order) = match (&after, &before) {
+                (Some(after), _) => (Some(after), Order::Oldest),
+                (None, Some(before)) => (Some(before), Order::Newest),
+                (None, None) => (None, Order::Oldest),
             };
-            let mut stories = execute(request, external, reversed, size.value + 1).await?;
-            let count = stories.len();
-            let page = usize::try_from(size.value).unwrap_or(usize::MAX);
-            let before_truthy = before.as_ref().is_some_and(|before| before.truthy);
-            let after_truthy = after.as_ref().is_some_and(|after| after.truthy);
-            if count > page {
-                let offset = if before_truthy { count - page } else { 0 };
-                stories = stories.split_off(offset);
-                stories.truncate(page);
-            }
-            let mut next = Value::Null;
-            let mut previous = Value::Null;
-            if let (Some(head), Some(last)) = (stories.first(), stories.last()) {
-                if before_truthy || count > page {
-                    next = last.id.to_string().into();
-                }
-                if after_truthy || (before_truthy && count > page) {
-                    previous = head.id.to_string().into();
-                }
-            }
+            let stories = execute(request, external, order, size.value + 1).await?;
+            let paged = slice(
+                stories,
+                size.value,
+                after.as_ref().is_some_and(|after| after.truthy),
+                before.as_ref().is_some_and(|before| before.truthy),
+            );
 
-            let mut data = Vec::with_capacity(stories.len());
-            for story in &stories {
-                match view {
-                    View::Data => data.push(story_dictionary(story)),
-                    View::Rendered => {
-                        return Err(MethodError::Unsupported("rendered feed stories"));
-                    }
-                    View::Unknown => {
-                        return Err(MethodError::Conduit {
-                            code: ERR_UNKNOWN_TYPE.to_owned(),
-                            info: None,
-                        });
-                    }
-                }
-            }
-
-            let mut cursor = Map::new();
-            cursor.insert("limit".to_owned(), size.shown);
-            cursor.insert("after".to_owned(), next);
-            cursor.insert("before".to_owned(), previous);
-            let mut result = Map::new();
-            result.insert("data".to_owned(), Value::Array(data));
-            result.insert("cursor".to_owned(), Value::Object(cursor));
-            Ok(Value::Object(result))
+            let data = paged
+                .items
+                .iter()
+                .map(|story| match view {
+                    View::Data => Ok(story_dictionary(story)),
+                    View::Rendered => Err(MethodError::Unsupported("rendered feed stories")),
+                    View::Unknown => Err(MethodError::Conduit {
+                        code: ERR_UNKNOWN_TYPE.to_owned(),
+                        info: None,
+                    }),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let cursor = |story: Option<StoryRow>| story.map(|story| story.id.to_string());
+            Ok(json!({
+                "data": data,
+                "cursor": {
+                    "limit": size.shown,
+                    "after": cursor(paged.next),
+                    "before": cursor(paged.previous),
+                },
+            }))
         })
     }
 }
@@ -386,8 +403,8 @@ mod tests {
     #[case(json!("1"), json!(1), 1)]
     #[case(json!(-3), json!(1), 1)]
     #[case(json!("-3"), json!(1), 1)]
-    fn limits_like_php(#[case] limit: Value, #[case] shown: Value, #[case] value: i64) {
-        assert_eq!(page_size(Some(&limit)), Ok(PageSize { shown, value }));
+    fn limits_like_php(#[case] limit: Value, #[case] shown: Value, #[case] value: usize) {
+        assert_eq!(PageSize::parse(Some(&limit)), Ok(PageSize { shown, value }));
     }
 
     #[rstest]
@@ -398,39 +415,69 @@ mod tests {
     #[case(json!([1]))]
     fn leaves_unusual_limits_to_php(#[case] limit: Value) {
         assert!(matches!(
-            page_size(Some(&limit)),
+            PageSize::parse(Some(&limit)),
             Err(MethodError::Unsupported(_))
         ));
     }
 
     #[test]
     fn reads_cursors_like_php() {
-        assert_eq!(cursor(None), Ok(None));
-        assert_eq!(cursor(Some(&json!(""))), Ok(None));
-        assert_eq!(cursor(Some(&json!(false))), Ok(None));
+        let cursor = |value: Value| Cursor::parse(Some(&value));
+        assert_eq!(Cursor::parse(None), Ok(None));
+        assert_eq!(cursor(json!("")), Ok(None));
+        assert_eq!(cursor(json!(false)), Ok(None));
         assert_eq!(
-            cursor(Some(&json!(0))),
+            cursor(json!(0)),
             Ok(Some(Cursor {
                 text: "0".to_owned(),
                 truthy: false
             }))
         );
         assert_eq!(
-            cursor(Some(&json!("12"))),
+            cursor(json!("12")),
             Ok(Some(Cursor {
                 text: "12".to_owned(),
                 truthy: true
             }))
         );
-        assert!(cursor(Some(&json!([1]))).is_err());
+        assert!(cursor(json!([1])).is_err());
+        assert!(cursor(json!(1.5)).is_err());
+    }
+
+    #[rstest]
+    // A first page with more to come.
+    #[case(vec![1, 2, 3], 2, false, false, vec![1, 2], Some(2), None)]
+    // The last page after a cursor.
+    #[case(vec![7], 2, true, false, vec![7], None, Some(7))]
+    // Paging backwards keeps the items closest to the cursor.
+    #[case(vec![1, 5], 1, false, true, vec![5], Some(5), Some(5))]
+    #[case(vec![1], 100, false, true, vec![1], Some(1), None)]
+    #[case(vec![], 2, true, true, vec![], None, None)]
+    fn slices_like_the_pager(
+        #[case] results: Vec<u32>,
+        #[case] page: usize,
+        #[case] after: bool,
+        #[case] before: bool,
+        #[case] items: Vec<u32>,
+        #[case] next: Option<u32>,
+        #[case] previous: Option<u32>,
+    ) {
+        assert_eq!(
+            slice(results, page, after, before),
+            Paged {
+                items,
+                next,
+                previous
+            }
+        );
     }
 
     #[test]
     fn formats_numbers_like_phutil_number() {
         assert_eq!(thousands(0), "0");
+        assert_eq!(thousands(20), "20");
         assert_eq!(thousands(1010), "1,010");
         assert_eq!(thousands(123_456_789), "123,456,789");
-        assert_eq!(thousands(-1000), "-1,000");
     }
 
     #[test]

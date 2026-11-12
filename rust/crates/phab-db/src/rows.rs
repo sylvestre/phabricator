@@ -59,6 +59,14 @@ pub fn int(row: &MySqlRow, column: &str) -> Result<i64, DbError> {
     opt_int(row, column)?.ok_or_else(|| column_error(column))
 }
 
+/// An unsigned column, including `bigint unsigned` values above `i64::MAX`.
+pub fn uint(row: &MySqlRow, column: &str) -> Result<u64, DbError> {
+    if let Ok(value) = row.try_get::<u64, _>(column) {
+        return Ok(value);
+    }
+    u64::try_from(int(row, column)?).map_err(|_| column_error(column))
+}
+
 /// A boolean column read with PHP truthiness of its integer value.
 pub fn flag(row: &MySqlRow, column: &str) -> Result<bool, DbError> {
     Ok(opt_int(row, column)?.unwrap_or(0) != 0)
