@@ -7,6 +7,10 @@
 
 use serde_json::Value;
 
+/// Asks nginx to send a request to PHP even when the Rust service handles
+/// its route. The shadow mode and phab-replay set it on their PHP calls.
+pub const SKIP_RUST_HEADER: &str = "x-phab-skip-rust";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Difference {
     /// JSON Pointer of the differing value, e.g. `/result/data/0/epoch`.

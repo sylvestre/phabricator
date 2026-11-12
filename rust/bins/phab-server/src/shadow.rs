@@ -19,8 +19,6 @@ use serde_json::{Value, json};
 use crate::AppState;
 use phab_conduit::call;
 
-pub const SKIP_RUST_HEADER: &str = "x-phab-skip-rust";
-
 /// Request headers passed on to PHP.
 const FORWARDED_REQUEST_HEADERS: &[&str] = &[
     "content-type",
@@ -149,7 +147,7 @@ pub async fn handle(
     let mut outgoing = shadow
         .client
         .request(request.http_method.clone(), url)
-        .header(SKIP_RUST_HEADER, "1")
+        .header(phab_parity::SKIP_RUST_HEADER, "1")
         .body(request.body.clone());
     for name in FORWARDED_REQUEST_HEADERS {
         for value in request.headers.get_all(*name) {

@@ -121,26 +121,26 @@ impl ApplicationPolicies {
     }
 
     /// `PhabricatorApplication::getPolicy()` for view and edit.
-    pub fn policy(&self, class: &str, capability: Capability, allow_public: bool) -> String {
+    pub fn policy(&self, class: &str, capability: Capability, allow_public: bool) -> &str {
         let editable = capability != Capability::VIEW || can_uninstall(class);
         if editable {
             // `policy.locked` is keyed by the capability, as in PHP.
-            if let Some(policy) = self.locked.get(capability.0) {
-                return policy.clone();
+            if let Some(policy) = self.locked.get(capability.as_str()) {
+                return policy;
             }
             let configured = self
                 .settings
                 .get(&format!("PHID-APPS-{class}"))
-                .and_then(|policies| policies.get(capability.0))
+                .and_then(|policies| policies.get(capability.as_str()))
                 .filter(|policy| !policy.is_empty());
             if let Some(policy) = configured {
-                return policy.clone();
+                return policy;
             }
         }
         match capability {
-            Capability::VIEW if allow_public => POLICY_PUBLIC.to_owned(),
-            Capability::EDIT => POLICY_ADMIN.to_owned(),
-            _ => POLICY_USER.to_owned(),
+            Capability::VIEW if allow_public => POLICY_PUBLIC,
+            Capability::EDIT => POLICY_ADMIN,
+            _ => POLICY_USER,
         }
     }
 

@@ -1541,10 +1541,12 @@ dependencies = [
 name = "phab-replay"
 version = "0.1.0"
 dependencies = [
+ "form_urlencoded",
  "phab-parity",
  "reqwest",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
 ]
 

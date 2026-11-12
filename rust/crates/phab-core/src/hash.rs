@@ -2,6 +2,7 @@
 //! digests are stored in the database (session keys, cache indexes) and both
 //! stacks read them.
 
+use hmac::digest::KeyInit;
 use hmac::{Hmac, Mac};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
@@ -23,20 +24,20 @@ pub enum HashError {
 /// `PhabricatorHash::weakDigest()`: hex HMAC-SHA1. The caller passes the
 /// `security.hmac-key` value explicitly.
 pub fn weak_digest(message: &[u8], key: &[u8]) -> Result<String, HashError> {
-    if key.is_empty() {
-        return Err(HashError::EmptyKey);
-    }
-    let mut mac = Hmac::<Sha1>::new_from_slice(key).map_err(|_| HashError::EmptyKey)?;
-    mac.update(message);
-    Ok(hex::encode(mac.finalize().into_bytes()))
+    hmac_hex::<Hmac<Sha1>>(message, key)
 }
 
 /// `PhabricatorHash::digestHMACSHA256()`: hex HMAC-SHA256.
 pub fn hmac_sha256(message: &[u8], key: &[u8]) -> Result<String, HashError> {
+    hmac_hex::<Hmac<Sha256>>(message, key)
+}
+
+/// The hex digest of an HMAC; PHP refuses empty keys.
+fn hmac_hex<M: Mac + KeyInit>(message: &[u8], key: &[u8]) -> Result<String, HashError> {
     if key.is_empty() {
         return Err(HashError::EmptyKey);
     }
-    let mut mac = Hmac::<Sha256>::new_from_slice(key).map_err(|_| HashError::EmptyKey)?;
+    let mut mac = <M as KeyInit>::new_from_slice(key).expect("HMAC accepts keys of any length");
     mac.update(message);
     Ok(hex::encode(mac.finalize().into_bytes()))
 }

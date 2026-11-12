@@ -1,10 +1,22 @@
 //! Capabilities, like viewing or editing an object.
 
+use std::fmt;
+
 /// A capability key, the value of a `PhabricatorPolicyCapability::CAPABILITY`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Capability(pub &'static str);
 
+impl fmt::Display for Capability {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 impl Capability {
+    pub fn as_str(self) -> &'static str {
+        self.0
+    }
+
     pub const VIEW: Self = Self("view");
     pub const EDIT: Self = Self("edit");
     pub const JOIN: Self = Self("join");

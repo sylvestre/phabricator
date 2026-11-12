@@ -16,8 +16,27 @@ use std::process::ExitCode;
 use phab_parity::Rules;
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use thiserror::Error;
 
-pub const SKIP_RUST_HEADER: &str = "x-phab-skip-rust";
+#[derive(Debug, Error)]
+enum ReplayError {
+    #[error("environment variable {0} is not set")]
+    MissingVariable(String),
+    #[error(transparent)]
+    Http(#[from] reqwest::Error),
+    #[error("HTTP {status}, not JSON: {body}")]
+    NotJson {
+        status: reqwest::StatusCode,
+        body: String,
+    },
+}
+
+/// Which stack a call goes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stack {
+    Php,
+    Rust,
+}
 
 #[derive(Deserialize)]
 struct Scenario {
@@ -36,13 +55,13 @@ async fn call(
     client: &reqwest::Client,
     base: &str,
     scenario: &Scenario,
-    skip_rust: bool,
-) -> Result<Value, String> {
+    stack: Stack,
+) -> Result<Value, ReplayError> {
     let mut params = scenario.params.clone();
     if let Some(token) = &scenario.token {
         let token = match token.strip_prefix('$') {
             Some(variable) => std::env::var(variable)
-                .map_err(|_| format!("environment variable {variable} is not set"))?,
+                .map_err(|_| ReplayError::MissingVariable(variable.to_owned()))?,
             None => token.clone(),
         };
         params.insert(
@@ -59,27 +78,16 @@ async fn call(
         .header("content-type", "application/x-www-form-urlencoded")
         .body(format!(
             "params={}",
-            encode_component(&Value::Object(params).to_string())
+            form_urlencoded::byte_serialize(Value::Object(params).to_string().as_bytes())
+                .collect::<String>()
         ));
-    if skip_rust {
-        request = request.header(SKIP_RUST_HEADER, "1");
+    if stack == Stack::Php {
+        request = request.header(phab_parity::SKIP_RUST_HEADER, "1");
     }
-    let response = request.send().await.map_err(|error| error.to_string())?;
+    let response = request.send().await?;
     let status = response.status();
-    let body = response.text().await.map_err(|error| error.to_string())?;
-    serde_json::from_str(&body).map_err(|_| format!("HTTP {status}, not JSON: {body}"))
-}
-
-fn encode_component(text: &str) -> String {
-    text.bytes()
-        .map(|byte| {
-            if byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte) {
-                char::from(byte).to_string()
-            } else {
-                format!("%{byte:02X}")
-            }
-        })
-        .collect()
+    let body = response.text().await?;
+    serde_json::from_str(&body).map_err(|_| ReplayError::NotJson { status, body })
 }
 
 #[tokio::main]
@@ -109,8 +117,8 @@ async fn main() -> ExitCode {
                 rules = rules.ignoring(path);
             }
             let answers = (
-                call(&client, php, scenario, true).await,
-                call(&client, rust, scenario, false).await,
+                call(&client, php, scenario, Stack::Php).await,
+                call(&client, rust, scenario, Stack::Rust).await,
             );
             match answers {
                 (Ok(php_answer), Ok(rust_answer)) => {
@@ -128,11 +136,14 @@ async fn main() -> ExitCode {
                 }
                 (php_answer, rust_answer) => {
                     failures += 1;
+                    let describe = |answer: Result<Value, ReplayError>| {
+                        answer.map_or_else(|error| error.to_string(), |_| "ok".to_owned())
+                    };
                     println!(
-                        "ERROR {}: php={:?} rust={:?}",
+                        "ERROR {}: php: {}; rust: {}",
                         scenario.name,
-                        php_answer.err(),
-                        rust_answer.err()
+                        describe(php_answer),
+                        describe(rust_answer)
                     );
                 }
             }
