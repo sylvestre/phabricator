@@ -106,4 +106,16 @@ pub const CONTRACT: &[TableContract] = &[
             "dateModified",
         ],
     },
+    TableContract {
+        database: "conduit",
+        table: "conduit_methodcalllog",
+        columns: &[
+            "method",
+            "error",
+            "duration",
+            "dateCreated",
+            "dateModified",
+            "callerPHID",
+        ],
+    },
 ];

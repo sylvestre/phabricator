@@ -158,10 +158,11 @@ fn write_string(output: &mut Vec<u8>, bytes: &[u8]) {
     output.extend_from_slice(b"\";");
 }
 
-/// Formats a float like PHP does with `serialize_precision = -1`: the
+/// Formats a float like PHP does with `serialize_precision = -1` (as used by
+/// `serialize()`, `var_export()` and, with a lowercase `e`, `json_encode()`): the
 /// shortest representation that round-trips, in scientific notation when the
 /// decimal exponent is below -4 or at least 17.
-fn format_float(number: f64) -> String {
+pub fn format_float(number: f64) -> String {
     if number.is_nan() {
         return "NAN".to_owned();
     }

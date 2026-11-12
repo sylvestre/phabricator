@@ -1,0 +1,25 @@
+[package]
+name = "phab-conduit"
+description = "Conduit API framework: request decoding, authentication, dispatch and the response envelope"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+phab-auth.workspace = true
+phab-core.workspace = true
+phab-db.workspace = true
+phab-policy.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+phab-db = { workspace = true, features = ["test-support"] }
+rstest.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
