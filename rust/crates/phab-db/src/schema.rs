@@ -118,4 +118,20 @@ pub const CONTRACT: &[TableContract] = &[
             "callerPHID",
         ],
     },
+    TableContract {
+        database: "user",
+        table: "user_email",
+        columns: &["userPHID", "address", "isVerified", "isPrimary"],
+    },
+    TableContract {
+        database: "user",
+        table: "user_cache",
+        columns: &[
+            "userPHID",
+            "cacheIndex",
+            "cacheKey",
+            "cacheData",
+            "cacheType",
+        ],
+    },
 ];

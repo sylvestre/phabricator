@@ -15,6 +15,7 @@ fn init_logging() {
 fn methods() -> Registry {
     let mut registry = Registry::default();
     phab_app_conduit::register(&mut registry);
+    phab_app_people::register(&mut registry);
     registry
 }
 

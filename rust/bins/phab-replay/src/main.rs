@@ -6,6 +6,8 @@
 //!
 //!     [{"name": "whoami", "method": "user.whoami", "token": "api-...", "params": {}}]
 //!
+//! A token starting with `$` names an environment variable holding it.
+//!
 //! Calls to PHP carry `X-Phab-Skip-Rust`, so nginx sends them to PHP even
 //! for routes the Rust service answers. Exits with 1 if any answer differs.
 
@@ -38,6 +40,11 @@ async fn call(
 ) -> Result<Value, String> {
     let mut params = scenario.params.clone();
     if let Some(token) = &scenario.token {
+        let token = match token.strip_prefix('$') {
+            Some(variable) => std::env::var(variable)
+                .map_err(|_| format!("environment variable {variable} is not set"))?,
+            None => token.clone(),
+        };
         params.insert(
             "__conduit__".to_owned(),
             serde_json::json!({ "token": token }),

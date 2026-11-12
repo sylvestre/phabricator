@@ -1,0 +1,6 @@
+[
+  {"name": "whoami", "method": "user.whoami", "token": "$PHAB_REPLAY_TOKEN"},
+  {"name": "whoami with an invalid token", "method": "user.whoami", "token": "api-invalidinvalidinvalidinvali"},
+  {"name": "whoami with a malformed token", "method": "user.whoami", "token": "api-short"},
+  {"name": "whoami without a token", "method": "user.whoami"}
+]
