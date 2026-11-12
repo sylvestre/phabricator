@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use phab_core::Phid;
 use phab_db::sqlx::mysql::MySqlRow;
-use phab_db::{Database, DbError, bind_all, placeholders, rows};
+use phab_db::{Database, DbError, rows};
 use phab_policy::loader::{LoaderError, SubjectResolver};
 use phab_policy::{AutomaticCapability, Capability, ExtendedPolicy, ObjectKind, PolicySubject};
 use serde_json::Value;
@@ -77,11 +77,13 @@ async fn select_by_phid(
     }
     let sql = format!(
         "SELECT {columns} FROM {table} WHERE {key} IN ({})",
-        placeholders(phids.len())
+        phab_db::placeholders(phids.len())
     );
-    Ok(bind_all(phab_db::sqlx::query(&sql), phids_of(phids))
-        .fetch_all(database.pool())
-        .await?)
+    Ok(
+        phab_db::bind_all(phab_db::sqlx::query(&sql), phids_of(phids))
+            .fetch_all(database.pool())
+            .await?,
+    )
 }
 
 pub async fn load_revisions(database: &Database, phids: &[Phid]) -> Result<Vec<Revision>, DbError> {

@@ -6,10 +6,9 @@
 //! files and possibly composing an avatar, which PHP does.
 
 use phab_auth::User;
-use phab_core::Config;
-use phab_core::hash::digest_for_index;
-use phab_db::phpser::{Value, serialize};
-use phab_db::{Database, DbError, rows};
+use phab_core::{Config, hash};
+use phab_db::phpser::Value;
+use phab_db::{Database, DbError, phpser, rows};
 
 pub const CACHE_KEY: &str = "user.profile.image.uri.v1";
 pub const CACHE_TYPE: &str = "user.profile";
@@ -28,7 +27,7 @@ pub fn cache_version(
                 .map(phab_core::Phid::as_str),
         ),
     ]);
-    Ok(digest_for_index(&serialize(&parts)))
+    Ok(hash::digest_for_index(&phpser::serialize(&parts)))
 }
 
 /// The cached URI if the cache holds a valid entry for `user`.
@@ -42,7 +41,7 @@ pub async fn cached_uri(
         database.table("user", "user_cache")
     );
     let rows = phab_db::sqlx::query(&sql)
-        .bind(digest_for_index(CACHE_KEY.as_bytes()))
+        .bind(hash::digest_for_index(CACHE_KEY.as_bytes()))
         .bind(user.phid.as_str())
         .fetch_all(database.pool())
         .await?;
@@ -100,7 +99,7 @@ mod tests {
                 json!("http://phabricator.test/"),
             )]),
         );
-        // PhabricatorHash::digestForIndex(serialize(
+        // PhabricatorHash::digestForIndex(phpser::serialize(
         //   array('http://phabricator.test/', null, null)))
         assert_eq!(cache_version(&config, &user(None)).unwrap(), "fQDBd9WAdWy_");
         // ... array('http://phabricator.test/', null, 'PHID-FILE-abc')

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use phab_core::{Config, Phid};
 use phab_db::testing::TestDatabase;
-use phab_policy::loader::{LoaderError, NoExtendedObjects, SubjectResolver, load_facts};
-use phab_policy::{Capability, ExtendedPolicy, ObjectKind, PolicySubject, Viewer, filter};
+use phab_policy::loader::{LoaderError, NoExtendedObjects, SubjectResolver};
+use phab_policy::{Capability, ExtendedPolicy, ObjectKind, PolicySubject, Viewer, loader};
 
 const DATABASES: &[&str] = &["project", "user", "differential", "policy", "spaces"];
 
@@ -71,22 +71,22 @@ async fn loads_memberships_reviewers_subscriptions_and_custom_policies() {
     let subjects = [&reviewed, &subscribed, &custom, &in_private_repository];
 
     let alice = Viewer::user(Phid::new("PHID-USER-alice"), false);
-    let facts = load_facts(database, &config, &alice, &subjects, &Repositories, 0)
+    let facts = loader::load_facts(database, &config, &alice, &subjects, &Repositories, 0)
         .await
         .unwrap();
     assert!(facts.viewer_projects.contains(&Phid::new("PHID-PROJ-team")));
-    let visible = filter(&alice, &subjects, &[Capability::VIEW], &facts).unwrap();
+    let visible = phab_policy::filter(&alice, &subjects, &[Capability::VIEW], &facts).unwrap();
     assert_eq!(visible, [true, false, true, true]);
 
     let bob = Viewer::user(Phid::new("PHID-USER-bob"), false);
-    let facts = load_facts(database, &config, &bob, &subjects, &Repositories, 0)
+    let facts = loader::load_facts(database, &config, &bob, &subjects, &Repositories, 0)
         .await
         .unwrap();
-    let visible = filter(&bob, &subjects, &[Capability::VIEW], &facts).unwrap();
+    let visible = phab_policy::filter(&bob, &subjects, &[Capability::VIEW], &facts).unwrap();
     assert_eq!(visible, [false, true, false, false]);
 
     let anonymous = Viewer::anonymous();
-    let facts = load_facts(
+    let facts = loader::load_facts(
         database,
         &config,
         &anonymous,
@@ -96,7 +96,7 @@ async fn loads_memberships_reviewers_subscriptions_and_custom_policies() {
     )
     .await
     .unwrap();
-    let visible = filter(&anonymous, &subjects, &[Capability::VIEW], &facts).unwrap();
+    let visible = phab_policy::filter(&anonymous, &subjects, &[Capability::VIEW], &facts).unwrap();
     assert_eq!(visible, [false, false, false, false]);
 
     test_db.drop_databases().await;

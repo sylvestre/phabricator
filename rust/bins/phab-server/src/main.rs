@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use phab_conduit::Registry;
-use phab_server::{AppState, build_context, default_config_dir, hostname, router};
+use phab_server::AppState;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -33,8 +33,8 @@ async fn main() -> std::process::ExitCode {
     });
     init_logging();
 
-    let config_dir =
-        std::env::var_os("PHAB_CONFIG_DIR").map_or_else(default_config_dir, PathBuf::from);
+    let config_dir = std::env::var_os("PHAB_CONFIG_DIR")
+        .map_or_else(phab_server::default_config_dir, PathBuf::from);
     let listen: SocketAddr = match std::env::var("PHAB_LISTEN")
         .unwrap_or_else(|_| "0.0.0.0:8080".to_owned())
         .parse()
@@ -46,7 +46,7 @@ async fn main() -> std::process::ExitCode {
         }
     };
 
-    let context = match build_context(&config_dir, hostname()).await {
+    let context = match phab_server::build_context(&config_dir, phab_server::hostname()).await {
         Ok(context) => context,
         Err(error) => {
             tracing::error!(%error, "startup failed");
@@ -67,7 +67,7 @@ async fn main() -> std::process::ExitCode {
         }
     };
     tracing::info!(%listen, methods = ?state.registry.names(), "listening");
-    if let Err(error) = axum::serve(listener, router(state)).await {
+    if let Err(error) = axum::serve(listener, phab_server::router(state)).await {
         tracing::error!(%error, "server stopped");
         return std::process::ExitCode::FAILURE;
     }

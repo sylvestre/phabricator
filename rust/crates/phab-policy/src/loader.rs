@@ -4,14 +4,13 @@
 use std::collections::HashMap;
 
 use phab_core::{Config, Phid, PhidType};
-use phab_db::{Database, DbError, bind_all, edges, placeholders, rows};
-use thiserror::Error;
 
-use crate::application::application_for_phid_type;
 use crate::{
     ApplicationPolicies, Capability, CustomPolicy, ObjectKind, PolicyFacts, PolicySubject, Space,
-    Viewer,
+    Viewer, application,
 };
+use phab_db::{Database, DbError, edges, rows};
+use thiserror::Error;
 
 const MAX_RESOLVE_ROUNDS: usize = 32;
 
@@ -69,7 +68,9 @@ pub async fn load_facts(
     let application_subjects: Vec<PolicySubject> = {
         let mut classes: Vec<&str> = all
             .iter()
-            .filter_map(|subject| application_for_phid_type(subject.phid.as_ref()?.phid_type()))
+            .filter_map(|subject| {
+                application::application_for_phid_type(subject.phid.as_ref()?.phid_type())
+            })
             .collect();
         classes.sort_unstable();
         classes.dedup();
@@ -217,14 +218,14 @@ async fn load_reviewing(
     let sql = format!(
         "SELECT revisionPHID FROM {} WHERE revisionPHID IN ({}) AND reviewerPHID IN ({})",
         database.table("differential", "differential_reviewer"),
-        placeholders(revisions.len()),
-        placeholders(reviewers.len()),
+        phab_db::placeholders(revisions.len()),
+        phab_db::placeholders(reviewers.len()),
     );
-    let query = bind_all(
+    let query = phab_db::bind_all(
         phab_db::sqlx::query(&sql),
         revisions.iter().map(Phid::as_str),
     );
-    let rows = bind_all(query, reviewers.iter().map(Phid::as_str))
+    let rows = phab_db::bind_all(query, reviewers.iter().map(Phid::as_str))
         .fetch_all(database.pool())
         .await?;
     rows.iter()
@@ -242,9 +243,9 @@ async fn load_custom_policies(
     let sql = format!(
         "SELECT phid, rules, defaultAction FROM {} WHERE phid IN ({})",
         database.table("policy", "policy"),
-        placeholders(phids.len()),
+        phab_db::placeholders(phids.len()),
     );
-    let rows = bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
+    let rows = phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
         .fetch_all(database.pool())
         .await?;
     let mut policies = HashMap::new();

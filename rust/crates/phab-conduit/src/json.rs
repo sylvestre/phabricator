@@ -4,7 +4,7 @@
 
 use std::fmt::Write as _;
 
-use phab_db::phpser::format_float;
+use phab_db::phpser;
 use serde_json::Value;
 
 pub fn encode(value: &Value) -> String {
@@ -18,7 +18,7 @@ fn write_value(output: &mut String, value: &Value) {
         Value::Null => output.push_str("null"),
         Value::Bool(flag) => output.push_str(if *flag { "true" } else { "false" }),
         Value::Number(number) => match number.as_f64().filter(|_| number.is_f64()) {
-            Some(float) => output.push_str(&format_float(float).replace('E', "e")),
+            Some(float) => output.push_str(&phpser::format_float(float).replace('E', "e")),
             None => {
                 let _ = write!(output, "{number}");
             }

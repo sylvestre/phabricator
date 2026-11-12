@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
-use axum::body::{Body, to_bytes};
+use axum::body::Body;
+
+use axum::body;
 use axum::http::{Request, StatusCode};
 use phab_conduit::{Context, Envelope, Registry};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
-use phab_server::{AppState, FALLBACK_HEADER, envelope_response, router};
+use phab_server::{AppState, FALLBACK_HEADER};
 use tower::ServiceExt;
 
 async fn app() -> Option<(TestDatabase, axum::Router)> {
@@ -19,7 +21,7 @@ async fn app() -> Option<(TestDatabase, axum::Router)> {
         registry: Registry::default(),
         shadow: None,
     });
-    Some((test_db, router(state)))
+    Some((test_db, phab_server::router(state)))
 }
 
 #[tokio::test]
@@ -32,7 +34,9 @@ async fn status_reports_the_database() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(value["status"], "ok");
     test_db.drop_databases().await;
@@ -59,13 +63,15 @@ async fn unknown_methods_go_back_to_php() {
 
 #[tokio::test]
 async fn envelopes_have_php_headers() {
-    let response = envelope_response(&Envelope::success(serde_json::json!("web1")));
+    let response = phab_server::envelope_response(&Envelope::success(serde_json::json!("web1")));
     assert_eq!(response.status(), StatusCode::OK);
     let headers = response.headers();
     assert_eq!(headers["content-type"], "application/json");
     assert_eq!(headers["access-control-allow-origin"], "*");
     assert_eq!(headers["x-conduit-capabilities"], "gzip");
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     assert_eq!(
         &body[..],
         br#"{"result":"web1","error_code":null,"error_info":null}"#

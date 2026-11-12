@@ -1,5 +1,4 @@
-use phab_conduit::call::dispatch;
-use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response};
+use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
 use serde_json::{Value, json};
@@ -29,7 +28,7 @@ async fn query(context: &Context, params: &str) -> Response {
         body: format!("api.token={TOKEN}&{params}"),
         ..HttpRequest::default()
     };
-    dispatch(
+    call::dispatch(
         context,
         &registry,
         "feed.query_id",

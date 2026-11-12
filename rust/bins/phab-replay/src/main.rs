@@ -13,7 +13,7 @@
 
 use std::process::ExitCode;
 
-use phab_parity::{Rules, compare, summarize};
+use phab_parity::Rules;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -114,12 +114,16 @@ async fn main() -> ExitCode {
             );
             match answers {
                 (Ok(php_answer), Ok(rust_answer)) => {
-                    let differences = compare(&php_answer, &rust_answer, &rules);
+                    let differences = phab_parity::compare(&php_answer, &rust_answer, &rules);
                     if differences.is_empty() {
                         println!("ok    {}", scenario.name);
                     } else {
                         failures += 1;
-                        println!("DIFF  {}: {}", scenario.name, summarize(&differences));
+                        println!(
+                            "DIFF  {}: {}",
+                            scenario.name,
+                            phab_parity::summarize(&differences)
+                        );
                     }
                 }
                 (php_answer, rust_answer) => {

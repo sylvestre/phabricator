@@ -15,11 +15,10 @@ use axum::body::{Body, Bytes};
 use axum::extract::{Path as UrlPath, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get};
-use axum::{Json, Router};
+use axum::{Json, Router, routing};
 use phab_auth::session::SESSION_COOKIE;
-use phab_conduit::call::{Dispatched, dispatch};
-use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry};
+use phab_conduit::call::Dispatched;
+use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, call};
 use phab_core::Config;
 use phab_db::Database;
 use serde_json::json;
@@ -82,8 +81,8 @@ pub fn now() -> i64 {
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
-        .route("/status", get(status))
-        .route("/api/{method}", any(conduit))
+        .route("/status", routing::get(status))
+        .route("/api/{method}", routing::any(conduit))
         .layer(RequestDecompressionLayer::new())
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .with_state(state)
@@ -175,7 +174,7 @@ async fn conduit(
         };
         return shadow::handle(state, forwarded, request).await;
     }
-    let Dispatched { response, .. } = dispatch(
+    let Dispatched { response, .. } = call::dispatch(
         &state.context,
         &state.registry,
         &method,

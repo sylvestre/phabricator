@@ -12,12 +12,12 @@ use std::sync::{Arc, Mutex};
 use axum::body::{Body, Bytes};
 use axum::http::{HeaderMap, HeaderName, Method as HttpMethod, StatusCode};
 use axum::response::{IntoResponse, Response};
-use phab_conduit::call::dispatch;
 use phab_conduit::{HttpRequest, Mode};
-use phab_parity::{Rules, compare, summarize};
+use phab_parity::Rules;
 use serde_json::{Value, json};
 
-use crate::{AppState, now};
+use crate::AppState;
+use phab_conduit::call;
 
 pub const SKIP_RUST_HEADER: &str = "x-phab-skip-rust";
 
@@ -197,13 +197,13 @@ async fn compare_with_rust(state: &AppState, method: &str, http: &HttpRequest, p
     let Some(shadow) = state.shadow.as_ref() else {
         return;
     };
-    let dispatched = dispatch(
+    let dispatched = call::dispatch(
         &state.context,
         &state.registry,
         method,
         http,
         Mode::Shadow,
-        now(),
+        crate::now(),
     )
     .await;
     let envelope = match dispatched.response {
@@ -219,7 +219,8 @@ async fn compare_with_rust(state: &AppState, method: &str, http: &HttpRequest, p
         shadow.record(method, |counts| counts.differed += 1);
         return;
     };
-    let differences = compare(&php_value, &envelope.to_value(), &Rules::for_method(method));
+    let differences =
+        phab_parity::compare(&php_value, &envelope.to_value(), &Rules::for_method(method));
     if differences.is_empty() {
         tracing::debug!(method, "shadow: answers match");
         shadow.record(method, |counts| counts.matched += 1);
@@ -230,7 +231,7 @@ async fn compare_with_rust(state: &AppState, method: &str, http: &HttpRequest, p
                 .caller
                 .as_ref()
                 .map(|user| user.user_name.as_str()),
-            differences = summarize(&differences),
+            differences = phab_parity::summarize(&differences),
             "shadow: answers differ"
         );
         shadow.record(method, |counts| counts.differed += 1);

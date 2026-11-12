@@ -5,7 +5,6 @@
 use std::collections::HashMap;
 
 use phab_core::{Config, Phid};
-use phab_policy::filter::can_see_application;
 use phab_policy::{
     ApplicationPolicies, AutomaticCapability, Capability, CustomPolicy, ExtendedPolicy, ObjectKind,
     PolicyError, PolicyFacts, PolicySubject, Space, Viewer, filter, has_capability,
@@ -138,7 +137,7 @@ fn bulk_extended_policies_reject_every_dependent_object() {
         .extended_objects
         .insert(target.clone(), object_with_phid("PHID-TEST-999", "admin"));
     let refs: Vec<&PolicySubject> = objects.iter().collect();
-    let result = filter(&viewer("user"), &refs, &[Capability::VIEW], &facts).unwrap();
+    let result = phab_policy::filter(&viewer("user"), &refs, &[Capability::VIEW], &facts).unwrap();
     assert_eq!(result, [false, false, false]);
 }
 
@@ -170,7 +169,7 @@ fn extended_policies_only_apply_to_their_capability() {
 #[test]
 fn every_required_capability_must_pass() {
     let subject = object("users").with_policy(Capability::EDIT, "no-one");
-    let result = filter(
+    let result = phab_policy::filter(
         &viewer("user"),
         &[&subject],
         &[Capability::VIEW, Capability::EDIT],
@@ -253,14 +252,16 @@ fn objects_of_restricted_applications_are_hidden() {
     let revision = object_with_phid("PHID-DREV-a", "users");
     assert_eq!(visibility(&revision, &facts), [false, false, true]);
     assert!(
-        !can_see_application(
+        !filter::can_see_application(
             &viewer("user"),
             "PhabricatorDifferentialApplication",
             &facts
         )
         .unwrap()
     );
-    assert!(can_see_application(&viewer("user"), "PhabricatorFeedApplication", &facts).unwrap());
+    assert!(
+        filter::can_see_application(&viewer("user"), "PhabricatorFeedApplication", &facts).unwrap()
+    );
 }
 
 fn space(phid: &str, policy: &str, is_default: bool) -> (Phid, Space) {

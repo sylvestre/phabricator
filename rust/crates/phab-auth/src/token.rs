@@ -2,10 +2,9 @@
 //! `PhabricatorConduitAPIController::authenticateUser()` for `api.token`.
 
 use phab_core::{Config, Phid, PhidType};
-use phab_db::{Database, rows};
 
-use crate::user::load_users_by_phid;
-use crate::{AuthError, Outcome, User, Writes};
+use crate::{AuthError, Outcome, User, Writes, user};
+use phab_db::{Database, rows};
 
 pub const TOKEN_TYPES: &[&str] = &["api", "cli", "clr"];
 
@@ -80,7 +79,8 @@ async fn token_owner(
     if token.object_phid.phid_type() != PhidType::USER {
         return Ok(Outcome::Unsupported("API token owned by a non-user object"));
     }
-    let users = load_users_by_phid(database, std::slice::from_ref(&token.object_phid)).await?;
+    let users =
+        user::load_users_by_phid(database, std::slice::from_ref(&token.object_phid)).await?;
     Ok(Outcome::Done(users.into_iter().next()))
 }
 

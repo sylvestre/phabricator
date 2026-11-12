@@ -3,16 +3,15 @@
 use std::collections::HashMap;
 
 use phab_core::Phid;
-use serde_json::Value;
-use thiserror::Error;
 
-use crate::application::{application_for_phid_type, can_uninstall};
 use crate::rules::Rule;
 use crate::{
     Capability, OBJECT_POLICY_PREFIX, POLICY_ADMIN, POLICY_NOONE, POLICY_PUBLIC, POLICY_USER,
-    PolicyFacts, PolicySubject, Viewer,
+    PolicyFacts, PolicySubject, Viewer, application,
 };
 use phab_core::PhidType;
+use serde_json::Value;
+use thiserror::Error;
 
 /// PHP arrests extended policy chains deeper than this, which is how cycles
 /// are rejected.
@@ -119,7 +118,7 @@ impl Filter<'_> {
         let Some(phid) = &subject.phid else {
             return Ok(true);
         };
-        match application_for_phid_type(phid.phid_type()) {
+        match application::application_for_phid_type(phid.phid_type()) {
             Some(class) => self.can_see_application(class, depth),
             None => Ok(true),
         }
@@ -133,7 +132,7 @@ impl Filter<'_> {
         if !applications.is_installed(class) {
             return Ok(false);
         }
-        if !can_uninstall(class) {
+        if !application::can_uninstall(class) {
             return Ok(true);
         }
         let subject = applications.subject(class, self.facts.allow_public);

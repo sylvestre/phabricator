@@ -3,15 +3,14 @@
 
 use std::collections::{HashMap, HashSet};
 
-use phab_app_differential::feed::{FeedVisibility, feed_visibility, story_visibility};
-use phab_app_differential::storage::{load_comments, load_revisions, load_transactions};
-use phab_app_differential::{Comment, Repositories, Revision, Transaction};
+use phab_app_differential::feed::FeedVisibility;
+
+use phab_app_differential::{Comment, Repositories, Revision, Transaction, feed, storage};
 use phab_conduit::MethodError;
-use phab_core::config::is_truthy;
-use phab_core::{Config, Phid, PhidType};
-use phab_db::{Database, DbError, bind_all, placeholders, rows};
-use phab_policy::loader::{LoaderError, load_facts};
-use phab_policy::{Capability, PolicyError, PolicySubject, Viewer, filter};
+use phab_core::{Config, Phid, PhidType, config};
+use phab_db::{Database, DbError, rows};
+use phab_policy::loader::LoaderError;
+use phab_policy::{Capability, PolicyError, PolicySubject, Viewer, loader};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -85,7 +84,10 @@ impl Page<'_> {
     fn sql(&self, database: &Database) -> String {
         let mut conditions = Vec::new();
         if let Some(ids) = self.ids {
-            conditions.push(format!("story.id IN ({})", placeholders(ids.len())));
+            conditions.push(format!(
+                "story.id IN ({})",
+                phab_db::placeholders(ids.len())
+            ));
         }
         if self.after.is_some() {
             conditions.push(
@@ -127,11 +129,11 @@ pub async fn load_page(database: &Database, page: Page<'_>) -> Result<Vec<StoryR
         return Ok(Vec::new());
     }
     let sql = page.sql(database);
-    let query = bind_all(
+    let query = phab_db::bind_all(
         phab_db::sqlx::query(&sql),
         page.ids.unwrap_or_default().iter().copied(),
     );
-    let rows = bind_all(query, page.after)
+    let rows = phab_db::bind_all(query, page.after)
         .fetch_all(database.pool())
         .await?;
     rows.iter()
@@ -185,8 +187,10 @@ impl Candidate {
             return Ok(None);
         }
         let object = match data.get("objectPHID") {
-            Some(Value::String(phid)) if is_truthy(&Value::from(phid.as_str())) => Phid::new(phid),
-            Some(value) if is_truthy(value) => {
+            Some(Value::String(phid)) if config::is_truthy(&Value::from(phid.as_str())) => {
+                Phid::new(phid)
+            }
+            Some(value) if config::is_truthy(value) => {
                 return Err(StoryError::Unsupported("feed story with an invalid object"));
             }
             // renderView() fails without the object's handle, and the method
@@ -231,7 +235,7 @@ impl VisibleObjects {
         candidates: &[Candidate],
         now: i64,
     ) -> Result<Self, StoryError> {
-        let transactions = load_transactions(
+        let transactions = storage::load_transactions(
             database,
             &sorted(
                 candidates
@@ -240,7 +244,7 @@ impl VisibleObjects {
             ),
         )
         .await?;
-        let revisions = load_revisions(
+        let revisions = storage::load_revisions(
             database,
             &sorted(
                 candidates
@@ -254,7 +258,7 @@ impl VisibleObjects {
             ),
         )
         .await?;
-        let comments = load_comments(
+        let comments = storage::load_comments(
             database,
             &sorted(
                 transactions
@@ -271,7 +275,7 @@ impl VisibleObjects {
             .chain(comments.iter().map(Comment::subject))
             .collect();
         let refs: Vec<&PolicySubject> = subjects.iter().collect();
-        let facts = load_facts(
+        let facts = loader::load_facts(
             database,
             config,
             viewer,
@@ -280,7 +284,7 @@ impl VisibleObjects {
             now,
         )
         .await?;
-        let passed = filter(viewer, &refs, &[Capability::VIEW], &facts)?;
+        let passed = phab_policy::filter(viewer, &refs, &[Capability::VIEW], &facts)?;
         let can_see: HashSet<&Phid> = refs
             .iter()
             .zip(passed)
@@ -328,10 +332,10 @@ impl VisibleObjects {
                     .comment_phid
                     .as_ref()
                     .and_then(|phid| self.comments.get(phid));
-                Some(feed_visibility(xaction, comment))
+                Some(feed::feed_visibility(xaction, comment))
             })
             .collect::<Option<Vec<_>>>()?;
-        Some(story_visibility(&feed))
+        Some(feed::story_visibility(&feed))
     }
 }
 

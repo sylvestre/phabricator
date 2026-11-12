@@ -1,7 +1,6 @@
-use phab_conduit::call::dispatch;
 use phab_conduit::{
     ApiRequest, Application, Context, Envelope, HttpRequest, Method, MethodError, MethodFuture,
-    Mode, Registry, Response,
+    Mode, Registry, Response, call,
 };
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
@@ -84,7 +83,7 @@ async fn call(context: &Context, body: &str, mode: Mode) -> Response {
         body: body.to_owned(),
         session_cookie: None,
     };
-    dispatch(context, &registry, "test.echo", &http, mode, NOW)
+    call::dispatch(context, &registry, "test.echo", &http, mode, NOW)
         .await
         .response
 }

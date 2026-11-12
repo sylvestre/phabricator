@@ -1,11 +1,11 @@
 //! Application visibility (`PhabricatorApplication::isClassInstalledForViewer`).
 
+use phab_core::{Config, Phid, PhidType};
 use std::collections::{HashMap, HashSet};
 
-use phab_core::config::is_truthy;
-use phab_core::{Config, Phid, PhidType};
-
 use crate::{Capability, ObjectKind, POLICY_ADMIN, POLICY_PUBLIC, POLICY_USER, PolicySubject};
+
+use phab_core::config;
 
 /// Applications whose `canUninstall()` returns false: always installed and
 /// always visible.
@@ -71,7 +71,7 @@ impl ApplicationPolicies {
             .object("phabricator.uninstalled-applications")
             .map(|map| {
                 map.iter()
-                    .filter(|(_, value)| is_truthy(value))
+                    .filter(|(_, value)| config::is_truthy(value))
                     .map(|(class, _)| class.clone())
                     .collect()
             })

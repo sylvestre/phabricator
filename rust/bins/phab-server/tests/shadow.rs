@@ -1,15 +1,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
-use axum::body::{Body, to_bytes};
+use axum::body::Body;
 use axum::http::{HeaderMap, Request, StatusCode};
-use axum::routing::post;
+use axum::{Router, body, routing};
 use phab_conduit::{ApiRequest, Application, Context, Method, MethodFuture, Registry};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
+use phab_server::AppState;
 use phab_server::shadow::Shadow;
-use phab_server::{AppState, router};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -55,9 +54,12 @@ async fn fake_php() -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(listener, Router::new().route("/api/{method}", post(answer)))
-            .await
-            .unwrap();
+        axum::serve(
+            listener,
+            Router::new().route("/api/{method}", routing::post(answer)),
+        )
+        .await
+        .unwrap();
     });
     format!("http://{address}")
 }
@@ -83,7 +85,7 @@ async fn php_answers_and_rust_is_compared() {
         registry,
         shadow: Some(shadow),
     });
-    let app = router(Arc::clone(&state));
+    let app = phab_server::router(Arc::clone(&state));
 
     for method in ["test.same", "test.different", "test.missing"] {
         let response = app
@@ -96,7 +98,9 @@ async fn php_answers_and_rust_is_compared() {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         assert_eq!(
             &body[..],
             br#"{"result":42,"error_code":null,"error_info":null}"#

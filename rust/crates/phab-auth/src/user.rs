@@ -3,7 +3,7 @@
 
 use phab_core::{Config, Phid};
 use phab_db::sqlx::mysql::MySqlRow;
-use phab_db::{Database, DbError, bind_all, placeholders, rows};
+use phab_db::{Database, DbError, rows};
 use phab_policy::Viewer;
 
 pub const USER_COLUMNS: &[&str] = &[
@@ -95,9 +95,9 @@ pub async fn load_users_by_phid(database: &Database, phids: &[Phid]) -> Result<V
         "SELECT {} FROM {} u WHERE u.phid IN ({})",
         select_columns("u"),
         database.table("user", "user"),
-        placeholders(phids.len()),
+        phab_db::placeholders(phids.len()),
     );
-    let rows = bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
+    let rows = phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
         .fetch_all(database.pool())
         .await?;
     rows.iter().map(User::from_row).collect()

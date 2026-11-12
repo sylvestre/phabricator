@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::random::random_characters;
+use crate::random;
 
 /// The four-character type of a PHID, like `USER` in `PHID-USER-...`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -87,10 +87,13 @@ impl Phid {
     /// Equivalent of `PhabricatorPHID::generateNewPHID()`.
     pub fn generate(phid_type: PhidType, subtype: Option<PhidType>) -> Self {
         match subtype {
-            None => Self(format!("PHID-{phid_type}-{}", random_characters(20))),
+            None => Self(format!(
+                "PHID-{phid_type}-{}",
+                random::random_characters(20)
+            )),
             Some(subtype) => Self(format!(
                 "PHID-{phid_type}-{subtype}-{}",
-                random_characters(15)
+                random::random_characters(15)
             )),
         }
     }

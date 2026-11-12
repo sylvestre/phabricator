@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 
 use phab_core::{Phid, PhidType};
 
-use crate::{Database, DbError, bind_all, placeholders, rows};
+use crate::{Database, DbError, rows};
 
 pub const PROJECT_HAS_MEMBER: u32 = 13;
 pub const MEMBER_OF_PROJECT: u32 = 14;
@@ -68,18 +68,22 @@ pub async fn load_edges(
         let mut sql = format!(
             "SELECT src, type, dst FROM {} WHERE src IN ({}) AND type IN ({})",
             database.table(name, "edge"),
-            placeholders(group.len()),
-            placeholders(edge_types.len()),
+            crate::placeholders(group.len()),
+            crate::placeholders(edge_types.len()),
         );
         if let Some(destinations) = destinations {
-            let _ = write!(sql, " AND dst IN ({})", placeholders(destinations.len()));
+            let _ = write!(
+                sql,
+                " AND dst IN ({})",
+                crate::placeholders(destinations.len())
+            );
         }
         sql.push_str(" ORDER BY dateCreated DESC, seq DESC");
 
-        let mut query = bind_all(sqlx::query(&sql), group.iter().map(|phid| phid.as_str()));
-        query = bind_all(query, edge_types.iter().copied());
+        let mut query = crate::bind_all(sqlx::query(&sql), group.iter().map(|phid| phid.as_str()));
+        query = crate::bind_all(query, edge_types.iter().copied());
         if let Some(destinations) = destinations {
-            query = bind_all(query, destinations.iter().map(Phid::as_str));
+            query = crate::bind_all(query, destinations.iter().map(Phid::as_str));
         }
         for row in query.fetch_all(database.pool()).await? {
             edges.push(Edge {

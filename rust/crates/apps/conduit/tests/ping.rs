@@ -1,5 +1,4 @@
-use phab_conduit::call::dispatch;
-use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response};
+use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
 
@@ -10,7 +9,7 @@ async fn ping(context: &Context, body: &str) -> Response {
         body: body.to_owned(),
         ..HttpRequest::default()
     };
-    dispatch(context, &registry, "conduit.ping", &http, Mode::Serve, 1)
+    call::dispatch(context, &registry, "conduit.ping", &http, Mode::Serve, 1)
         .await
         .response
 }

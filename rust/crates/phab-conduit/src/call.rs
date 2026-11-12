@@ -3,19 +3,23 @@
 
 use std::time::Instant;
 
-use phab_auth::session::{SessionKind, session_kind};
-use phab_auth::token::authenticate_token;
+use phab_auth::session::SessionKind;
 use phab_auth::{Outcome, User, Writes};
-use phab_core::config::is_truthy;
 use phab_policy::Viewer;
-use phab_policy::filter::can_see_application;
-use phab_policy::loader::{NoExtendedObjects, load_facts};
+use phab_policy::loader::NoExtendedObjects;
 use serde_json::{Map, Value};
 
-use crate::request::{DecodeError, Params, decode, get_str, metadata_key, request_data};
+use crate::request::{DecodeError, Params};
+
+use phab_auth::session;
+
 use crate::{
     ApiRequest, Context, Envelope, HttpRequest, Method, MethodError, Mode, Registry, Response,
+    request,
 };
+use phab_auth::token;
+use phab_core::config;
+use phab_policy::{filter, loader};
 
 /// Result of `dispatch`, with what the call log needs.
 pub struct Dispatched {
@@ -115,10 +119,10 @@ async fn run(
     now: i64,
     caller: &mut Option<User>,
 ) -> Result<Envelope, Failure> {
-    let Some(data) = request_data(http) else {
+    let Some(data) = request::request_data(http) else {
         return Err(Failure::Fallback("multipart request"));
     };
-    if get_str(&data, "output").as_deref() == Some("human") {
+    if request::get_str(&data, "output").as_deref() == Some("human") {
         return Err(Failure::Fallback("human-readable output"));
     }
 
@@ -126,7 +130,7 @@ async fn run(
         metadata,
         params,
         strictly_typed,
-    } = decode(http, &data, method.name())?;
+    } = request::decode(http, &data, method.name())?;
 
     check_method_and_params(context, method, &params)?;
 
@@ -189,7 +193,7 @@ fn check_method_and_params(
         method
             .params()
             .iter()
-            .all(|key| metadata_key(key).is_none())
+            .all(|key| request::metadata_key(key).is_none())
     );
     Ok(())
 }
@@ -206,7 +210,7 @@ async fn authenticate(
     if http
         .session_cookie
         .as_deref()
-        .is_some_and(|cookie| session_kind(cookie) == SessionKind::User)
+        .is_some_and(|cookie| session::session_kind(cookie) == SessionKind::User)
     {
         return Err(Failure::Fallback("web session cookie"));
     }
@@ -230,9 +234,10 @@ async fn authenticate(
 
     let token = metadata.get("token").map(php_string).unwrap_or_default();
     if !token.is_empty() {
-        let outcome = authenticate_token(&context.database, &context.config, &token, now, writes)
-            .await
-            .map_err(|error| internal("authenticating an API token", error))?;
+        let outcome =
+            token::authenticate_token(&context.database, &context.config, &token, now, writes)
+                .await
+                .map_err(|error| internal("authenticating an API token", error))?;
         return match outcome {
             Outcome::Done(Ok(user)) => Ok(user),
             Outcome::Done(Err(invalid)) => {
@@ -248,7 +253,7 @@ async fn authenticate(
     if metadata.contains_key("authUser") {
         return Err(Failure::Fallback("certificate authentication"));
     }
-    if metadata.get("sessionKey").is_some_and(is_truthy) {
+    if metadata.get("sessionKey").is_some_and(config::is_truthy) {
         return Err(Failure::Fallback("Conduit session"));
     }
     Err(Envelope::error("ERR-INVALID-SESSION", "Session key is not present.").into())
@@ -268,7 +273,7 @@ async fn execute(
         if let Some(application) = method.application() {
             let subject = phab_policy::ApplicationPolicies::from_config(&context.config)
                 .subject(application.class, context.config.allow_public());
-            let facts = load_facts(
+            let facts = loader::load_facts(
                 &context.database,
                 &context.config,
                 &request.viewer,
@@ -278,7 +283,7 @@ async fn execute(
             )
             .await
             .map_err(|error| internal("loading application policies", error))?;
-            let can_view = can_see_application(&request.viewer, application.class, &facts)
+            let can_view = filter::can_see_application(&request.viewer, application.class, &facts)
                 .map_err(|error| internal("checking application policies", error))?;
             if !can_view {
                 // PHP passes the message as the error code.

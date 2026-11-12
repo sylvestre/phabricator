@@ -2,11 +2,11 @@
 //! `PhabricatorFeedIDQuery` with `executeWithCursorPager()`.
 
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
-use phab_core::config::is_truthy;
 use serde_json::{Value, json};
 
-use crate::APPLICATION;
-use crate::story::{Order, Page, StoryRow, load_page, visible_stories};
+use crate::story::{Order, Page, StoryRow};
+use crate::{APPLICATION, story};
+use phab_core::config;
 
 const QUERY_CLASS: &str = "PhabricatorFeedIDQuery";
 const DEFAULT_LIMIT: usize = 100;
@@ -36,7 +36,7 @@ impl Default for PageSize {
 impl PageSize {
     /// The `limit` parameter; falsy means the default.
     fn parse(limit: Option<&Value>) -> Result<Self, MethodError> {
-        let Some(limit) = limit.filter(|limit| is_truthy(limit)) else {
+        let Some(limit) = limit.filter(|limit| config::is_truthy(limit)) else {
             return Ok(Self::default());
         };
         let value: i64 = match limit {
@@ -97,7 +97,7 @@ impl Cursor {
         };
         Ok(Some(Self {
             text,
-            truthy: is_truthy(value),
+            truthy: config::is_truthy(value),
         }))
     }
 
@@ -126,7 +126,7 @@ enum View {
 impl View {
     /// Falsy means `data`.
     fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
-        match value.filter(|value| is_truthy(value)) {
+        match value.filter(|value| config::is_truthy(value)) {
             None => Ok(Self::Data),
             Some(Value::String(text)) => Ok(match text.as_str() {
                 "data" => Self::Data,
@@ -210,7 +210,7 @@ async fn execute(
     let context = request.context;
     let database = &context.database;
     let filter = async |rows| {
-        visible_stories(
+        story::visible_stories(
             database,
             &context.config,
             &request.viewer,
@@ -225,7 +225,7 @@ async fn execute(
     let mut after = None;
     if let Some(external) = external {
         let id = external.id()?;
-        let rows = load_page(
+        let rows = story::load_page(
             database,
             Page {
                 ids: Some(&[id]),
@@ -247,7 +247,7 @@ async fn execute(
     let mut results = Vec::new();
     'pages: loop {
         let limit = (need - results.len()).min(MAX_RAW_ROWS);
-        let rows = load_page(
+        let rows = story::load_page(
             database,
             Page {
                 ids: None,

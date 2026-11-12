@@ -1,9 +1,7 @@
-use phab_app_differential::Repositories;
-use phab_app_differential::storage::{load_comments, load_revisions, load_transactions};
+use phab_app_differential::{Repositories, storage};
 use phab_core::{Config, Phid};
 use phab_db::testing::TestDatabase;
-use phab_policy::loader::load_facts;
-use phab_policy::{Capability, PolicySubject, Viewer, filter};
+use phab_policy::{Capability, PolicySubject, Viewer, loader};
 
 const DATABASES: &[&str] = &[
     "differential",
@@ -17,7 +15,7 @@ const DATABASES: &[&str] = &[
 async fn visible(test_db: &TestDatabase, viewer: &Viewer, phids: &[&str]) -> Vec<bool> {
     let database = test_db.database();
     let phids: Vec<Phid> = phids.iter().map(|phid| Phid::new(*phid)).collect();
-    let mut revisions = load_revisions(database, &phids).await.unwrap();
+    let mut revisions = storage::load_revisions(database, &phids).await.unwrap();
     revisions.sort_by_key(|revision| {
         phids
             .iter()
@@ -29,7 +27,7 @@ async fn visible(test_db: &TestDatabase, viewer: &Viewer, phids: &[&str]) -> Vec
         .map(phab_app_differential::Revision::subject)
         .collect();
     let refs: Vec<&PolicySubject> = subjects.iter().collect();
-    let facts = load_facts(
+    let facts = loader::load_facts(
         database,
         &Config::default(),
         viewer,
@@ -39,7 +37,7 @@ async fn visible(test_db: &TestDatabase, viewer: &Viewer, phids: &[&str]) -> Vec
     )
     .await
     .unwrap();
-    filter(viewer, &refs, &[Capability::VIEW], &facts).unwrap()
+    phab_policy::filter(viewer, &refs, &[Capability::VIEW], &facts).unwrap()
 }
 
 #[tokio::test]
@@ -128,7 +126,7 @@ async fn loads_transactions_and_comments() {
         )
         .await;
     let database = test_db.database();
-    let transactions = load_transactions(database, &[Phid::new("PHID-XACT-DREV-1")])
+    let transactions = storage::load_transactions(database, &[Phid::new("PHID-XACT-DREV-1")])
         .await
         .unwrap();
     assert_eq!(transactions.len(), 1);
@@ -138,7 +136,7 @@ async fn loads_transactions_and_comments() {
         transactions[0].metadata_value("core.create"),
         Some(&serde_json::json!(true))
     );
-    let comments = load_comments(database, &[Phid::new("PHID-XCMT-1")])
+    let comments = storage::load_comments(database, &[Phid::new("PHID-XCMT-1")])
         .await
         .unwrap();
     assert_eq!(comments[0].content, "LGTM");

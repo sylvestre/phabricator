@@ -1,6 +1,6 @@
-use phab_auth::session::{SessionType, load_user_for_session};
-use phab_auth::token::{InvalidAuth, authenticate_token};
-use phab_auth::{Outcome, Writes};
+use phab_auth::session::SessionType;
+use phab_auth::token::InvalidAuth;
+use phab_auth::{Outcome, Writes, session, token};
 use phab_core::{Config, hash};
 use phab_db::testing::TestDatabase;
 
@@ -38,7 +38,7 @@ fn invalid(message: &str) -> Outcome<Result<String, InvalidAuth>> {
 }
 
 async fn authenticate(test_db: &TestDatabase, token: &str) -> Outcome<Result<String, InvalidAuth>> {
-    let outcome = authenticate_token(
+    let outcome = token::authenticate_token(
         test_db.database(),
         &Config::default(),
         token,
@@ -103,7 +103,7 @@ async fn api_tokens() {
         .await
         .unwrap()
     };
-    let shadow = authenticate_token(
+    let shadow = token::authenticate_token(
         test_db.database(),
         &Config::default(),
         "cli-aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -131,7 +131,7 @@ async fn sessions() {
     let config = Config::default();
     let database = test_db.database();
 
-    let missing_key = load_user_for_session(
+    let missing_key = session::load_user_for_session(
         database,
         &config,
         SessionType::Web,
@@ -163,7 +163,7 @@ async fn sessions() {
 
     let config = &config;
     let lookup = |token: &'static str, session_type: SessionType, writes: Writes| async move {
-        match load_user_for_session(database, config, session_type, token, NOW, writes)
+        match session::load_user_for_session(database, config, session_type, token, NOW, writes)
             .await
             .unwrap()
         {
