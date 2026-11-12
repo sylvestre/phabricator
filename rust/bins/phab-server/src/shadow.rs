@@ -49,7 +49,8 @@ pub struct Counts {
     pub matched: u64,
     /// Rust's answer differed.
     pub differed: u64,
-    /// Rust would have handed the call to PHP.
+    /// Nothing to compare: Rust would have handed the call to PHP, or PHP
+    /// did not answer with JSON (an nginx error page, a fatal error).
     pub skipped: u64,
 }
 
@@ -227,7 +228,7 @@ async fn compare_with_rust(state: &AppState, method: &str, http: &HttpRequest, p
     };
     let Ok(php_value) = serde_json::from_slice::<Value>(php_body) else {
         tracing::warn!(method, "shadow: PHP's answer is not JSON");
-        shadow.record(method, |counts| counts.differed += 1);
+        shadow.record(method, |counts| counts.skipped += 1);
         return;
     };
     let differences =
