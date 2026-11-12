@@ -51,7 +51,7 @@ pub fn request_data(request: &HttpRequest) -> Option<FormData> {
 
 /// `AphrontRequest::getStr()`.
 pub fn get_str(data: &FormData, key: &str) -> Option<String> {
-    form::get(data, key)
+    data.get(key)
         .and_then(FormValue::as_str)
         .map(|text| text.replace("\r\n", "\n").replace('\r', "\n"))
 }
@@ -93,7 +93,7 @@ pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Result<Pa
     }
 
     // Parameters from the API console: `params[name]=<json>`.
-    if let Some(FormValue::Array(entries)) = form::get(data, "params") {
+    if let Some(FormValue::Array(entries)) = data.get("params") {
         let mut params = Map::new();
         for (key, value) in entries {
             let Some(text) = value.as_str() else {

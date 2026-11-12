@@ -1,13 +1,14 @@
 //! Port of `PhutilQueryStringParser`, which Phabricator uses instead of PHP's
 //! own `$_GET`/`$_POST` parsing (so `api.token` keeps its dot).
 
+use indexmap::IndexMap;
 use serde_json::{Map, Value};
 
 /// An ordered PHP array built from `a[b][]=c` style keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FormValue {
     Str(String),
-    Array(Vec<(String, Self)>),
+    Array(IndexMap<String, Self>),
 }
 
 impl FormValue {
@@ -25,11 +26,11 @@ impl FormValue {
             Self::Str(text) => Value::String(text.clone()),
             Self::Array(entries) => {
                 let is_list = entries
-                    .iter()
+                    .keys()
                     .enumerate()
-                    .all(|(index, (key, _))| *key == index.to_string());
+                    .all(|(index, key)| *key == index.to_string());
                 if is_list {
-                    Value::Array(entries.iter().map(|(_, value)| value.to_json()).collect())
+                    Value::Array(entries.values().map(Self::to_json).collect())
                 } else {
                     Value::Object(
                         entries
@@ -43,21 +44,9 @@ impl FormValue {
     }
 }
 
-/// Request data: an ordered map from names to values.
-pub type FormData = Vec<(String, FormValue)>;
-
-pub fn get<'data>(data: &'data FormData, key: &str) -> Option<&'data FormValue> {
-    data.iter()
-        .find(|(existing, _)| existing == key)
-        .map(|(_, value)| value)
-}
-
-fn set(entries: &mut Vec<(String, FormValue)>, key: String, value: FormValue) {
-    match entries.iter_mut().find(|(existing, _)| *existing == key) {
-        Some(entry) => entry.1 = value,
-        None => entries.push((key, value)),
-    }
-}
+/// Request data: an ordered map from names to values. Like a PHP array, a
+/// key set again keeps its position.
+pub type FormData = IndexMap<String, FormValue>;
 
 /// `urldecode()`: `+` is a space and invalid escapes are kept verbatim.
 fn url_decode(text: &str) -> String {
@@ -102,16 +91,16 @@ fn key_pieces(key: &str) -> Option<Vec<&str>> {
     Some(pieces)
 }
 
-fn next_index(entries: &[(String, FormValue)]) -> String {
+fn next_index(entries: &FormData) -> String {
     entries
-        .iter()
-        .filter_map(|(key, _)| key.parse::<i64>().ok())
+        .keys()
+        .filter_map(|key| key.parse::<i64>().ok())
         .max()
         .map_or(0, |max| max + 1)
         .to_string()
 }
 
-fn insert_nested(entries: &mut Vec<(String, FormValue)>, pieces: &[&str], value: String) {
+fn insert_nested(entries: &mut FormData, pieces: &[&str], value: String) {
     let Some((first, rest)) = pieces.split_first() else {
         return;
     };
@@ -121,21 +110,17 @@ fn insert_nested(entries: &mut Vec<(String, FormValue)>, pieces: &[&str], value:
         (*first).to_owned()
     };
     if rest.is_empty() {
-        set(entries, key, FormValue::Str(value));
+        entries.insert(key, FormValue::Str(value));
         return;
     }
+    let child = entries
+        .entry(key)
+        .or_insert_with(|| FormValue::Array(IndexMap::new()));
     // PHP replaces anything that is not a non-empty array.
-    let position = if let Some(position) = entries.iter().position(|(existing, _)| *existing == key)
-    {
-        if !matches!(&entries[position].1, FormValue::Array(items) if !items.is_empty()) {
-            entries[position].1 = FormValue::Array(Vec::new());
-        }
-        position
-    } else {
-        entries.push((key, FormValue::Array(Vec::new())));
-        entries.len() - 1
-    };
-    if let FormValue::Array(children) = &mut entries[position].1 {
+    if !matches!(child, FormValue::Array(items) if !items.is_empty()) {
+        *child = FormValue::Array(IndexMap::new());
+    }
+    if let FormValue::Array(children) = child {
         insert_nested(children, rest, value);
     }
 }
@@ -151,7 +136,9 @@ pub fn parse_query_string(query: &str) -> FormData {
         }
         match key_pieces(&key) {
             Some(pieces) => insert_nested(&mut data, &pieces, value),
-            None => set(&mut data, key, FormValue::Str(value)),
+            None => {
+                data.insert(key, FormValue::Str(value));
+            }
         }
     }
     data
@@ -161,9 +148,7 @@ pub fn parse_query_string(query: &str) -> FormData {
 pub fn merge(post: FormData, get: FormData) -> FormData {
     let mut data = post;
     for (key, value) in get {
-        if !data.iter().any(|(existing, _)| *existing == key) {
-            data.push((key, value));
-        }
+        data.entry(key).or_insert(value);
     }
     data
 }
@@ -228,7 +213,7 @@ mod tests {
             parse_query_string("a=post"),
             parse_query_string("a=get&b=get"),
         );
-        assert_eq!(get(&data, "a").and_then(FormValue::as_str), Some("post"));
-        assert_eq!(get(&data, "b").and_then(FormValue::as_str), Some("get"));
+        assert_eq!(data.get("a").and_then(FormValue::as_str), Some("post"));
+        assert_eq!(data.get("b").and_then(FormValue::as_str), Some("get"));
     }
 }

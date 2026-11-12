@@ -1473,6 +1473,7 @@ dependencies = [
 name = "phab-conduit"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
  "phab-auth",
  "phab-core",
  "phab-db",

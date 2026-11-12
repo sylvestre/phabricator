@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+indexmap.workspace = true
 phab-auth.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
