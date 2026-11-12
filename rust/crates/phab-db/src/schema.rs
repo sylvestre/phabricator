@@ -37,4 +37,24 @@ pub const CONTRACT: &[TableContract] = &[
         table: "edge",
         columns: &["src", "type", "dst", "dateCreated", "seq"],
     },
+    TableContract {
+        database: "project",
+        table: "project",
+        columns: &["phid"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_reviewer",
+        columns: &["revisionPHID", "reviewerPHID"],
+    },
+    TableContract {
+        database: "policy",
+        table: "policy",
+        columns: &["phid", "rules", "defaultAction"],
+    },
+    TableContract {
+        database: "spaces",
+        table: "spaces_namespace",
+        columns: &["phid", "viewPolicy", "editPolicy", "isDefaultNamespace"],
+    },
 ];
