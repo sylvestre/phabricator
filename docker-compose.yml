@@ -84,6 +84,12 @@ services:
       - ./docker/phabricator/mysql:/etc/mysql/conf.d:ro
     environment:
       - MYSQL_ROOT_PASSWORD=password
+    # MySQL 5.7 fails to start ("failed while attempting to check config")
+    # with the very high default open-file limit of recent Docker hosts.
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     restart: on-failure
     # Check over TCP, since the image's initialization runs a temporary server
     # that only listens on the socket.
