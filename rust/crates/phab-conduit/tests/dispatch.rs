@@ -1,6 +1,7 @@
+use phab_conduit::call::dispatch;
 use phab_conduit::{
     ApiRequest, Application, Context, Envelope, HttpRequest, Method, MethodError, MethodFuture,
-    Mode, Registry, Response, call::dispatch,
+    Mode, Registry, Response,
 };
 use phab_core::Config;
 use phab_db::testing::TestDatabase;

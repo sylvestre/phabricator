@@ -5,10 +5,10 @@
 use std::collections::HashMap;
 
 use phab_core::{Config, Phid};
+use phab_policy::filter::can_see_application;
 use phab_policy::{
     ApplicationPolicies, AutomaticCapability, Capability, CustomPolicy, ExtendedPolicy, ObjectKind,
-    PolicyError, PolicyFacts, PolicySubject, Space, Viewer, filter, filter::can_see_application,
-    has_capability,
+    PolicyError, PolicyFacts, PolicySubject, Space, Viewer, filter, has_capability,
 };
 use rstest::rstest;
 use serde_json::{Value, json};

@@ -1,1 +1,7 @@
 edition = "2024"
+# Google Rust style guide. The options below need a nightly rustfmt; a
+# stable one warns about them and ignores them.
+max_width = 100
+imports_granularity = "Module"
+hex_literal_case = "Lower"
+format_macro_matchers = true

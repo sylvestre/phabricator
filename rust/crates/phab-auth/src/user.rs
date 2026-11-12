@@ -2,7 +2,8 @@
 //! `PhabricatorUser`.
 
 use phab_core::{Config, Phid};
-use phab_db::{Database, DbError, bind_all, placeholders, rows, sqlx::mysql::MySqlRow};
+use phab_db::sqlx::mysql::MySqlRow;
+use phab_db::{Database, DbError, bind_all, placeholders, rows};
 use phab_policy::Viewer;
 
 pub const USER_COLUMNS: &[&str] = &[

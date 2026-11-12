@@ -7,9 +7,10 @@ use phab_core::{Config, Phid, PhidType};
 use phab_db::{Database, DbError, bind_all, edges, placeholders, rows};
 use thiserror::Error;
 
+use crate::application::application_for_phid_type;
 use crate::{
     ApplicationPolicies, Capability, CustomPolicy, ObjectKind, PolicyFacts, PolicySubject, Space,
-    Viewer, application::application_for_phid_type,
+    Viewer,
 };
 
 const MAX_RESOLVE_ROUNDS: usize = 32;

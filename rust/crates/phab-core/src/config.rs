@@ -9,7 +9,8 @@
 //! code, and the only one in use (`moz-extensions.conf.php`) configures PHP
 //! library loading and event listeners.
 
-use std::{fs, io, path::Path};
+use std::path::Path;
+use std::{fs, io};
 
 use serde_json::{Map, Value, json};
 use thiserror::Error;

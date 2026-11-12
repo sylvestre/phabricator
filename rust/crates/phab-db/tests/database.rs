@@ -1,5 +1,7 @@
 use phab_core::Phid;
-use phab_db::{edges, schema::CONTRACT, testing::TestDatabase};
+use phab_db::edges;
+use phab_db::schema::CONTRACT;
+use phab_db::testing::TestDatabase;
 
 #[tokio::test]
 async fn schema_contract_matches_quickstart() {

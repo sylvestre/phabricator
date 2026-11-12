@@ -6,17 +6,14 @@
 //! without writing anything and logs the differences. A method can take
 //! traffic once its shadow runs show no differences.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
-};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
-use axum::{
-    body::{Body, Bytes},
-    http::{HeaderMap, HeaderName, Method as HttpMethod, StatusCode},
-    response::{IntoResponse, Response},
-};
-use phab_conduit::{HttpRequest, Mode, call::dispatch};
+use axum::body::{Body, Bytes};
+use axum::http::{HeaderMap, HeaderName, Method as HttpMethod, StatusCode};
+use axum::response::{IntoResponse, Response};
+use phab_conduit::call::dispatch;
+use phab_conduit::{HttpRequest, Mode};
 use phab_parity::{Rules, compare, summarize};
 use serde_json::{Value, json};
 

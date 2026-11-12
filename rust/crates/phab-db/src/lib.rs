@@ -17,11 +17,9 @@ pub mod testing;
 
 use phab_core::Config;
 use serde_json::{Map, Value};
-use sqlx::{
-    MySqlPool,
-    mysql::{MySqlArguments, MySqlConnectOptions, MySqlPoolOptions},
-    query::Query,
-};
+use sqlx::MySqlPool;
+use sqlx::mysql::{MySqlArguments, MySqlConnectOptions, MySqlPoolOptions};
+use sqlx::query::Query;
 use thiserror::Error;
 
 pub use sqlx;

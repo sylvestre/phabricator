@@ -12,7 +12,10 @@ pub mod form;
 pub mod json;
 pub mod request;
 
-use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use phab_auth::{User, Writes};
 use phab_core::Config;

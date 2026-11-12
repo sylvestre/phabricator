@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use axum::{
-    body::{Body, to_bytes},
-    http::{Request, StatusCode},
-};
+use axum::body::{Body, to_bytes};
+use axum::http::{Request, StatusCode};
 use phab_conduit::{Context, Envelope, Registry};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;

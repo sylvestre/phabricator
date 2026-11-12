@@ -118,10 +118,13 @@ jobs:
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup toolchain install nightly --profile minimal --component rustfmt
           rustup default stable
 
+      # rustfmt.toml uses options of the Google Rust style guide which only
+      # nightly rustfmt applies.
       - name: Check formatting
-        run: cargo fmt --check
+        run: cargo +nightly fmt --check
 
       - name: Clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings

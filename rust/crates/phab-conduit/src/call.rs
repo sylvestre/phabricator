@@ -3,22 +3,18 @@
 
 use std::time::Instant;
 
-use phab_auth::{
-    Outcome, User, Writes,
-    session::{SessionKind, session_kind},
-    token::authenticate_token,
-};
+use phab_auth::session::{SessionKind, session_kind};
+use phab_auth::token::authenticate_token;
+use phab_auth::{Outcome, User, Writes};
 use phab_core::config::is_truthy;
-use phab_policy::{
-    Viewer,
-    filter::can_see_application,
-    loader::{NoExtendedObjects, load_facts},
-};
+use phab_policy::Viewer;
+use phab_policy::filter::can_see_application;
+use phab_policy::loader::{NoExtendedObjects, load_facts};
 use serde_json::{Map, Value};
 
+use crate::request::{DecodeError, Params, decode, get_str, metadata_key, request_data};
 use crate::{
     ApiRequest, Context, Envelope, HttpRequest, Method, MethodError, Mode, Registry, Response,
-    request::{DecodeError, Params, decode, get_str, metadata_key, request_data},
 };
 
 /// Result of `dispatch`, with what the call log needs.

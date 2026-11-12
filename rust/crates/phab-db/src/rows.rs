@@ -6,7 +6,8 @@
 //! for PHIDs, signed and unsigned integers of every width).
 
 use serde_json::Value;
-use sqlx::{Row, mysql::MySqlRow};
+use sqlx::Row;
+use sqlx::mysql::MySqlRow;
 
 use crate::DbError;
 

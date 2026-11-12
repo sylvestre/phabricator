@@ -6,10 +6,12 @@
 //! `mysql://root:password@127.0.0.1:3306`). Without that variable the tests
 //! are skipped, unless `PHAB_TEST_REQUIRE_MYSQL` is set, as it is in CI.
 
-use std::{fmt::Write as _, path::PathBuf};
+use std::fmt::Write as _;
+use std::path::PathBuf;
 
 use rand::Rng;
-use sqlx::{Executor, mysql::MySqlPoolOptions};
+use sqlx::Executor;
+use sqlx::mysql::MySqlPoolOptions;
 
 use crate::Database;
 

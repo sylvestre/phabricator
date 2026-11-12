@@ -4,7 +4,8 @@
 use phab_core::{Config, Phid, PhidType};
 use phab_db::{Database, rows};
 
-use crate::{AuthError, Outcome, User, Writes, user::load_users_by_phid};
+use crate::user::load_users_by_phid;
+use crate::{AuthError, Outcome, User, Writes};
 
 pub const TOKEN_TYPES: &[&str] = &["api", "cli", "clr"];
 

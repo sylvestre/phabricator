@@ -46,7 +46,7 @@ pub fn digest_for_index(message: &[u8]) -> String {
     let hash = Sha1::digest(message);
     hash[..INDEX_DIGEST_LENGTH]
         .iter()
-        .map(|byte| char::from(INDEX_MAP[usize::from(byte & 0x3F)]))
+        .map(|byte| char::from(INDEX_MAP[usize::from(byte & 0x3f)]))
         .collect()
 }
 
@@ -56,7 +56,7 @@ pub fn digest_for_anchor(message: &[u8]) -> String {
     let mut accumulator = 0usize;
     let mut result = String::with_capacity(ANCHOR_DIGEST_LENGTH);
     for &byte in &hash[..ANCHOR_DIGEST_LENGTH] {
-        let low_bits = usize::from(byte & 0x3F);
+        let low_bits = usize::from(byte & 0x3f);
         accumulator = (accumulator + usize::from(byte)) % ANCHOR_MAP.len();
         let index = if low_bits < ANCHOR_MAP.len() {
             low_bits

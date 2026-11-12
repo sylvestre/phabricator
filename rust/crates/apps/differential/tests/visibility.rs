@@ -1,10 +1,9 @@
-use phab_app_differential::{
-    Repositories,
-    storage::{load_comments, load_revisions, load_transactions},
-};
+use phab_app_differential::Repositories;
+use phab_app_differential::storage::{load_comments, load_revisions, load_transactions};
 use phab_core::{Config, Phid};
 use phab_db::testing::TestDatabase;
-use phab_policy::{Capability, PolicySubject, Viewer, filter, loader::load_facts};
+use phab_policy::loader::load_facts;
+use phab_policy::{Capability, PolicySubject, Viewer, filter};
 
 const DATABASES: &[&str] = &[
     "differential",

@@ -6,11 +6,11 @@ use phab_core::Phid;
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::application::{application_for_phid_type, can_uninstall};
+use crate::rules::Rule;
 use crate::{
     Capability, OBJECT_POLICY_PREFIX, POLICY_ADMIN, POLICY_NOONE, POLICY_PUBLIC, POLICY_USER,
     PolicyFacts, PolicySubject, Viewer,
-    application::{application_for_phid_type, can_uninstall},
-    rules::Rule,
 };
 use phab_core::PhidType;
 

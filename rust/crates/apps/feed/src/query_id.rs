@@ -5,10 +5,8 @@ use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
 use phab_core::config::is_truthy;
 use serde_json::{Value, json};
 
-use crate::{
-    APPLICATION,
-    story::{Order, Page, StoryRow, load_page, visible_stories},
-};
+use crate::APPLICATION;
+use crate::story::{Order, Page, StoryRow, load_page, visible_stories};
 
 const QUERY_CLASS: &str = "PhabricatorFeedIDQuery";
 const DEFAULT_LIMIT: usize = 100;

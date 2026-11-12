@@ -2,10 +2,8 @@ use std::collections::HashMap;
 
 use phab_core::{Config, Phid};
 use phab_db::testing::TestDatabase;
-use phab_policy::{
-    Capability, ExtendedPolicy, ObjectKind, PolicySubject, Viewer, filter,
-    loader::{LoaderError, NoExtendedObjects, SubjectResolver, load_facts},
-};
+use phab_policy::loader::{LoaderError, NoExtendedObjects, SubjectResolver, load_facts};
+use phab_policy::{Capability, ExtendedPolicy, ObjectKind, PolicySubject, Viewer, filter};
 
 const DATABASES: &[&str] = &["project", "user", "differential", "policy", "spaces"];
 

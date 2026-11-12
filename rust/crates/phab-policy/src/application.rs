@@ -2,7 +2,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use phab_core::{Config, Phid, PhidType, config::is_truthy};
+use phab_core::config::is_truthy;
+use phab_core::{Config, Phid, PhidType};
 
 use crate::{Capability, ObjectKind, POLICY_ADMIN, POLICY_PUBLIC, POLICY_USER, PolicySubject};
 

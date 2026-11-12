@@ -8,10 +8,8 @@
 use phab_core::{Config, Phid, hash};
 use phab_db::{Database, rows};
 
-use crate::{
-    AuthError, Outcome, User, Writes,
-    user::{self, User as UserRecord},
-};
+use crate::user::{self, User as UserRecord};
+use crate::{AuthError, Outcome, User, Writes};
 
 /// The cookie holding web session tokens (`PhabricatorCookies`).
 pub const SESSION_COOKIE: &str = "phsid";

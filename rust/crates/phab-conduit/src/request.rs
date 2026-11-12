@@ -2,10 +2,8 @@
 
 use serde_json::{Map, Value};
 
-use crate::{
-    HttpRequest,
-    form::{self, FormData, FormValue},
-};
+use crate::HttpRequest;
+use crate::form::{self, FormData, FormValue};
 
 /// The parameters of a call, and the `__conduit__` metadata.
 #[derive(Debug, Clone, PartialEq)]

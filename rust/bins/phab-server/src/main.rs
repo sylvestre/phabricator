@@ -1,8 +1,12 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use phab_conduit::Registry;
 use phab_server::{AppState, build_context, default_config_dir, hostname, router};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 fn init_logging() {
     tracing_subscriber::registry()

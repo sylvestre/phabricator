@@ -3,11 +3,10 @@
 use std::collections::HashMap;
 
 use phab_core::Phid;
-use phab_db::{Database, DbError, bind_all, placeholders, rows, sqlx::mysql::MySqlRow};
-use phab_policy::{
-    AutomaticCapability, Capability, ExtendedPolicy, ObjectKind, PolicySubject,
-    loader::{LoaderError, SubjectResolver},
-};
+use phab_db::sqlx::mysql::MySqlRow;
+use phab_db::{Database, DbError, bind_all, placeholders, rows};
+use phab_policy::loader::{LoaderError, SubjectResolver};
+use phab_policy::{AutomaticCapability, Capability, ExtendedPolicy, ObjectKind, PolicySubject};
 use serde_json::Value;
 
 pub const PUSH: Capability = Capability("diffusion.push");

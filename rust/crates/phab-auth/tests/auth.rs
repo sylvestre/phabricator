@@ -1,8 +1,6 @@
-use phab_auth::{
-    Outcome, Writes,
-    session::{SessionType, load_user_for_session},
-    token::{InvalidAuth, authenticate_token},
-};
+use phab_auth::session::{SessionType, load_user_for_session};
+use phab_auth::token::{InvalidAuth, authenticate_token};
+use phab_auth::{Outcome, Writes};
 use phab_core::{Config, hash};
 use phab_db::testing::TestDatabase;
 

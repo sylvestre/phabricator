@@ -6,12 +6,10 @@
 //! files and possibly composing an avatar, which PHP does.
 
 use phab_auth::User;
-use phab_core::{Config, hash::digest_for_index};
-use phab_db::{
-    Database, DbError,
-    phpser::{Value, serialize},
-    rows,
-};
+use phab_core::Config;
+use phab_core::hash::digest_for_index;
+use phab_db::phpser::{Value, serialize};
+use phab_db::{Database, DbError, rows};
 
 pub const CACHE_KEY: &str = "user.profile.image.uri.v1";
 pub const CACHE_TYPE: &str = "user.profile";

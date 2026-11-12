@@ -1,4 +1,5 @@
-use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call::dispatch};
+use phab_conduit::call::dispatch;
+use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
 use serde_json::{Value, json};
