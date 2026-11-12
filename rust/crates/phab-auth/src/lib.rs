@@ -6,41 +6,12 @@
 //! come back as [`Outcome::Unsupported`], so the caller can hand the request
 //! to PHP instead of answering differently.
 
+mod error;
+mod outcome;
 pub mod session;
 pub mod token;
 pub mod user;
 
-use phab_db::DbError;
-use thiserror::Error;
-
+pub use error::AuthError;
+pub use outcome::{Outcome, Writes};
 pub use user::User;
-
-#[derive(Debug, Error)]
-pub enum AuthError {
-    #[error(transparent)]
-    Database(#[from] DbError),
-    #[error(transparent)]
-    Sqlx(#[from] phab_db::sqlx::Error),
-    #[error(transparent)]
-    Hash(#[from] phab_core::hash::HashError),
-    #[error(transparent)]
-    Config(#[from] phab_core::config::ConfigError),
-}
-
-/// Whether authentication may write to the database. PHP extends sessions,
-/// upgrades legacy session keys and makes `cli-` tokens permanent while
-/// authenticating; shadow traffic and read-only installs must not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Writes {
-    Allowed,
-    Skipped,
-}
-
-/// Result of an authentication attempt which PHP may have handled
-/// differently.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Outcome<T> {
-    Done(T),
-    /// PHP must handle this request; the string says why.
-    Unsupported(&'static str),
-}
