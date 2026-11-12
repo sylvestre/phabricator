@@ -234,8 +234,7 @@ async fn execute(
                 ..Page::default()
             },
         )
-        .await
-        .map_err(MethodError::internal)?;
+        .await?;
         if filter(rows).await?.is_empty() {
             return Err(core_error(format!(
                 "Cursor \"{}\" does not identify a valid object in query \"{QUERY_CLASS}\".",
@@ -259,8 +258,7 @@ async fn execute(
                 limit: Some(limit),
             },
         )
-        .await
-        .map_err(MethodError::internal)?;
+        .await?;
         let seen = rows.len();
         total_seen += seen;
         // nextPage(): paging continues after the last raw row.

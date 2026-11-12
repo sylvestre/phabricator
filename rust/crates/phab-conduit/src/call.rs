@@ -18,7 +18,7 @@ use serde_json::{Map, Value};
 
 use crate::{
     ApiRequest, Context, Envelope, HttpRequest, Method, MethodError, Mode, Registry, Response,
-    request::{Decoded, decode, get_str, metadata_key, request_data},
+    request::{DecodeError, Params, decode, get_str, metadata_key, request_data},
 };
 
 /// Result of `dispatch`, with what the call log needs.
@@ -35,6 +35,15 @@ enum Failure {
 impl From<Envelope> for Failure {
     fn from(envelope: Envelope) -> Self {
         Self::Envelope(envelope)
+    }
+}
+
+impl From<DecodeError> for Failure {
+    fn from(error: DecodeError) -> Self {
+        match error {
+            DecodeError::Core(message) => Envelope::error("ERR-CONDUIT-CORE", message).into(),
+            DecodeError::Unsupported(reason) => Self::Fallback(reason),
+        }
     }
 }
 
@@ -117,17 +126,11 @@ async fn run(
         return Err(Failure::Fallback("human-readable output"));
     }
 
-    let (metadata, params, strictly_typed) = match decode(http, &data, method.name()) {
-        Decoded::Params {
-            metadata,
-            params,
-            strictly_typed,
-        } => (metadata, params, strictly_typed),
-        Decoded::CoreError(message) => {
-            return Err(Envelope::error("ERR-CONDUIT-CORE", message).into());
-        }
-        Decoded::Unsupported(reason) => return Err(Failure::Fallback(reason)),
-    };
+    let Params {
+        metadata,
+        params,
+        strictly_typed,
+    } = decode(http, &data, method.name())?;
 
     check_method_and_params(context, method, &params)?;
 
@@ -330,11 +333,11 @@ async fn write_call_log(
     );
     phab_db::sqlx::query(&sql)
         .bind(method_name)
-        .bind(envelope.error_code.clone().unwrap_or_default())
+        .bind(envelope.error_code.as_deref().unwrap_or_default())
         .bind(duration)
         .bind(now)
         .bind(now)
-        .bind(caller.map(|user| user.phid.as_str().to_owned()))
+        .bind(caller.map(|user| user.phid.as_str()))
         .execute(context.database.pool())
         .await?;
     Ok(())

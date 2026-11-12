@@ -4,7 +4,7 @@ use phab_auth::User;
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
 use phab_core::Config;
 use phab_db::{Database, DbError, rows};
-use serde_json::{Map, Value};
+use serde_json::{Value, json};
 
 use crate::{APPLICATION, profile_image};
 
@@ -42,7 +42,7 @@ pub async fn primary_email(
 pub fn user_information(
     config: &Config,
     user: &User,
-    image: String,
+    image: &str,
     email: Option<&PrimaryEmail>,
 ) -> Result<Value, phab_core::config::ConfigError> {
     let mut roles = Vec::new();
@@ -73,24 +73,15 @@ pub fn user_information(
         roles.push("activated");
     }
 
-    let mut dictionary = Map::new();
-    dictionary.insert("phid".to_owned(), user.phid.as_str().into());
-    dictionary.insert("userName".to_owned(), user.user_name.clone().into());
-    dictionary.insert("realName".to_owned(), user.real_name.clone().into());
-    dictionary.insert("image".to_owned(), image.into());
-    dictionary.insert(
-        "uri".to_owned(),
-        config.uri(&format!("/p/{}/", user.user_name))?.into(),
-    );
-    dictionary.insert(
-        "roles".to_owned(),
-        Value::Array(roles.into_iter().map(Value::from).collect()),
-    );
-    dictionary.insert(
-        "primaryEmail".to_owned(),
-        verified_email.map_or(Value::Null, Value::from),
-    );
-    Ok(Value::Object(dictionary))
+    Ok(json!({
+        "phid": user.phid,
+        "userName": user.user_name,
+        "realName": user.real_name,
+        "image": image,
+        "uri": config.uri(&format!("/p/{}/", user.user_name))?,
+        "roles": roles,
+        "primaryEmail": verified_email,
+    }))
 }
 
 impl Method for UserWhoAmI {
@@ -112,19 +103,20 @@ impl Method for UserWhoAmI {
                 return Err(MethodError::Unsupported("user.whoami without a user"));
             };
             let context = request.context;
-            let Some(image) = profile_image::cached_uri(&context.database, &context.config, user)
-                .await
-                .map_err(MethodError::internal)?
+            let Some(image) =
+                profile_image::cached_uri(&context.database, &context.config, user).await?
             else {
                 return Err(MethodError::Unsupported(
                     "profile image cache needs a rebuild",
                 ));
             };
-            let email = primary_email(&context.database, user)
-                .await
-                .map_err(MethodError::internal)?;
-            user_information(&context.config, user, image, email.as_ref())
-                .map_err(MethodError::internal)
+            let email = primary_email(&context.database, user).await?;
+            Ok(user_information(
+                &context.config,
+                user,
+                &image,
+                email.as_ref(),
+            )?)
         })
     }
 }

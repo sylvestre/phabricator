@@ -7,15 +7,19 @@ use crate::{
     form::{self, FormData, FormValue},
 };
 
+/// The parameters of a call, and the `__conduit__` metadata.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Decoded {
-    Params {
-        metadata: Map<String, Value>,
-        params: Map<String, Value>,
-        strictly_typed: bool,
-    },
+pub struct Params {
+    pub metadata: Map<String, Value>,
+    pub params: Map<String, Value>,
+    /// False when parameters came as plain form fields, which are strings.
+    pub strictly_typed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecodeError {
     /// An exception PHP turns into `ERR-CONDUIT-CORE`.
-    CoreError(String),
+    Core(String),
     Unsupported(&'static str),
 }
 
@@ -75,14 +79,14 @@ fn split_metadata(mut params: Map<String, Value>) -> (Map<String, Value>, Map<St
     (metadata, params)
 }
 
-pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Decoded {
+pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Result<Params, DecodeError> {
     if request.content_type.as_deref() == Some("application/json") {
-        return Decoded::CoreError(
+        return Err(DecodeError::Core(
             "Use form-encoded data to submit parameters to Conduit endpoints. Sending a \
              JSON-encoded body and setting 'Content-Type': 'application/json' is not currently \
              supported."
                 .to_owned(),
-        );
+        ));
     }
 
     // Parameters from the API console: `params[name]=<json>`.
@@ -90,7 +94,7 @@ pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Decoded {
         let mut params = Map::new();
         for (key, value) in entries {
             let Some(text) = value.as_str() else {
-                return Decoded::Unsupported("nested console parameters");
+                return Err(DecodeError::Unsupported("nested console parameters"));
             };
             let text = if text.is_empty() { "null" } else { text };
             match serde_json::from_str::<Value>(text) {
@@ -102,20 +106,20 @@ pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Decoded {
                     params.insert(key.clone(), Value::Null);
                 }
                 Err(_) => {
-                    return Decoded::CoreError(format!(
+                    return Err(DecodeError::Core(format!(
                         "The value for parameter '{key}' is not valid JSON. All parameters must \
                          be encoded as JSON values, including strings (which means you need to \
                          surround them in double quotes). Check your syntax. Value was: {text}."
-                    ));
+                    )));
                 }
             }
         }
         let (metadata, params) = split_metadata(params);
-        return Decoded::Params {
+        return Ok(Params {
             metadata,
             params,
             strictly_typed: true,
-        };
+        });
     }
 
     // A single `params` field holding the JSON-encoded dictionary.
@@ -123,15 +127,15 @@ pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Decoded {
         return match serde_json::from_str::<Value>(&json) {
             Ok(value @ (Value::Object(_) | Value::Array(_))) => {
                 let (metadata, params) = split_metadata(into_map(value));
-                Decoded::Params {
+                Ok(Params {
                     metadata,
                     params,
                     strictly_typed: true,
-                }
+                })
             }
-            _ => Decoded::CoreError(format!(
+            _ => Err(DecodeError::Core(format!(
                 "Invalid parameter information was passed to method '{method}'."
-            )),
+            ))),
         };
     }
 
@@ -151,11 +155,11 @@ pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Decoded {
             }
         }
     }
-    Decoded::Params {
+    Ok(Params {
         metadata,
         params,
         strictly_typed: false,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -165,7 +169,7 @@ mod tests {
 
     use super::*;
 
-    fn decode_body(body: &str) -> Decoded {
+    fn decode_body(body: &str) -> Result<Params, DecodeError> {
         let request = HttpRequest {
             body: body.to_owned(),
             query: "__path__=/api/x".to_owned(),
@@ -175,8 +179,8 @@ mod tests {
         decode(&request, &data, "x")
     }
 
-    fn params(metadata: Value, params: Value, strictly_typed: bool) -> Decoded {
-        Decoded::Params {
+    fn params(metadata: Value, params: Value, strictly_typed: bool) -> Params {
+        Params {
             metadata: into_map(metadata),
             params: into_map(params),
             strictly_typed,
@@ -186,26 +190,26 @@ mod tests {
     #[rstest]
     #[case(
         "params=%7B%22limit%22%3A3%2C%22__conduit__%22%3A%7B%22token%22%3A%22t%22%7D%7D",
-        params(json!({"token": "t"}), json!({"limit": 3}), true)
+        Ok(params(json!({"token": "t"}), json!({"limit": 3}), true))
     )]
     #[case(
         "params[limit]=3&params[view]=%22data%22&params[after]=",
-        params(json!({}), json!({"limit": 3, "view": "data", "after": null}), true)
+        Ok(params(json!({}), json!({"limit": 3, "view": "data", "after": null}), true))
     )]
     #[case(
         "api.token=t&limit=3&ids[]=1&output=json&__ajax__=1",
-        params(json!({"token": "t", "output": "json"}), json!({"limit": "3", "ids": ["1"]}), false)
+        Ok(params(json!({"token": "t", "output": "json"}), json!({"limit": "3", "ids": ["1"]}), false))
     )]
-    #[case("params=", params(json!({"params": ""}), json!({}), false))]
+    #[case("params=", Ok(params(json!({"params": ""}), json!({}), false)))]
     #[case(
         "params=5",
-        Decoded::CoreError("Invalid parameter information was passed to method 'x'.".to_owned())
+        Err(DecodeError::Core("Invalid parameter information was passed to method 'x'.".to_owned()))
     )]
     #[case(
         "params=%7Bnope",
-        Decoded::CoreError("Invalid parameter information was passed to method 'x'.".to_owned())
+        Err(DecodeError::Core("Invalid parameter information was passed to method 'x'.".to_owned()))
     )]
-    fn decodes_like_php(#[case] body: &str, #[case] expected: Decoded) {
+    fn decodes_like_php(#[case] body: &str, #[case] expected: Result<Params, DecodeError>) {
         assert_eq!(decode_body(body), expected);
     }
 
@@ -213,12 +217,12 @@ mod tests {
     fn rejects_unquoted_console_strings() {
         assert_eq!(
             decode_body("params[view]=data"),
-            Decoded::CoreError(
+            Err(DecodeError::Core(
                 "The value for parameter 'view' is not valid JSON. All parameters must be \
                  encoded as JSON values, including strings (which means you need to surround \
                  them in double quotes). Check your syntax. Value was: data."
                     .to_owned()
-            )
+            ))
         );
     }
 
@@ -230,7 +234,7 @@ mod tests {
         };
         assert!(matches!(
             decode(&request, &FormData::new(), "x"),
-            Decoded::CoreError(_)
+            Err(DecodeError::Core(_))
         ));
     }
 

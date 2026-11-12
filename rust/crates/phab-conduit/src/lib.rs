@@ -87,6 +87,26 @@ impl MethodError {
     }
 }
 
+/// Unexpected failures of the layers methods are built on, so methods can
+/// use `?` on them.
+macro_rules! internal_from {
+    ($($error:ty),* $(,)?) => {$(
+        impl From<$error> for MethodError {
+            fn from(error: $error) -> Self {
+                Self::internal(error)
+            }
+        }
+    )*};
+}
+
+internal_from!(
+    phab_db::DbError,
+    phab_db::sqlx::Error,
+    phab_policy::loader::LoaderError,
+    phab_policy::PolicyError,
+    phab_core::config::ConfigError,
+);
+
 pub type MethodFuture<'a> = Pin<Box<dyn Future<Output = Result<Value, MethodError>> + Send + 'a>>;
 
 /// The application a method belongs to.
