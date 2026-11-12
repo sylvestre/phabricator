@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth", "crates/phab-conduit", "bins/phab-server"]
+members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth", "crates/phab-conduit", "crates/apps/conduit", "bins/phab-server"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ phab-db = { path = "crates/phab-db" }
 phab-policy = { path = "crates/phab-policy" }
 phab-auth = { path = "crates/phab-auth" }
 phab-conduit = { path = "crates/phab-conduit" }
+phab-app-conduit = { path = "crates/apps/conduit" }
 
 axum = "0.8"
 hex = "0.4"

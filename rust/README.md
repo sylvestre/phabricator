@@ -30,6 +30,7 @@ tool. The tables and columns the Rust code uses are listed in
 | `crates/phab-policy` | Port of `PhabricatorPolicyFilter` (security boundary) |
 | `crates/phab-auth` | Conduit API tokens and session cookies |
 | `crates/phab-conduit` | Conduit request decoding, dispatch and response envelope |
+| `crates/apps/conduit` | `conduit.ping` |
 | `bins/phab-server` | The axum HTTP service |
 
 ## Development

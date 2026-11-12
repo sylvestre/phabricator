@@ -13,7 +13,9 @@ fn init_logging() {
 }
 
 fn methods() -> Registry {
-    Registry::default()
+    let mut registry = Registry::default();
+    phab_app_conduit::register(&mut registry);
+    registry
 }
 
 #[tokio::main]
