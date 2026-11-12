@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -112,6 +113,14 @@ impl Phid {
 
     pub fn subtype(&self) -> Option<&str> {
         phid_subtype_of(&self.0)
+    }
+}
+
+/// Lets maps and sets keyed by `Phid` be queried with a `&str`: the derived
+/// `Hash` and `Eq` of the inner `String` agree with those of `str`.
+impl Borrow<str> for Phid {
+    fn borrow(&self) -> &str {
+        &self.0
     }
 }
 

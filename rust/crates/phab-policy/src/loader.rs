@@ -18,8 +18,12 @@ const MAX_RESOLVE_ROUNDS: usize = 32;
 pub enum LoaderError {
     #[error(transparent)]
     Database(#[from] DbError),
-    #[error(transparent)]
-    Sqlx(#[from] phab_db::sqlx::Error),
+}
+
+impl From<phab_db::sqlx::Error> for LoaderError {
+    fn from(error: phab_db::sqlx::Error) -> Self {
+        Self::Database(error.into())
+    }
 }
 
 /// Loads the objects extended policies point to (for example the repository

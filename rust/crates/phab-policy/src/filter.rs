@@ -2,14 +2,13 @@
 
 use std::collections::HashMap;
 
-use phab_core::Phid;
+use phab_core::{Phid, PhidType, phid};
 
 use crate::rules::Rule;
 use crate::{
     Capability, OBJECT_POLICY_PREFIX, POLICY_ADMIN, POLICY_NOONE, POLICY_PUBLIC, POLICY_USER,
     PolicyFacts, PolicySubject, Viewer, application,
 };
-use phab_core::PhidType;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -180,11 +179,13 @@ impl Filter<'_> {
                 if let Some(key) = policy.strip_prefix(OBJECT_POLICY_PREFIX) {
                     self.check_object_policy(key, subject)
                 } else {
-                    let policy_phid = Phid::new(policy);
-                    match policy_phid.phid_type() {
-                        PhidType::PROJECT => self.facts.viewer_projects.contains(&policy_phid),
-                        PhidType::USER => viewer.phid.as_ref() == Some(&policy_phid),
-                        PhidType::POLICY => self.check_custom_policy(&policy_phid, subject),
+                    match phid::phid_type_of(policy) {
+                        PhidType::PROJECT => self.facts.viewer_projects.contains(policy),
+                        PhidType::USER => viewer
+                            .phid
+                            .as_ref()
+                            .is_some_and(|phid| phid.as_str() == policy),
+                        PhidType::POLICY => self.check_custom_policy(policy, subject),
                         // Unknown policies reject everyone but the omnipotent
                         // viewer.
                         _ => false,
@@ -217,7 +218,7 @@ impl Filter<'_> {
         })
     }
 
-    fn check_custom_policy(&self, policy_phid: &Phid, subject: &PolicySubject) -> bool {
+    fn check_custom_policy(&self, policy_phid: &str, subject: &PolicySubject) -> bool {
         let Some(policy) = self.facts.custom_policies.get(policy_phid) else {
             return false;
         };

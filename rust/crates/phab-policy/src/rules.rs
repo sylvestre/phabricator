@@ -1,7 +1,6 @@
 //! Policy rules, used both as object policies (`obj.differential.reviewers`)
 //! and inside custom policies.
 
-use phab_core::Phid;
 use serde_json::Value;
 
 use crate::{ObjectKind, PolicyFacts, PolicySubject, Viewer};
@@ -109,7 +108,7 @@ fn loosely_is_viewer(value: &Value, viewer: &Viewer) -> bool {
 fn is_viewer_project(value: &Value, facts: &PolicyFacts) -> bool {
     value
         .as_str()
-        .is_some_and(|phid| facts.viewer_projects.contains(&Phid::new(phid)))
+        .is_some_and(|phid| facts.viewer_projects.contains(phid))
 }
 
 /// `PhutilLunarPhase`.
@@ -135,6 +134,7 @@ fn lunar_phase_matches(epoch: i64, value: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use phab_core::Phid;
     use rstest::rstest;
     use serde_json::json;
 
