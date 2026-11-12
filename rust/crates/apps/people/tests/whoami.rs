@@ -1,3 +1,5 @@
+//! `user.whoami` against a test database.
+
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
@@ -47,10 +49,10 @@ async fn describes_the_caller() {
                conduitCertificate, isSystemAgent, isDisabled, isAdmin, isEmailVerified, isApproved, \
                accountSecret, isEnrolledInMultiFactor, isMailingList) VALUES \
              ('PHID-USER-bob', 'bob', 'Bob <B>', 1, 1, 'c', 1, 0, 1, 1, 1, 's', 0, 0); \
-             INSERT INTO `{{ns}}_user`.user_email (userPHID, address, isVerified, isPrimary, \
-               verificationCode, dateCreated, dateModified) VALUES \
-             ('PHID-USER-bob', 'old@example.com', 1, 0, 'x', 1, 1), \
-             ('PHID-USER-bob', 'bob@example.com', 1, 1, 'y', 1, 1); \
+             INSERT INTO `{{ns}}_user`.user_email (phid, userPHID, address, isVerified, \
+               isPrimary, verificationCode, dateCreated, dateModified) VALUES \
+             ('PHID-EADR-old', 'PHID-USER-bob', 'old@example.com', 1, 0, 'x', 1, 1), \
+             ('PHID-EADR-bob', 'PHID-USER-bob', 'bob@example.com', 1, 1, 'y', 1, 1); \
              INSERT INTO `{{ns}}_conduit`.conduit_token \
                (objectPHID, tokenType, token, expires, dateCreated, dateModified) VALUES \
              ('PHID-USER-bob', 'api', '{TOKEN}', NULL, 1, 1)"

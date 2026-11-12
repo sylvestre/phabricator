@@ -1,3 +1,5 @@
+//! Loading Differential objects and checking who can see them.
+
 use phab_app_differential::{Repositories, storage};
 use phab_core::{Config, Phid};
 use phab_db::testing::TestDatabase;
@@ -120,9 +122,9 @@ async fn loads_transactions_and_comments() {
              INSERT INTO `{ns}_differential`.differential_transaction_comment (phid, \
                transactionPHID, authorPHID, viewPolicy, editPolicy, commentVersion, content, \
                contentSource, isDeleted, dateCreated, dateModified, isNewFile, lineNumber, lineLength, \
-               hasReplies) VALUES \
+               hasReplies, attributes) VALUES \
              ('PHID-XCMT-1', 'PHID-XACT-DREV-1', 'PHID-USER-alice', 'public', 'PHID-USER-alice', 1, \
-               'LGTM', '{}', 0, 1, 1, 0, 0, 0, 0)",
+               'LGTM', '{}', 0, 1, 1, 0, 0, 0, 0, '{}')",
         )
         .await;
     let database = test_db.database();
