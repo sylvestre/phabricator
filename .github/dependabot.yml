@@ -14,10 +14,18 @@ updates:
     cooldown:
       default-days: 7
 
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: "docker"
     directories:
       - "/"
       - "/docker/tinyproxy"
+      - "/rust"
     schedule:
       interval: "weekly"
     cooldown:

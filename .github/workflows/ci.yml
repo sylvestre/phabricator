@@ -89,3 +89,45 @@ jobs:
         run: just lint
       - name: Run PHPStan
         run: just phpstan
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ROOT_PASSWORD: password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -ppassword"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 60
+    defaults:
+      run:
+        working-directory: rust
+    env:
+      PHAB_TEST_MYSQL_URL: mysql://root:password@127.0.0.1:3306
+      PHAB_TEST_REQUIRE_MYSQL: 1
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Tests
+        run: cargo test --locked
+
+      - name: nginx routing
+        run: scripts/test-nginx-routing.sh
