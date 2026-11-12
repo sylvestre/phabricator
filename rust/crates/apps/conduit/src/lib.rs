@@ -3,6 +3,7 @@
 use phab_conduit::{ApiRequest, Application, Method, MethodFuture, Registry};
 use serde_json::Value;
 
+/// `PhabricatorConduitApplication`.
 pub const APPLICATION: Application = Application {
     class: "PhabricatorConduitApplication",
     name: "Conduit",
@@ -33,6 +34,7 @@ impl Method for ConduitPing {
     }
 }
 
+/// Registers the Conduit methods.
 pub fn register(registry: &mut Registry) {
     registry.register(ConduitPing);
 }

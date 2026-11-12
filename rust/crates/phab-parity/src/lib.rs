@@ -12,10 +12,13 @@ use serde_json::Value;
 pub const SKIP_RUST_HEADER: &str = "x-phab-skip-rust";
 
 #[derive(Debug, Clone, PartialEq)]
+/// A value which differs between the PHP and the Rust answer.
 pub struct Difference {
     /// JSON Pointer of the differing value, e.g. `/result/data/0/epoch`.
     pub path: String,
+    /// The PHP value, `None` if PHP has none.
     pub php: Option<Value>,
+    /// The Rust value, `None` if Rust has none.
     pub rust: Option<Value>,
 }
 
@@ -38,6 +41,7 @@ impl Rules {
         }
     }
 
+    /// Also ignores `path`, a JSON Pointer.
     #[must_use]
     pub fn ignoring(mut self, path: &str) -> Self {
         self.ignored.push(path.to_owned());

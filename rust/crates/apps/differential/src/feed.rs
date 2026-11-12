@@ -16,8 +16,11 @@ const TYPE_EDGE: &str = "core:edge";
 /// logic that is not ported (custom fields).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeedVisibility {
+    /// Shown in feed.
     Visible,
+    /// Hidden from feed.
     Hidden,
+    /// Only PHP can tell.
     Unknown,
 }
 

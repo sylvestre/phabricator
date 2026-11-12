@@ -1,3 +1,6 @@
+//! The Rust Phabricator service: answers the Conduit methods it implements
+//! and hands the others back to PHP through nginx.
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;

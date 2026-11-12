@@ -7,12 +7,16 @@ use crate::json;
 /// `ConduitAPIResponse`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Envelope {
+    /// The method's result; `null` on errors.
     pub result: Value,
+    /// The error code; `None` on success.
     pub error_code: Option<String>,
+    /// The error description; `None` on success.
     pub error_info: Option<String>,
 }
 
 impl Envelope {
+    /// A successful answer.
     pub fn success(result: Value) -> Self {
         Self {
             result,
@@ -21,6 +25,7 @@ impl Envelope {
         }
     }
 
+    /// An error answer, with a `null` result.
     pub fn error(code: impl Into<String>, info: impl Into<String>) -> Self {
         Self {
             result: Value::Null,
@@ -29,6 +34,7 @@ impl Envelope {
         }
     }
 
+    /// The envelope as a JSON object.
     pub fn to_value(&self) -> Value {
         json!({
             "result": self.result,
@@ -54,8 +60,10 @@ impl Envelope {
     }
 }
 
+/// How [`dispatch()`](crate::call::dispatch) answers a call.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Response {
+    /// Rust answers with this envelope.
     Envelope(Envelope),
     /// PHP must serve this request; the string says why.
     Fallback(&'static str),

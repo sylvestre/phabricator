@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use phab_db::phpser;
 use serde_json::Value;
 
+/// Encodes `value` byte for byte as PHP would.
 pub fn encode(value: &Value) -> String {
     let mut output = String::new();
     write_value(&mut output, value);

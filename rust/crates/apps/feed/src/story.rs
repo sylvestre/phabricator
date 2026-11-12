@@ -19,14 +19,18 @@ use thiserror::Error;
 pub const TRANSACTION_STORY: &str = "PhabricatorApplicationTransactionFeedStory";
 
 #[derive(Debug, Error)]
+/// Why stories could not be loaded.
 pub enum StoryError {
     /// The answer depends on something not ported; PHP must answer.
     #[error("{0}")]
     Unsupported(&'static str),
+    /// Reading the database failed.
     #[error(transparent)]
     Database(#[from] DbError),
+    /// Loading the objects to check failed.
     #[error(transparent)]
     Loader(#[from] LoaderError),
+    /// Applying the policies failed.
     #[error(transparent)]
     Policy(#[from] PolicyError),
 }
@@ -43,11 +47,17 @@ impl From<StoryError> for MethodError {
 /// A `feed_storydata` row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoryRow {
+    /// The story's id.
     pub id: u64,
+    /// The story's PHID.
     pub phid: String,
+    /// The epoch in the high 32 bits, a counter in the low ones.
     pub chronological_key: u64,
+    /// The `PhabricatorFeedStory` subclass.
     pub story_type: String,
+    /// The decoded `storyData`.
     pub story_data: Value,
+    /// The author's PHID.
     pub author_phid: String,
 }
 
@@ -75,6 +85,7 @@ pub struct Page<'a> {
     pub ids: Option<&'a [u64]>,
     /// Only rows past this id, in `order`.
     pub after: Option<u64>,
+    /// The order of the rows and of `after`.
     pub order: Order,
     /// `None` loads every row.
     pub limit: Option<usize>,

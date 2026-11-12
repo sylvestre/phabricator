@@ -7,11 +7,14 @@ use serde_json::{Map, Value};
 /// An ordered PHP array built from `a[b][]=c` style keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FormValue {
+    /// A plain value.
     Str(String),
+    /// A nested array.
     Array(IndexMap<String, Self>),
 }
 
 impl FormValue {
+    /// The string, or `None` for an array.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Self::Str(text) => Some(text),
@@ -125,6 +128,8 @@ fn insert_nested(entries: &mut FormData, pieces: &[&str], value: String) {
     }
 }
 
+/// Parses a query string or form-encoded body. Later values of a key
+/// replace earlier ones.
 pub fn parse_query_string(query: &str) -> FormData {
     let mut data = FormData::new();
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {

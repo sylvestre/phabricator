@@ -7,16 +7,19 @@ use phab_core::Phid;
 pub struct Viewer {
     /// `None` for logged-out viewers.
     pub phid: Option<Phid>,
+    /// Whether the user is an administrator.
     pub is_admin: bool,
     /// `PhabricatorUser::getOmnipotentUser()`, used by internal code paths.
     pub is_omnipotent: bool,
 }
 
 impl Viewer {
+    /// A logged-out viewer.
     pub fn anonymous() -> Self {
         Self::default()
     }
 
+    /// A logged-in user.
     pub fn user(phid: Phid, is_admin: bool) -> Self {
         Self {
             phid: Some(phid),
@@ -25,6 +28,7 @@ impl Viewer {
         }
     }
 
+    /// The omnipotent viewer, which passes every policy check.
     pub fn omnipotent() -> Self {
         Self {
             phid: None,
@@ -33,6 +37,7 @@ impl Viewer {
         }
     }
 
+    /// Whether the viewer has a PHID.
     pub fn is_logged_in(&self) -> bool {
         self.phid.is_some()
     }

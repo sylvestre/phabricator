@@ -1,3 +1,5 @@
+//! API token and session authentication against a test database.
+
 use phab_auth::session::SessionType;
 use phab_auth::token::InvalidAuth;
 use phab_auth::{Outcome, Writes, session, token};

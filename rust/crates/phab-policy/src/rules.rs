@@ -10,17 +10,26 @@ use crate::{ObjectKind, PolicyFacts, PolicySubject, Viewer};
 /// objects they can't apply to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rule {
+    /// `PhabricatorUsersPolicyRule`.
     Users,
+    /// `PhabricatorAdministratorsPolicyRule`.
     Administrators,
+    /// `PhabricatorProjectsPolicyRule`.
     ProjectsAny,
+    /// `PhabricatorProjectsAllPolicyRule`.
     ProjectsAll,
+    /// `PhabricatorLunarPhasePolicyRule`.
     LunarPhase,
+    /// `PhabricatorProjectMembersPolicyRule`.
     ProjectMembers,
+    /// `PhabricatorSubscriptionsSubscribersPolicyRule`.
     Subscribers,
+    /// `PhabricatorDifferentialReviewersPolicyRule`.
     DifferentialReviewers,
 }
 
 impl Rule {
+    /// The rule for a PHP rule class name; `None` for unknown classes.
     pub fn from_class(class: &str) -> Option<Self> {
         let rule = match class {
             "PhabricatorUsersPolicyRule" => Self::Users,

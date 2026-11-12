@@ -9,9 +9,12 @@ use phab_db::Database;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+/// Why the service could not start.
 pub enum StartupError {
+    /// The configuration could not be read.
     #[error(transparent)]
     Config(#[from] phab_core::config::ConfigError),
+    /// The database could not be reached.
     #[error(transparent)]
     Database(#[from] phab_db::DbError),
 }
@@ -39,6 +42,7 @@ pub fn hostname() -> String {
         .into_owned()
 }
 
+/// Where `conf/local` is in the Phabricator image.
 pub fn default_config_dir() -> PathBuf {
     PathBuf::from("/app/phabricator/conf/local")
 }

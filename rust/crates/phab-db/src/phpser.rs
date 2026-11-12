@@ -9,9 +9,12 @@ use std::fmt::Write as _;
 
 use thiserror::Error;
 
+/// A PHP array key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Key {
+    /// An integer key.
     Int(i64),
+    /// A string key, as raw bytes.
     Str(Vec<u8>),
 }
 
@@ -38,17 +41,25 @@ impl From<i64> for Key {
     }
 }
 
+/// A PHP value, without objects and references.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    /// `null`.
     Null,
+    /// A boolean.
     Bool(bool),
+    /// An integer.
     Int(i64),
+    /// A float.
     Float(f64),
+    /// A string, as raw bytes.
     Str(Vec<u8>),
+    /// An array, with its entries in order.
     Array(Vec<(Key, Self)>),
 }
 
 impl Value {
+    /// A PHP string holding the bytes of `value`.
     pub fn str(value: &str) -> Self {
         Self::Str(value.as_bytes().to_vec())
     }
@@ -64,6 +75,7 @@ impl Value {
         )
     }
 
+    /// The bytes of a string value.
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match self {
             Self::Str(bytes) => Some(bytes),
@@ -71,6 +83,7 @@ impl Value {
         }
     }
 
+    /// The entry at `key` of an array value.
     pub fn get(&self, key: &Key) -> Option<&Self> {
         match self {
             Self::Array(entries) => entries
@@ -88,18 +101,30 @@ impl From<Option<&str>> for Value {
     }
 }
 
+/// Errors from [`unserialize`]. Offsets are in bytes from the start of the input.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum UnserializeError {
+    /// The input ends inside a value.
     #[error("unexpected end of input at offset {0}")]
     UnexpectedEnd(usize),
+    /// A byte does not fit the format.
     #[error("unexpected byte at offset {0}")]
     UnexpectedByte(usize),
+    /// A boolean, integer, float or length does not parse.
     #[error("invalid number at offset {0}")]
     InvalidNumber(usize),
+    /// Any other type, such as an object or a reference.
     #[error("unsupported type '{kind}' at offset {offset}")]
-    Unsupported { kind: char, offset: usize },
+    Unsupported {
+        /// The type letter, e.g. `O`.
+        kind: char,
+        /// Where the value starts.
+        offset: usize,
+    },
+    /// An array key is neither an integer nor a string.
     #[error("array keys must be integers or strings (offset {0})")]
     InvalidKey(usize),
+    /// Arrays nest too deeply.
     #[error("nesting deeper than {MAX_DEPTH} levels")]
     TooDeep,
 }
@@ -119,6 +144,7 @@ fn canonical_integer(bytes: &[u8]) -> Option<i64> {
     std::str::from_utf8(bytes).ok()?.parse().ok()
 }
 
+/// Equivalent of `serialize()`.
 pub fn serialize(value: &Value) -> Vec<u8> {
     let mut output = Vec::new();
     write_value(&mut output, value);

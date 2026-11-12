@@ -43,13 +43,17 @@ const FORWARDED_RESPONSE_HEADERS: &[&str] = &[
 ];
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+/// The outcomes of a method's shadow runs.
 pub struct Counts {
+    /// Rust gave PHP's answer.
     pub matched: u64,
+    /// Rust's answer differed.
     pub differed: u64,
     /// Rust would have handed the call to PHP.
     pub skipped: u64,
 }
 
+/// The shadowed methods and where PHP is.
 pub struct Shadow {
     methods: HashSet<String>,
     php_url: String,
@@ -58,6 +62,7 @@ pub struct Shadow {
 }
 
 impl Shadow {
+    /// Shadows `methods`, forwarding them to the PHP server at `php_url`.
     pub fn new(methods: impl IntoIterator<Item = String>, php_url: impl Into<String>) -> Self {
         Self {
             methods: methods.into_iter().collect(),
@@ -80,10 +85,12 @@ impl Shadow {
         (!methods.is_empty()).then(|| Self::new(methods, php_url))
     }
 
+    /// Whether `method` is shadowed.
     pub fn shadows(&self, method: &str) -> bool {
         self.methods.contains(method)
     }
 
+    /// The counts of each shadowed method, for `/status`.
     pub fn counts(&self) -> Value {
         let counts = self
             .counts
@@ -117,11 +124,17 @@ impl Shadow {
     }
 }
 
+/// What is sent on to PHP.
 pub struct ForwardedRequest {
+    /// The HTTP method.
     pub http_method: HttpMethod,
+    /// The Conduit method.
     pub method: String,
+    /// The query string.
     pub query: Option<String>,
+    /// The request headers.
     pub headers: HeaderMap,
+    /// The request body.
     pub body: Bytes,
 }
 

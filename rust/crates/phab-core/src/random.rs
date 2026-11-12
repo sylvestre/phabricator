@@ -1,3 +1,5 @@
+//! Random strings, as `Filesystem::readRandomCharacters()` produces for PHIDs.
+
 use rand::RngCore;
 
 const CHARACTER_MAP: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";

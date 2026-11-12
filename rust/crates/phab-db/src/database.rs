@@ -8,6 +8,7 @@ use sqlx::query::Query;
 
 use crate::{DbError, rows};
 
+/// A pool of connections to the `MySQL` server, with the storage namespace.
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: MySqlPool,
@@ -69,6 +70,7 @@ impl Database {
         Ok(Self { pool, namespace })
     }
 
+    /// Wraps an existing pool; `namespace` is the `storage.default-namespace`.
     pub fn from_pool(pool: MySqlPool, namespace: impl Into<String>) -> Self {
         Self {
             pool,
@@ -76,10 +78,12 @@ impl Database {
         }
     }
 
+    /// The underlying connection pool.
     pub fn pool(&self) -> &MySqlPool {
         &self.pool
     }
 
+    /// The database name prefix, `storage.default-namespace`.
     pub fn namespace(&self) -> &str {
         &self.namespace
     }

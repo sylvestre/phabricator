@@ -5,7 +5,9 @@
 /// authenticating; shadow traffic and read-only installs must not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Writes {
+    /// Authentication writes like PHP does.
     Allowed,
+    /// Writes are left out; the result is otherwise the same.
     Skipped,
 }
 
@@ -13,6 +15,7 @@ pub enum Writes {
 /// differently.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome<T> {
+    /// Handled as PHP would handle it.
     Done(T),
     /// PHP must handle this request; the string says why.
     Unsupported(&'static str),

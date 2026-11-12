@@ -8,16 +8,20 @@ use crate::form::{self, FormData, FormValue};
 /// The parameters of a call, and the `__conduit__` metadata.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Params {
+    /// The `__conduit__` metadata (`token`, `auth.type`...).
     pub metadata: Map<String, Value>,
+    /// The method parameters.
     pub params: Map<String, Value>,
     /// False when parameters came as plain form fields, which are strings.
     pub strictly_typed: bool,
 }
 
+/// Why the parameters of a call could not be decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
     /// An exception PHP turns into `ERR-CONDUIT-CORE`.
     Core(String),
+    /// PHP must decode these parameters; the string says why.
     Unsupported(&'static str),
 }
 
@@ -82,6 +86,7 @@ fn split_metadata(mut params: Map<String, Value>) -> Params {
     }
 }
 
+/// Decodes the parameters of a call to `method` (named in error messages).
 pub fn decode(request: &HttpRequest, data: &FormData, method: &str) -> Result<Params, DecodeError> {
     if request.content_type.as_deref() == Some("application/json") {
         return Err(DecodeError::Core(

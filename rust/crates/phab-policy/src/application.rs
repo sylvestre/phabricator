@@ -52,6 +52,8 @@ pub fn application_for_phid_type(phid_type: PhidType) -> Option<&'static str> {
     Some(class)
 }
 
+/// `PhabricatorApplication::canUninstall()`: false for the applications
+/// which are always installed and visible.
 pub fn can_uninstall(class: &str) -> bool {
     !PERMANENT_APPLICATIONS.contains(&class)
 }
@@ -66,6 +68,8 @@ pub struct ApplicationPolicies {
 }
 
 impl ApplicationPolicies {
+    /// Reads `phabricator.uninstalled-applications`, `policy.locked`,
+    /// `phabricator.application-settings` and `phabricator.show-prototypes`.
     pub fn from_config(config: &Config) -> Self {
         let uninstalled = config
             .object("phabricator.uninstalled-applications")

@@ -11,25 +11,43 @@ use phab_core::{Phid, PhidType};
 use crate::{Database, DbError, rows};
 
 // The `EDGECONST` of PHP's edge types.
+/// `DifferentialRevisionDependsOnRevisionEdgeType`.
 pub const REVISION_DEPENDS_ON_REVISION: i64 = 5;
+/// `DifferentialRevisionDependedOnByRevisionEdgeType`.
 pub const REVISION_DEPENDED_ON_BY_REVISION: i64 = 6;
+/// `PhabricatorProjectProjectHasMemberEdgeType`.
 pub const PROJECT_HAS_MEMBER: i64 = 13;
+/// `PhabricatorProjectMemberOfProjectEdgeType`.
 pub const MEMBER_OF_PROJECT: i64 = 14;
+/// `PhabricatorObjectHasSubscriberEdgeType`.
 pub const OBJECT_HAS_SUBSCRIBER: i64 = 21;
+/// `PhabricatorSubscribedToObjectEdgeType`.
 pub const SUBSCRIBED_TO_OBJECT: i64 = 22;
+/// `DifferentialRevisionHasCommitEdgeType`.
 pub const REVISION_HAS_COMMIT: i64 = 31;
+/// `DiffusionCommitHasRevisionEdgeType`.
 pub const COMMIT_HAS_REVISION: i64 = 32;
+/// `PhabricatorProjectObjectHasProjectEdgeType`.
 pub const OBJECT_HAS_PROJECT: i64 = 41;
+/// `PhabricatorObjectMentionedByObjectEdgeType`.
 pub const OBJECT_MENTIONED_BY_OBJECT: i64 = 51;
+/// `PhabricatorObjectMentionsObjectEdgeType`.
 pub const OBJECT_MENTIONS_OBJECT: i64 = 52;
+/// `PhabricatorProjectMaterializedMemberEdgeType`.
 pub const PROJECT_MATERIALIZED_MEMBER: i64 = 60;
+/// `PhabricatorMutedEdgeType`.
 pub const MUTED: i64 = 67;
+/// `PhabricatorMutedByEdgeType`.
 pub const MUTED_BY: i64 = 68;
 
+/// One row of an `edge` table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Edge {
+    /// Source object.
     pub src: Phid,
+    /// The `EDGECONST` of the edge type.
     pub edge_type: i64,
+    /// Destination object.
     pub dst: Phid,
 }
 

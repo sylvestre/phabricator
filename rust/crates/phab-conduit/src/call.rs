@@ -23,7 +23,9 @@ use phab_policy::{filter, loader};
 
 /// Result of `dispatch`, with what the call log needs.
 pub struct Dispatched {
+    /// The answer to send, or a fallback to PHP.
     pub response: Response,
+    /// The authenticated user, if the call got that far.
     pub caller: Option<User>,
 }
 
@@ -52,6 +54,9 @@ fn internal(context: &str, error: impl std::fmt::Display) -> Failure {
     Failure::Fallback("internal error")
 }
 
+/// Answers a call to `method_name`, as
+/// `PhabricatorConduitAPIController::handleRequest()` does, and logs it in
+/// `conduit_methodcalllog` when writes are allowed.
 pub async fn dispatch(
     context: &Context,
     registry: &Registry,

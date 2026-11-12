@@ -15,13 +15,17 @@ use crate::{AuthError, Outcome, User, Writes};
 pub const SESSION_COOKIE: &str = "phsid";
 const SESSION_DIGEST_KEY: &str = "session.digest";
 
+/// The `type` of a session (`PhabricatorAuthSession::TYPE_*`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionType {
+    /// A browser session, from the [`SESSION_COOKIE`] cookie.
     Web,
+    /// A session opened by `conduit.connect`.
     Conduit,
 }
 
 impl SessionType {
+    /// The value stored in the `type` column.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Web => "web",
@@ -47,11 +51,17 @@ impl SessionType {
     }
 }
 
+/// The kind of a session token, from its prefix
+/// (`PhabricatorAuthSessionEngine::KIND_*`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionKind {
+    /// A logged-in user: no prefix, or `U/`.
     User,
+    /// A logged-out user, with no identity (`A/`).
     Anonymous,
+    /// A user without a full account (`X/`); PHP does not issue these.
     External,
+    /// Any other prefix.
     Unknown,
 }
 
@@ -65,14 +75,22 @@ pub fn session_kind(token: &str) -> SessionKind {
     }
 }
 
+/// A row of `phabricator_user.phabricator_session`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
+    /// The row ID.
     pub id: i64,
+    /// The session PHID.
     pub phid: Phid,
+    /// The session type, which the lookup matched on.
     pub session_type: SessionType,
+    /// When the session started (epoch seconds).
     pub session_start: i64,
+    /// When the session expires (epoch seconds).
     pub session_expires: i64,
+    /// Until when the session is in high security mode (epoch seconds).
     pub high_security_until: Option<i64>,
+    /// Whether multi-factor authentication is still pending.
     pub is_partial: bool,
 }
 
@@ -97,7 +115,9 @@ async fn named_hmac_key(database: &Database, name: &str) -> Result<Option<Vec<u8
 /// A session and the user it belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionUser {
+    /// The user owning the session.
     pub user: User,
+    /// The session itself.
     pub session: Session,
 }
 

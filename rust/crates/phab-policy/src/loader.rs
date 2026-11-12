@@ -14,8 +14,10 @@ use thiserror::Error;
 
 const MAX_RESOLVE_ROUNDS: usize = 32;
 
+/// A failure while loading [`PolicyFacts`].
 #[derive(Debug, Error)]
 pub enum LoaderError {
+    /// A query failed.
     #[error(transparent)]
     Database(#[from] DbError),
 }
@@ -29,6 +31,8 @@ impl From<phab_db::sqlx::Error> for LoaderError {
 /// Loads the objects extended policies point to (for example the repository
 /// of a revision), as seen by the omnipotent viewer.
 pub trait SubjectResolver {
+    /// Loads the subjects for `phids`. PHIDs that are missing from the result
+    /// make the extended policies naming them fail.
     fn resolve(
         &self,
         phids: &[Phid],
@@ -44,6 +48,14 @@ impl SubjectResolver for NoExtendedObjects {
     }
 }
 
+/// Loads what [`crate::filter`] needs to decide on `subjects` for `viewer`,
+/// including the objects reached through extended policies, spaces and
+/// application policies. Returns early, with only configuration, for the
+/// omnipotent viewer, and without membership data for a logged-out one.
+///
+/// # Errors
+///
+/// [`LoaderError`] when a query or the `resolver` fails.
 pub async fn load_facts(
     database: &Database,
     config: &Config,

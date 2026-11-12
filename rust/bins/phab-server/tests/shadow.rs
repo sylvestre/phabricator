@@ -1,3 +1,5 @@
+//! Shadow mode against a fake PHP server.
+
 use std::sync::Arc;
 use std::time::Duration;
 

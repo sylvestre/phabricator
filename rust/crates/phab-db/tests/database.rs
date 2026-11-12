@@ -1,3 +1,5 @@
+//! Integration tests of `phab-db` against a throwaway `MySQL` database.
+
 use phab_core::Phid;
 use phab_db::edges;
 use phab_db::schema::CONTRACT;

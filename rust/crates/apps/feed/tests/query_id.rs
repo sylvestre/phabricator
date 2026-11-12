@@ -1,3 +1,5 @@
+//! `feed.query_id` against a test database.
+
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;

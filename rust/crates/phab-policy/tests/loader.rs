@@ -1,3 +1,5 @@
+//! Loading [`PolicyFacts`](phab_policy::PolicyFacts) from a test database.
+
 use std::collections::HashMap;
 
 use phab_core::{Config, Phid};

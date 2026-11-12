@@ -5,7 +5,9 @@ use phab_db::Database;
 
 /// What a method needs from the running service.
 pub struct Context {
+    /// The database connections.
     pub database: Database,
+    /// The Phabricator configuration.
     pub config: Config,
     /// `php_uname('n')`.
     pub hostname: String,
@@ -24,6 +26,7 @@ pub enum Mode {
 /// The parts of an HTTP request Conduit looks at.
 #[derive(Debug, Clone, Default)]
 pub struct HttpRequest {
+    /// The `Content-Type` header, if any.
     pub content_type: Option<String>,
     /// Raw query string, without the leading `?`.
     pub query: String,

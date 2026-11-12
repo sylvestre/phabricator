@@ -5,12 +5,17 @@
 //! built from `resources/sql/quickstart.sql`, so a PHP migration which
 //! renames or drops one of them fails CI instead of production.
 
+/// Columns of one table that the Rust code relies on.
 pub struct TableContract {
+    /// Database name without the namespace prefix, e.g. `user`.
     pub database: &'static str,
+    /// Table name.
     pub table: &'static str,
+    /// Columns that must exist.
     pub columns: &'static [&'static str],
 }
 
+/// Every table and column the Rust code reads or writes.
 pub const CONTRACT: &[TableContract] = &[
     TableContract {
         database: "config",

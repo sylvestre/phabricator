@@ -1,3 +1,5 @@
+//! PHIDs, the string identifiers of every Phabricator object.
+
 use std::borrow::Borrow;
 use std::fmt;
 
@@ -10,27 +12,45 @@ use crate::random;
 pub struct PhidType([u8; 4]);
 
 impl PhidType {
+    /// `PhabricatorPHIDConstants::PHID_TYPE_UNKNOWN`, returned for malformed PHIDs.
     pub const UNKNOWN: Self = Self(*b"????");
+    /// `PhabricatorPHIDConstants::PHID_TYPE_VOID`.
     pub const VOID: Self = Self(*b"VOID");
+    /// `PhabricatorPHIDConstants::PHID_TYPE_STRY`, feed stories.
     pub const STORY: Self = Self(*b"STRY");
+    /// `PhabricatorApplicationApplicationPHIDType`.
     pub const APPLICATION: Self = Self(*b"APPS");
+    /// `PhabricatorPeopleUserPHIDType`.
     pub const USER: Self = Self(*b"USER");
+    /// `PhabricatorProjectProjectPHIDType`.
     pub const PROJECT: Self = Self(*b"PROJ");
+    /// `PhabricatorPolicyPHIDTypePolicy`.
     pub const POLICY: Self = Self(*b"PLCY");
+    /// `PhabricatorSpacesNamespacePHIDType`.
     pub const SPACE: Self = Self(*b"SPCE");
+    /// `DifferentialRevisionPHIDType`.
     pub const REVISION: Self = Self(*b"DREV");
+    /// `DifferentialDiffPHIDType`.
     pub const DIFF: Self = Self(*b"DIFF");
+    /// `PhabricatorRepositoryRepositoryPHIDType`.
     pub const REPOSITORY: Self = Self(*b"REPO");
+    /// `PhabricatorRepositoryCommitPHIDType`.
     pub const COMMIT: Self = Self(*b"CMIT");
+    /// `PhabricatorFileFilePHIDType`.
     pub const FILE: Self = Self(*b"FILE");
+    /// `PhabricatorApplicationTransactionTransactionPHIDType`.
     pub const TRANSACTION: Self = Self(*b"XACT");
+    /// `PhabricatorPHIDConstants::PHID_TYPE_XCMT`, transaction comments.
     pub const TRANSACTION_COMMENT: Self = Self(*b"XCMT");
+    /// `PhabricatorAuthSessionPHIDType`.
     pub const SESSION: Self = Self(*b"SSSN");
 
+    /// Wraps a four-byte type code.
     pub const fn new(code: [u8; 4]) -> Self {
         Self(code)
     }
 
+    /// The type code as a string, or `????` if it is not valid UTF-8.
     pub fn as_str(&self) -> &str {
         // Built either from a constant or from bytes of a `str`, so this only
         // fails if a slice boundary splits a multibyte character.
@@ -81,6 +101,7 @@ pub fn phid_subtype_of(value: &str) -> Option<&str> {
 pub struct Phid(String);
 
 impl Phid {
+    /// Wraps a PHID string as is, without validating it.
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
@@ -99,18 +120,22 @@ impl Phid {
         }
     }
 
+    /// The PHID as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Unwraps the PHID string.
     pub fn into_string(self) -> String {
         self.0
     }
 
+    /// The type of this PHID; see [`phid_type_of`].
     pub fn phid_type(&self) -> PhidType {
         phid_type_of(&self.0)
     }
 
+    /// The subtype of this PHID; see [`phid_subtype_of`].
     pub fn subtype(&self) -> Option<&str> {
         phid_subtype_of(&self.0)
     }

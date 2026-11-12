@@ -18,6 +18,7 @@ fn column_error(column: &str) -> DbError {
     }
 }
 
+/// A text or binary column, decoded as lossy UTF-8.
 pub fn opt_text(row: &MySqlRow, column: &str) -> Result<Option<String>, DbError> {
     if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(column) {
         return Ok(value.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()));
@@ -26,10 +27,12 @@ pub fn opt_text(row: &MySqlRow, column: &str) -> Result<Option<String>, DbError>
         .map_err(|_| column_error(column))
 }
 
+/// A non-null text or binary column; see [`opt_text`].
 pub fn text(row: &MySqlRow, column: &str) -> Result<String, DbError> {
     opt_text(row, column)?.ok_or_else(|| column_error(column))
 }
 
+/// An integer or boolean column of any width.
 pub fn opt_int(row: &MySqlRow, column: &str) -> Result<Option<i64>, DbError> {
     if let Ok(value) = row.try_get::<Option<i64>, _>(column) {
         return Ok(value);
@@ -57,6 +60,7 @@ pub fn opt_int(row: &MySqlRow, column: &str) -> Result<Option<i64>, DbError> {
     Err(column_error(column))
 }
 
+/// A non-null integer column; see [`opt_int`].
 pub fn int(row: &MySqlRow, column: &str) -> Result<i64, DbError> {
     opt_int(row, column)?.ok_or_else(|| column_error(column))
 }

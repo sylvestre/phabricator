@@ -10,7 +10,9 @@ use phab_core::{Config, hash};
 use phab_db::phpser::Value;
 use phab_db::{Database, DbError, phpser, rows};
 
+/// `PhabricatorUserProfileImageCacheType::KEY_URI`.
 pub const CACHE_KEY: &str = "user.profile.image.uri.v1";
+/// `PhabricatorUserProfileImageCacheType::CACHETYPE`.
 pub const CACHE_TYPE: &str = "user.profile";
 
 /// `PhabricatorUserProfileImageCacheType::getCacheVersion()`.

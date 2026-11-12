@@ -14,6 +14,7 @@ const DEFAULT_LIMIT: usize = 100;
 const MAX_RAW_ROWS: usize = 1024;
 const ERR_UNKNOWN_TYPE: &str = "ERR-UNKNOWN-TYPE";
 
+/// `feed.query_id`.
 pub struct FeedQueryId;
 
 /// The page size, as `AphrontCursorPagerView::setPageSize()` stores it.

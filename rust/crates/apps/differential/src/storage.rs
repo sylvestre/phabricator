@@ -9,22 +9,33 @@ use phab_policy::loader::{LoaderError, SubjectResolver};
 use phab_policy::{AutomaticCapability, Capability, ExtendedPolicy, ObjectKind, PolicySubject};
 use serde_json::Value;
 
+/// `DiffusionPushCapability`: pushing to a repository.
 pub const PUSH: Capability = Capability("diffusion.push");
 const RESIGNED: &str = "resigned";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A `differential_reviewer` row.
 pub struct Reviewer {
+    /// The reviewer's PHID.
     pub phid: Phid,
+    /// `reviewerStatus`, e.g. `accepted` or `resigned`.
     pub status: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A `differential_revision` row with its reviewers.
 pub struct Revision {
+    /// The revision's PHID.
     pub phid: Phid,
+    /// The author's PHID.
     pub author_phid: Option<Phid>,
+    /// The view policy.
     pub view_policy: String,
+    /// The edit policy.
     pub edit_policy: String,
+    /// The repository's PHID, if any.
     pub repository_phid: Option<Phid>,
+    /// The reviewers, resigned ones included.
     pub reviewers: Vec<Reviewer>,
 }
 
@@ -86,6 +97,8 @@ async fn select_by_phid(
     )
 }
 
+/// The revisions with these PHIDs, in no particular order; unknown
+/// PHIDs are skipped.
 pub async fn load_revisions(database: &Database, phids: &[Phid]) -> Result<Vec<Revision>, DbError> {
     let rows = select_by_phid(
         database,
@@ -130,6 +143,7 @@ pub async fn load_revisions(database: &Database, phids: &[Phid]) -> Result<Vec<R
 
 /// Loads repositories for the extended policy of revisions.
 pub struct Repositories<'a> {
+    /// The database to read from.
     pub database: &'a Database,
 }
 
@@ -164,16 +178,27 @@ impl SubjectResolver for Repositories<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A `differential_transaction` row.
 pub struct Transaction {
+    /// The transaction's PHID.
     pub phid: Phid,
+    /// The author's PHID.
     pub author_phid: Phid,
+    /// The PHID of the revision it applies to.
     pub object_phid: Phid,
+    /// The view policy.
     pub view_policy: String,
+    /// The edit policy.
     pub edit_policy: String,
+    /// The PHID of its comment, if any.
     pub comment_phid: Option<Phid>,
+    /// `transactionType`, e.g. `core:subscribers`.
     pub transaction_type: String,
+    /// The decoded `oldValue`.
     pub old_value: Value,
+    /// The decoded `newValue`.
     pub new_value: Value,
+    /// The decoded `metadata`.
     pub metadata: Value,
 }
 
@@ -201,11 +226,13 @@ impl Transaction {
         )
     }
 
+    /// `PhabricatorApplicationTransaction::getMetadataValue()`.
     pub fn metadata_value(&self, key: &str) -> Option<&Value> {
         self.metadata.get(key)
     }
 }
 
+/// The transactions with these PHIDs, in no particular order.
 pub async fn load_transactions(
     database: &Database,
     phids: &[Phid],
@@ -238,15 +265,22 @@ pub async fn load_transactions(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A `differential_transaction_comment` row.
 pub struct Comment {
+    /// The comment's PHID.
     pub phid: Phid,
+    /// The author's PHID.
     pub author_phid: Phid,
+    /// The view policy.
     pub view_policy: String,
+    /// The edit policy.
     pub edit_policy: String,
+    /// The text, empty when `NULL`.
     pub content: String,
 }
 
 impl Comment {
+    /// `PhabricatorApplicationTransactionComment` as a policy object.
     pub fn subject(&self) -> PolicySubject {
         authored_subject(
             &self.phid,
@@ -264,6 +298,7 @@ impl Comment {
     }
 }
 
+/// The comments with these PHIDs, in no particular order.
 pub async fn load_comments(database: &Database, phids: &[Phid]) -> Result<Vec<Comment>, DbError> {
     let rows = select_by_phid(
         database,

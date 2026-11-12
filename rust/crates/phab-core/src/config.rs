@@ -17,19 +17,35 @@ use thiserror::Error;
 
 use crate::php;
 
+/// Errors from loading or reading the configuration.
 #[derive(Debug, Error)]
 pub enum ConfigError {
+    /// The file exists but could not be read.
     #[error("configuration file {path} exists but could not be read")]
-    Read { path: String, source: io::Error },
+    Read {
+        /// Path of the file.
+        path: String,
+        /// The I/O error.
+        source: io::Error,
+    },
+    /// The file is not valid JSON.
     #[error("configuration file {path} is not valid JSON")]
     Parse {
+        /// Path of the file.
         path: String,
+        /// The JSON error.
         source: serde_json::Error,
     },
+    /// The file holds JSON other than an object.
     #[error("configuration file {path} must contain a JSON object")]
-    NotAnObject { path: String },
+    NotAnObject {
+        /// Path of the file.
+        path: String,
+    },
+    /// `phabricator.base-uri` is not set.
     #[error("define 'phabricator.base-uri' in your configuration")]
     MissingBaseUri,
+    /// `security.hmac-key` is not set.
     #[error("set a 'security.hmac-key' in your configuration")]
     MissingHmacKey,
 }
@@ -40,6 +56,7 @@ struct Layer {
     values: Map<String, Value>,
 }
 
+/// The stack of configuration sources, as `PhabricatorEnv` keeps it.
 #[derive(Debug, Clone)]
 pub struct Config {
     layers: Vec<Layer>,
@@ -89,6 +106,7 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Push a source on top of the stack; `name` is reported by [`Config::source_of`].
     pub fn push_layer(&mut self, name: impl Into<String>, values: Map<String, Value>) {
         self.layers.push(Layer {
             name: name.into(),
@@ -143,6 +161,7 @@ impl Config {
             .map(|layer| layer.name.as_str())
     }
 
+    /// The value of `key` if it is a string.
     pub fn string(&self, key: &str) -> Option<&str> {
         self.value(key).and_then(Value::as_str)
     }
@@ -152,22 +171,27 @@ impl Config {
         self.string(key).filter(|text| !text.is_empty())
     }
 
+    /// Whether the value of `key` is truthy in PHP.
     pub fn truthy(&self, key: &str) -> bool {
         self.value(key).is_some_and(php::is_truthy)
     }
 
+    /// The value of `key` if it is a JSON object.
     pub fn object(&self, key: &str) -> Option<&Map<String, Value>> {
         self.value(key).and_then(Value::as_object)
     }
 
+    /// `policy.allow-public`.
     pub fn allow_public(&self) -> bool {
         self.truthy("policy.allow-public")
     }
 
+    /// `cluster.read-only`.
     pub fn is_read_only(&self) -> bool {
         self.truthy("cluster.read-only")
     }
 
+    /// `security.hmac-key`, which must be set.
     pub fn hmac_key(&self) -> Result<&str, ConfigError> {
         self.value("security.hmac-key")
             .filter(|value| php::is_truthy(value))

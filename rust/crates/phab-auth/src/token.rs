@@ -6,6 +6,7 @@ use phab_core::{Config, Phid, PhidType};
 use crate::{AuthError, Outcome, User, Writes, user};
 use phab_db::{Database, rows};
 
+/// The prefixes a Conduit API token may start with.
 pub const TOKEN_TYPES: &[&str] = &["api", "cli", "clr"];
 
 /// An `ERR-INVALID-AUTH` answer, with PHP's message.

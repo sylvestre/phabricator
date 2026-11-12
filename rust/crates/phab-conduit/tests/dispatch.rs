@@ -1,3 +1,5 @@
+//! Conduit calls dispatched with test methods against a test database.
+
 use phab_conduit::{
     ApiRequest, Application, Context, Envelope, HttpRequest, Method, MethodError, MethodFuture,
     Mode, Registry, Response, call,

@@ -6,6 +6,7 @@ use phab_db::sqlx::mysql::MySqlRow;
 use phab_db::{Database, DbError, rows};
 use phab_policy::Viewer;
 
+/// The `user` columns [`User::from_row()`] reads.
 pub const USER_COLUMNS: &[&str] = &[
     "id",
     "phid",
@@ -20,18 +21,30 @@ pub const USER_COLUMNS: &[&str] = &[
     "isMailingList",
 ];
 
+/// A user account, as much of `PhabricatorUser` as authentication needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
+    /// The row ID.
     pub id: i64,
+    /// The user PHID.
     pub phid: Phid,
+    /// The username.
     pub user_name: String,
+    /// The real name, possibly empty.
     pub real_name: String,
+    /// The profile picture file, if one was set.
     pub profile_image_phid: Option<Phid>,
+    /// Whether the account is a bot.
     pub is_system_agent: bool,
+    /// Whether the account is disabled.
     pub is_disabled: bool,
+    /// Whether the account is an administrator.
     pub is_admin: bool,
+    /// Whether the primary email address is verified.
     pub is_email_verified: bool,
+    /// Whether an administrator approved the account.
     pub is_approved: bool,
+    /// Whether the account is a mailing list.
     pub is_mailing_list: bool,
 }
 
@@ -53,6 +66,7 @@ impl User {
         })
     }
 
+    /// The policy viewer acting as this user.
     pub fn viewer(&self) -> Viewer {
         Viewer::user(self.phid.clone(), self.is_admin)
     }
@@ -79,6 +93,7 @@ impl User {
     }
 }
 
+/// [`USER_COLUMNS`] prefixed with `alias.`, for a `SELECT` list.
 pub fn select_columns(alias: &str) -> String {
     USER_COLUMNS
         .iter()
@@ -87,6 +102,7 @@ pub fn select_columns(alias: &str) -> String {
         .join(", ")
 }
 
+/// Loads the users with these PHIDs; unknown PHIDs are skipped.
 pub async fn load_users_by_phid(database: &Database, phids: &[Phid]) -> Result<Vec<User>, DbError> {
     if phids.is_empty() {
         return Ok(Vec::new());

@@ -16,15 +16,28 @@ use thiserror::Error;
 /// are rejected.
 const MAX_EXTENDED_DEPTH: usize = 32;
 
+/// A policy check that PHP rejects with an exception.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PolicyError {
+    /// A capability was tested on a subject whose `capabilities` lack it.
     #[error(
         "testing for capability '{capability}' on an object ({object}) which does not support it"
     )]
-    UnsupportedCapability { capability: String, object: String },
+    UnsupportedCapability {
+        /// The capability key.
+        capability: String,
+        /// The subject's PHID, or `<no phid>`.
+        object: String,
+    },
 }
 
-/// Which of `subjects` the viewer has every one of `capabilities` on.
+/// Which of `subjects` the viewer has every one of `capabilities` on, in
+/// order (`PhabricatorPolicyFilter::apply()`).
+///
+/// # Errors
+///
+/// [`PolicyError::UnsupportedCapability`] when a subject that passes its
+/// application check lacks one of `capabilities`.
 pub fn filter(
     viewer: &Viewer,
     subjects: &[&PolicySubject],
@@ -35,6 +48,10 @@ pub fn filter(
 }
 
 /// `PhabricatorPolicyFilter::hasCapability()`.
+///
+/// # Errors
+///
+/// As [`filter`].
 pub fn has_capability(
     viewer: &Viewer,
     subject: &PolicySubject,
@@ -45,6 +62,10 @@ pub fn has_capability(
 }
 
 /// `PhabricatorApplication::isClassInstalledForViewer()`.
+///
+/// # Errors
+///
+/// As [`filter`].
 pub fn can_see_application(
     viewer: &Viewer,
     class: &str,

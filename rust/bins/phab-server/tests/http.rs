@@ -1,3 +1,5 @@
+//! The HTTP routes of the service.
+
 use std::sync::Arc;
 
 use axum::body::Body;

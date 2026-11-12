@@ -13,13 +13,18 @@ impl fmt::Display for Capability {
 }
 
 impl Capability {
+    /// The capability key.
     pub fn as_str(self) -> &'static str {
         self.0
     }
 
+    /// `PhabricatorPolicyCapability::CAN_VIEW`.
     pub const VIEW: Self = Self("view");
+    /// `PhabricatorPolicyCapability::CAN_EDIT`.
     pub const EDIT: Self = Self("edit");
+    /// `PhabricatorPolicyCapability::CAN_JOIN`.
     pub const JOIN: Self = Self("join");
+    /// `PhabricatorPolicyCapability::CAN_INTERACT`.
     pub const INTERACT: Self = Self("interact");
 
     /// `shouldAllowPublicPolicySetting()`: whether a "public" policy is

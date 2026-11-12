@@ -13,12 +13,20 @@ const ANCHOR_DIGEST_LENGTH: usize = 12;
 const INDEX_MAP: &[u8; 64] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ._";
 const ANCHOR_MAP: &[u8; 62] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+/// Errors from the digest functions.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum HashError {
+    /// An HMAC was asked for with an empty key.
     #[error("HMAC keys must not be empty")]
     EmptyKey,
+    /// [`digest_to_length`] was asked for a length below its minimum.
     #[error("digestToLength() needs a length of at least {minimum}, got {requested}")]
-    LengthTooShort { minimum: usize, requested: usize },
+    LengthTooShort {
+        /// The shortest length accepted.
+        minimum: usize,
+        /// The length asked for.
+        requested: usize,
+    },
 }
 
 /// `PhabricatorHash::weakDigest()`: hex HMAC-SHA1. The caller passes the

@@ -19,14 +19,20 @@ use crate::shadow;
 
 /// Matches `max_allowed_packet` of the MySQL server.
 const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
+/// Holds the reason of a `421` answer, which nginx replays against PHP.
 pub const FALLBACK_HEADER: &str = "x-phab-fallback";
 
+/// What the handlers share.
 pub struct AppState {
+    /// The configuration, database and host name.
     pub context: Context,
+    /// The Conduit methods Rust implements.
     pub registry: Registry,
+    /// Shadow mode, if enabled.
     pub shadow: Option<shadow::Shadow>,
 }
 
+/// The current Unix time in seconds.
 pub fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -35,6 +41,7 @@ pub fn now() -> i64 {
         })
 }
 
+/// The service's routes.
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/status", routing::get(status))
@@ -60,6 +67,7 @@ async fn status(State(state): State<Arc<AppState>>) -> Response {
     (code, Json(body)).into_response()
 }
 
+/// The parts of an HTTP request Conduit reads, including the session cookie.
 pub fn http_request(headers: &HeaderMap, query: Option<String>, body: &Bytes) -> HttpRequest {
     let session_cookie = headers
         .get_all(header::COOKIE)
@@ -80,6 +88,7 @@ pub fn http_request(headers: &HeaderMap, query: Option<String>, body: &Bytes) ->
     }
 }
 
+/// The `421 Misdirected Request` answer which sends the request to PHP.
 pub fn fallback_response(reason: &'static str) -> Response {
     let mut response = StatusCode::MISDIRECTED_REQUEST.into_response();
     response

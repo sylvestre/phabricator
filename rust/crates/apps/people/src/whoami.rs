@@ -8,14 +8,18 @@ use serde_json::{Value, json};
 
 use crate::{APPLICATION, profile_image};
 
+/// `user.whoami`.
 pub struct UserWhoAmI;
 
 /// The `user_email` row with `isPrimary` set.
 pub struct PrimaryEmail {
+    /// The email address.
     pub address: String,
+    /// Whether the address is verified.
     pub is_verified: bool,
 }
 
+/// The primary email of `user`, if any.
 pub async fn primary_email(
     database: &Database,
     user: &User,
