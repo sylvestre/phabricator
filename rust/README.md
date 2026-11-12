@@ -50,7 +50,7 @@ A method is moved in three steps:
 | `crates/phab-conduit` | Conduit request decoding, dispatch and response envelope |
 | `crates/phab-parity` | Compares PHP and Rust answers |
 | `crates/apps/conduit` | `conduit.ping` |
-| `crates/apps/people` | `user.whoami` |
+| `crates/apps/people` | `user.whoami`, `bugzilla.account.search`, `bmoexternalaccount.search` |
 | `crates/apps/feed` | `feed.query_id` |
 | `bins/phab-server` | The axum HTTP service |
 | `bins/phab-replay` | Replays scenario files against both stacks |

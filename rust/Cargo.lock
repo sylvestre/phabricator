@@ -1447,6 +1447,7 @@ dependencies = [
 name = "phab-app-people"
 version = "0.1.0"
 dependencies = [
+ "form_urlencoded",
  "phab-auth",
  "phab-conduit",
  "phab-core",

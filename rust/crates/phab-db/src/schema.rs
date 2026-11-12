@@ -204,4 +204,25 @@ pub const CONTRACT: &[TableContract] = &[
         table: "feed_storyreference",
         columns: &["chronologicalKey"],
     },
+    TableContract {
+        database: "auth",
+        table: "auth_providerconfig",
+        columns: &["phid", "providerClass"],
+    },
+    TableContract {
+        database: "user",
+        table: "user_externalaccount",
+        columns: &["id", "phid", "userPHID", "providerConfigPHID"],
+    },
+    TableContract {
+        database: "user",
+        table: "user_externalaccountidentifier",
+        columns: &[
+            "id",
+            "externalAccountPHID",
+            "providerConfigPHID",
+            "identifierHash",
+            "identifierRaw",
+        ],
+    },
 ];
