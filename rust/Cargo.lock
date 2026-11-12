@@ -1417,6 +1417,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-differential"
+version = "0.1.0"
+dependencies = [
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "rstest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "phab-app-people"
 version = "0.1.0"
 dependencies = [

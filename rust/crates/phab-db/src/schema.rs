@@ -134,4 +134,52 @@ pub const CONTRACT: &[TableContract] = &[
             "cacheType",
         ],
     },
+    TableContract {
+        database: "differential",
+        table: "differential_revision",
+        columns: &[
+            "phid",
+            "authorPHID",
+            "viewPolicy",
+            "editPolicy",
+            "repositoryPHID",
+        ],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_reviewer",
+        columns: &["revisionPHID", "reviewerPHID", "reviewerStatus"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_transaction",
+        columns: &[
+            "phid",
+            "authorPHID",
+            "objectPHID",
+            "viewPolicy",
+            "editPolicy",
+            "commentPHID",
+            "transactionType",
+            "oldValue",
+            "newValue",
+            "metadata",
+        ],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_transaction_comment",
+        columns: &["phid", "authorPHID", "viewPolicy", "editPolicy", "content"],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository",
+        columns: &[
+            "phid",
+            "viewPolicy",
+            "editPolicy",
+            "pushPolicy",
+            "spacePHID",
+        ],
+    },
 ];
