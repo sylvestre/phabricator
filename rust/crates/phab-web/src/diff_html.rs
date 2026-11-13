@@ -9,7 +9,7 @@ use phab_diff::parser::LineType;
 use phab_diff::view::{Body, Cell, ChangesetView, Row, Shield};
 
 /// `htmlspecialchars()`.
-fn escape(text: &str) -> String {
+pub fn escape(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for character in text.chars() {
         match character {
@@ -102,40 +102,16 @@ fn line_row(
     );
 }
 
-fn rows_html(html: &mut String, rows: &[Row]) {
+fn rows_html(html: &mut String, rows: &[Row], inlines: &[Inline]) {
+    let mut shown = vec![false; inlines.len()];
     html.push_str("<table class=\"diff\">\n");
     for row in rows {
         match row {
             Row::Line { old, new, .. } => {
-                let changed =
-                    |cell: &Option<Cell>| cell.as_ref().is_some_and(|cell| cell.kind.is_some());
-                if !changed(old) && !changed(new) {
-                    let cell = new.as_ref().or(old.as_ref());
-                    if let Some(cell) = cell {
-                        line_row(
-                            html,
-                            "diff-context",
-                            old.as_ref().map(|cell| cell.line),
-                            new.as_ref().map(|cell| cell.line),
-                            ' ',
-                            &cell_text(cell),
-                        );
-                    }
-                    continue;
-                }
-                if let Some(cell) = old.as_ref().filter(|cell| cell.kind.is_some()) {
-                    let (class, marker) = match cell.kind {
-                        Some(LineType::NoNewline) => ("diff-no-newline", '\\'),
-                        _ => ("diff-removed", '-'),
-                    };
-                    line_row(html, class, Some(cell.line), None, marker, &cell_text(cell));
-                }
-                if let Some(cell) = new.as_ref().filter(|cell| cell.kind.is_some()) {
-                    let (class, marker) = match cell.kind {
-                        Some(LineType::NoNewline) => ("diff-no-newline", '\\'),
-                        _ => ("diff-added", '+'),
-                    };
-                    line_row(html, class, None, Some(cell.line), marker, &cell_text(cell));
+                let here = inlines_at(inlines, &mut shown, old.as_ref(), new.as_ref());
+                line_html(html, old.as_ref(), new.as_ref());
+                for inline in here {
+                    inline_html(html, inline);
                 }
             }
             Row::Gap { length, .. } => {
@@ -151,11 +127,88 @@ fn rows_html(html: &mut String, rows: &[Row]) {
             }
         }
     }
+    for (inline, shown) in inlines.iter().zip(shown) {
+        if !shown {
+            inline_html(html, inline);
+        }
+    }
     html.push_str("</table>\n");
 }
 
-/// One changeset: its header and its body.
-pub fn changeset(view: &ChangesetView) -> String {
+/// The rows of one displayed line: context, or the removed then the added
+/// side.
+fn line_html(html: &mut String, old: Option<&Cell>, new: Option<&Cell>) {
+    let changed = |cell: Option<&Cell>| cell.is_some_and(|cell| cell.kind.is_some());
+    if !changed(old) && !changed(new) {
+        if let Some(cell) = new.or(old) {
+            line_row(
+                html,
+                "diff-context",
+                old.map(|cell| cell.line),
+                new.map(|cell| cell.line),
+                ' ',
+                &cell_text(cell),
+            );
+        }
+        return;
+    }
+    if let Some(cell) = old.filter(|cell| cell.kind.is_some()) {
+        let (class, marker) = match cell.kind {
+            Some(LineType::NoNewline) => ("diff-no-newline", '\\'),
+            _ => ("diff-removed", '-'),
+        };
+        line_row(html, class, Some(cell.line), None, marker, &cell_text(cell));
+    }
+    if let Some(cell) = new.filter(|cell| cell.kind.is_some()) {
+        let (class, marker) = match cell.kind {
+            Some(LineType::NoNewline) => ("diff-no-newline", '\\'),
+            _ => ("diff-added", '+'),
+        };
+        line_row(html, class, None, Some(cell.line), marker, &cell_text(cell));
+    }
+}
+
+/// An inline comment, ready to show under the line it ends on.
+pub struct Inline {
+    /// On the new side, or the old one.
+    pub is_new_file: bool,
+    /// The line it ends on (`lineNumber + lineLength`).
+    pub last_line: i64,
+    /// The author, as HTML.
+    pub author_html: String,
+    /// The comment, as HTML.
+    pub body_html: String,
+}
+
+fn inline_html(html: &mut String, inline: &Inline) {
+    let _ = writeln!(
+        html,
+        "<tr class=\"diff-inline\"><td colspan=\"3\"><div class=\"inline-comment\"><p class=\"inline-author\">{}</p><div class=\"remarkup\">{}</div></div></td></tr>",
+        inline.author_html, inline.body_html
+    );
+}
+
+/// The inlines ending on a displayed line, once each.
+fn inlines_at<'a>(
+    inlines: &'a [Inline],
+    shown: &mut [bool],
+    old: Option<&Cell>,
+    new: Option<&Cell>,
+) -> Vec<&'a Inline> {
+    let mut found = Vec::new();
+    for (index, inline) in inlines.iter().enumerate() {
+        let cell = if inline.is_new_file { new } else { old };
+        if !shown[index] && cell.is_some_and(|cell| cell.line == inline.last_line) {
+            shown[index] = true;
+            found.push(inline);
+        }
+    }
+    found
+}
+
+/// One changeset with its inline comments; the ones on lines not shown
+/// come at the end.
+pub fn changeset_with_inlines(view: &ChangesetView, inlines: &[Inline]) -> String {
     let mut html = String::new();
     let _ = write!(
         html,
@@ -180,7 +233,14 @@ pub fn changeset(view: &ChangesetView) -> String {
         }
         Body::NoText => html
             .push_str("<p class=\"changeset-shield\">This file has no text content to show.</p>\n"),
-        Body::Rows(rows) => rows_html(&mut html, rows),
+        Body::Rows(rows) => rows_html(&mut html, rows, inlines),
+    }
+    if !matches!(view.body, Body::Rows(_)) && !inlines.is_empty() {
+        html.push_str("<table class=\"diff\">\n");
+        for inline in inlines {
+            inline_html(&mut html, inline);
+        }
+        html.push_str("</table>\n");
     }
     html.push_str("</section>\n");
     html
@@ -234,7 +294,7 @@ mod tests {
             Row::Gap { top: 2, length: 5 },
         ];
         let mut html = String::new();
-        rows_html(&mut html, &rows);
+        rows_html(&mut html, &rows, &[]);
         assert!(
             html.contains("<td class=\"code\"><span class=\"marker\"> </span>same &lt;a&gt;</td>"),
             "{html}"

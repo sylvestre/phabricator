@@ -219,7 +219,20 @@ pub const CONTRACT: &[TableContract] = &[
     TableContract {
         database: "differential",
         table: "differential_transaction_comment",
-        columns: &["phid", "authorPHID", "viewPolicy", "editPolicy", "content"],
+        columns: &[
+            "phid",
+            "authorPHID",
+            "viewPolicy",
+            "editPolicy",
+            "content",
+            "transactionPHID",
+            "isDeleted",
+            "changesetID",
+            "isNewFile",
+            "lineNumber",
+            "lineLength",
+            "dateCreated",
+        ],
     },
     TableContract {
         database: "repository",

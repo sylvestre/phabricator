@@ -460,6 +460,16 @@ async fn insert_revision_fixtures(test_db: &TestDatabase) {
                hasReplies, attributes) VALUES \
              ('PHID-XCMT-1', 'PHID-XACT-DREV-1', 'PHID-USER-alice', 'public', 'PHID-USER-alice', 1, \
                'Looks **good**', '{{}}', 0, 10, 10, 0, 0, 0, 0, '{{}}'); \
+             INSERT INTO `{{ns}}_differential`.differential_transaction_comment (phid, \
+               transactionPHID, authorPHID, viewPolicy, editPolicy, commentVersion, content, \
+               contentSource, isDeleted, dateCreated, dateModified, isNewFile, lineNumber, lineLength, \
+               hasReplies, attributes, changesetID, revisionPHID) VALUES \
+             ('PHID-XCMT-2', 'PHID-XACT-DREV-3', 'PHID-USER-alice', 'public', 'PHID-USER-alice', 1, \
+               'Why **2**?', '{{}}', 0, 30, 30, 1, 2, 0, 0, '{{}}', 10, 'PHID-DREV-three'), \
+             ('PHID-XCMT-3', 'PHID-XACT-DREV-4', 'PHID-USER-mfa', 'no-one', 'PHID-USER-mfa', 1, \
+               'Hidden inline', '{{}}', 0, 30, 30, 1, 2, 0, 0, '{{}}', 10, 'PHID-DREV-three'), \
+             ('PHID-XCMT-4', NULL, 'PHID-USER-alice', 'public', 'PHID-USER-alice', 1, \
+               'Draft inline', '{{}}', 0, 30, 30, 1, 2, 0, 0, '{{}}', 10, 'PHID-DREV-three'); \
              INSERT INTO `{{ns}}_differential`.differential_diff (id, phid, revisionID, \
                authorPHID, repositoryPHID, sourceControlBaseRevision, lintStatus, unitStatus, \
                lineCount, dateCreated, dateModified, viewPolicy) VALUES \

@@ -473,6 +473,81 @@ pub async fn load_object_transactions(
         .collect()
 }
 
+/// A published inline comment (`DifferentialTransactionComment` with a
+/// changeset).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InlineComment {
+    /// The comment's PHID.
+    pub phid: Phid,
+    /// Its author.
+    pub author_phid: Phid,
+    /// The view policy.
+    pub view_policy: String,
+    /// The edit policy.
+    pub edit_policy: String,
+    /// The text, in Remarkup.
+    pub content: String,
+    /// The changeset it is on.
+    pub changeset_id: i64,
+    /// On the new side of the diff, or the old one.
+    pub is_new_file: bool,
+    /// The first line.
+    pub line_number: i64,
+    /// How many lines after the first it spans.
+    pub line_length: i64,
+    /// When it was written.
+    pub date_created: i64,
+}
+
+impl InlineComment {
+    /// As a policy object, like a comment.
+    pub fn subject(&self) -> PolicySubject {
+        authored_subject(
+            &self.phid,
+            &self.view_policy,
+            &self.edit_policy,
+            &self.author_phid,
+        )
+    }
+}
+
+/// The published, not deleted inline comments on these changesets, in the
+/// order they were written. Drafts have no transaction yet.
+pub async fn load_inline_comments(
+    database: &Database,
+    changesets: &[i64],
+) -> Result<Vec<InlineComment>, DbError> {
+    if changesets.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!(
+        "SELECT phid, authorPHID, viewPolicy, editPolicy, content, changesetID, isNewFile, lineNumber, \
+           lineLength, dateCreated FROM {} \
+         WHERE changesetID IN ({}) AND transactionPHID IS NOT NULL AND isDeleted = 0 ORDER BY id",
+        database.table("differential", "differential_transaction_comment"),
+        phab_db::placeholders(changesets.len())
+    );
+    let rows = phab_db::bind_all(phab_db::sqlx::query(&sql), changesets.iter().copied())
+        .fetch_all(database.pool())
+        .await?;
+    rows.iter()
+        .map(|row| {
+            Ok(InlineComment {
+                phid: Phid::new(rows::text(row, "phid")?),
+                author_phid: Phid::new(rows::text(row, "authorPHID")?),
+                view_policy: rows::text(row, "viewPolicy")?,
+                edit_policy: rows::text(row, "editPolicy")?,
+                content: rows::text(row, "content")?,
+                changeset_id: rows::int(row, "changesetID")?,
+                is_new_file: rows::flag(row, "isNewFile")?,
+                line_number: rows::int(row, "lineNumber")?,
+                line_length: rows::int(row, "lineLength")?,
+                date_created: rows::int(row, "dateCreated")?,
+            })
+        })
+        .collect()
+}
+
 /// Which of `subjects` `viewer` can see, in order.
 pub async fn visible_subjects(
     database: &Database,

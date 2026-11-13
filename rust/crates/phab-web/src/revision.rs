@@ -358,9 +358,69 @@ fn diff_command() -> phab_diff::realign::DiffCommand {
         .clone()
 }
 
-/// The changesets of the active diff, rendered.
+/// The inline comments on these changesets the viewer may see, ready to
+/// show, by changeset.
+async fn inlines<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    changesets: &[i64],
+) -> Result<std::collections::HashMap<i64, Vec<diff_html::Inline>>, PageError> {
+    let database = state.database();
+    let comments = storage::load_inline_comments(database, changesets).await?;
+    let subjects: Vec<_> = comments
+        .iter()
+        .map(storage::InlineComment::subject)
+        .collect();
+    let visible =
+        storage::visible_subjects(database, state.config(), viewer, &subjects, state.now())
+            .await
+            .map_err(|error| PageError::Internal(Box::new(error)))?;
+    let comments: Vec<_> = comments
+        .into_iter()
+        .zip(visible)
+        .filter_map(|(comment, visible)| visible.then_some(comment))
+        .collect();
+    let authors: Vec<Phid> = comments
+        .iter()
+        .map(|comment| comment.author_phid.clone())
+        .collect();
+    let users = phab_auth::user::load_users_by_phid(database, &authors).await?;
+    let mut by_changeset: std::collections::HashMap<i64, Vec<diff_html::Inline>> =
+        std::collections::HashMap::new();
+    for comment in comments {
+        let author = users
+            .iter()
+            .find(|user| user.phid == comment.author_phid)
+            .map_or_else(
+                || "Unknown User".to_owned(),
+                |user| {
+                    format!(
+                        "<a href=\"/p/{0}/\">{0}</a>",
+                        diff_html::escape(&user.user_name)
+                    )
+                },
+            );
+        let body = remarkup::render(state, viewer, &comment.content, Mode::Html).await?;
+        by_changeset
+            .entry(comment.changeset_id)
+            .or_default()
+            .push(diff_html::Inline {
+                is_new_file: comment.is_new_file,
+                last_line: comment.line_number + comment.line_length,
+                author_html: format!(
+                    "{author} <time class=\"muted\">{}</time>",
+                    time::format_utc(comment.date_created)
+                ),
+                body_html: String::from_utf8_lossy(body.as_bytes()).into_owned(),
+            });
+    }
+    Ok(by_changeset)
+}
+
+/// The changesets of the active diff, rendered with their inline comments.
 async fn changesets<S: WebState>(
     state: &S,
+    viewer: &Viewer,
     diff_phid: &Phid,
 ) -> Result<(Option<i64>, Vec<String>), PageError> {
     let database = state.database();
@@ -375,18 +435,23 @@ async fn changesets<S: WebState>(
         .await
         .map_err(internal)?;
     phab_diff::sort_for_display(&mut changesets);
+    let ids: Vec<i64> = changesets.iter().map(|changeset| changeset.id).collect();
+    let mut inlines = inlines(state, viewer, &ids).await?;
     let options = phab_diff::view::ViewOptions {
         diff_command: diff_command(),
         ..phab_diff::view::ViewOptions::default()
     };
     let rendered = changesets
         .iter()
-        .map(|changeset| match phab_diff::view::build(changeset, &options) {
-            Ok(view) => diff_html::changeset(&view),
-            Err(error) => {
-                tracing::warn!(%error, changeset = changeset.id, "changeset failed to render");
-                "<section class=\"changeset\"><p class=\"changeset-shield\">This file could not be shown.</p></section>"
-                    .to_owned()
+        .map(|changeset| {
+            let inlines = inlines.remove(&changeset.id).unwrap_or_default();
+            match phab_diff::view::build(changeset, &options) {
+                Ok(view) => diff_html::changeset_with_inlines(&view, &inlines),
+                Err(error) => {
+                    tracing::warn!(%error, changeset = changeset.id, "changeset failed to render");
+                    "<section class=\"changeset\"><p class=\"changeset-shield\">This file could not be shown.</p></section>"
+                        .to_owned()
+                }
             }
         })
         .collect();
@@ -505,7 +570,7 @@ pub(crate) async fn show<S: WebState>(
     let summary = remarkup_field(state.as_ref(), &as_viewer, &details.summary).await?;
     let test_plan = remarkup_field(state.as_ref(), &as_viewer, &details.test_plan).await?;
     let (diff_id, changesets) = match &details.active_diff_phid {
-        Some(diff) => changesets(state.as_ref(), diff).await?,
+        Some(diff) => changesets(state.as_ref(), &as_viewer, diff).await?,
         None => (None, Vec::new()),
     };
 
