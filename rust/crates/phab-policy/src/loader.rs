@@ -43,8 +43,11 @@ pub trait SubjectResolver {
 pub struct NoExtendedObjects;
 
 impl SubjectResolver for NoExtendedObjects {
-    async fn resolve(&self, _phids: &[Phid]) -> Result<HashMap<Phid, PolicySubject>, LoaderError> {
-        Ok(HashMap::new())
+    fn resolve(
+        &self,
+        _phids: &[Phid],
+    ) -> impl Future<Output = Result<HashMap<Phid, PolicySubject>, LoaderError>> + Send {
+        std::future::ready(Ok(HashMap::new()))
     }
 }
 

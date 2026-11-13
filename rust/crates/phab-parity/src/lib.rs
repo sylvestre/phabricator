@@ -172,7 +172,7 @@ mod tests {
     #[case(json!({"n": 1}), json!({"n": 1.0}))]
     #[case(json!(null), json!(null))]
     fn equal_answers(#[case] php: Value, #[case] rust: Value) {
-        assert!(compare(&php, &rust, &Rules::default()).is_empty());
+        assert_eq!(compare(&php, &rust, &Rules::default()), vec![]);
     }
 
     #[rstest]
@@ -190,9 +190,15 @@ mod tests {
     fn ignores_configured_paths() {
         let php = json!({"result": "web1", "error_code": null});
         let rust = json!({"result": "rust1", "error_code": null});
-        assert!(compare(&php, &rust, &Rules::for_method("conduit.ping")).is_empty());
+        assert_eq!(
+            compare(&php, &rust, &Rules::for_method("conduit.ping")),
+            vec![]
+        );
         assert_eq!(paths(&php, &rust, &Rules::default()), ["/result"]);
-        assert!(compare(&php, &rust, &Rules::default().ignoring("/result")).is_empty());
+        assert_eq!(
+            compare(&php, &rust, &Rules::default().ignoring("/result")),
+            vec![]
+        );
     }
 
     #[test]

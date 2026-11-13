@@ -12,8 +12,11 @@ const DATABASES: &[&str] = &["project", "user", "differential", "policy", "space
 struct Repositories;
 
 impl SubjectResolver for Repositories {
-    async fn resolve(&self, phids: &[Phid]) -> Result<HashMap<Phid, PolicySubject>, LoaderError> {
-        Ok(phids
+    fn resolve(
+        &self,
+        phids: &[Phid],
+    ) -> impl Future<Output = Result<HashMap<Phid, PolicySubject>, LoaderError>> + Send {
+        std::future::ready(Ok(phids
             .iter()
             .filter(|phid| phid.as_str() == "PHID-REPO-private")
             .map(|phid| {
@@ -21,7 +24,7 @@ impl SubjectResolver for Repositories {
                     .with_policy(Capability::VIEW, "PHID-PLCY-team");
                 (phid.clone(), subject)
             })
-            .collect())
+            .collect()))
     }
 }
 

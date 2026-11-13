@@ -228,7 +228,10 @@ mod tests {
             ]
         );
         assert_eq!(table_statements(quickstart, "ns", "b").len(), 1);
-        assert!(table_statements(quickstart, "ns", "c").is_empty());
+        assert_eq!(
+            table_statements(quickstart, "ns", "c"),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
