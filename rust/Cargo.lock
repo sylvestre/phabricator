@@ -1718,6 +1718,7 @@ dependencies = [
  "phab-policy",
  "phab-remarkup",
  "rstest",
+ "serde",
  "serde_json",
  "sha2",
  "tokio",

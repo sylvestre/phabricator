@@ -10,10 +10,10 @@
 pub mod assets;
 mod diff_html;
 mod error;
-mod home;
 pub mod opt_in;
 mod people;
 mod projects;
+mod queue;
 pub mod remarkup;
 mod response;
 mod revision;

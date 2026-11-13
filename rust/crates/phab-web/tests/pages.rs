@@ -146,6 +146,7 @@ async fn logged_in_users_see_the_home_page() {
     assert_eq!(response.headers()[header::X_FRAME_OPTIONS], "Deny");
     let page = text(response).await;
     assert!(page.contains("<summary>alice</summary>"), "{page}");
+    assert!(page.contains("<h1>Active Revisions</h1>"), "{page}");
     assert!(page.contains(r#"<meta name="csrf-token" content="B@"#));
     // The title is escaped, the message is trusted HTML (hsprintf()).
     assert!(page.contains("Maintenance &#60;soon&#62;"), "{page}");
@@ -415,6 +416,64 @@ async fn revisions_show_their_header_text_and_diff() {
         let response = get(&test_db, Config::default(), path, Some("phsid=alice-token")).await;
         assert_eq!(response.status(), status, "{path}");
     }
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn the_queue_groups_revisions_by_required_action() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, summary, \
+               testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, viewPolicy, \
+               editPolicy, properties, activeDiffPHID) VALUES \
+             (1, 'Review me', 'PHID-DREV-one', 'needs-review', '', '', 'PHID-USER-gone', 1, 1, '{}', \
+               'k', 'users', 'users', '{}', ''), \
+             (2, 'Mine to land', 'PHID-DREV-two', 'accepted', '', '', 'PHID-USER-alice', 1, 2, '{}', \
+               'k', 'users', 'users', '{}', ''), \
+             (3, 'Hidden', 'PHID-DREV-three', 'needs-review', '', '', 'PHID-USER-gone', 1, 3, '{}', \
+               'k', 'no-one', 'no-one', '{}', ''), \
+             (4, 'For my team', 'PHID-DREV-four', 'needs-review', '', '', 'PHID-USER-gone', 1, 4, '{}', \
+               'k', 'users', 'users', '{}', ''); \
+             INSERT INTO `{ns}_differential`.differential_reviewer (revisionPHID, reviewerPHID, \
+               reviewerStatus, dateCreated, dateModified, options) VALUES \
+             ('PHID-DREV-one', 'PHID-USER-alice', 'added', 1, 1, '{}'), \
+             ('PHID-DREV-three', 'PHID-USER-alice', 'added', 1, 1, '{}'), \
+             ('PHID-DREV-four', 'PHID-PROJ-team', 'blocking', 1, 1, '{}'); \
+             INSERT INTO `{ns}_project`.project (name, phid, authorPHID, dateCreated, dateModified, \
+               status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, hasWorkboard, \
+               hasMilestones, hasSubprojects, projectPath, projectDepth, projectPathKey, properties, \
+               subtype) VALUES \
+             ('Team', 'PHID-PROJ-team', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', 'red', \
+               'k', 0, 0, 0, 'a', 0, 'k001', '{}', 'default'); \
+             INSERT INTO `{ns}_user`.edge (src, type, dst, dateCreated, seq) VALUES \
+               ('PHID-USER-alice', 14, 'PHID-PROJ-team', 1, 0)",
+        )
+        .await;
+    let response = get(
+        &test_db,
+        Config::default(),
+        "/differential/",
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    let section = |name: &str| {
+        let start = page
+            .find(&format!("<h2>{name}"))
+            .unwrap_or_else(|| panic!("no {name}: {page}"));
+        let end = page[start..]
+            .find("</section>")
+            .map_or(page.len(), |end| start + end);
+        page[start..end].to_owned()
+    };
+    assert!(section("Must Review").contains("For my team"), "{page}");
+    assert!(section("Ready to Review").contains("Review me"), "{page}");
+    assert!(section("Ready to Land").contains("Mine to land"), "{page}");
+    assert!(!page.contains("Hidden"), "{page}");
     test_db.drop_databases().await;
 }
 

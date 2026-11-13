@@ -171,3 +171,9 @@ a { color: var(--accent); }
   .diff-added .bright { background: #1f6f3a; }
   .diff-removed .bright { background: #8e1519; }
 }
+
+.bucket-switch { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+.queue-group h2 { font-size: 16px; margin-bottom: 4px; }
+.queue { width: 100%; border-collapse: collapse; }
+.queue td { padding: 4px 8px; border-top: 1px solid var(--border); }
+.queue-monogram { width: 1%; white-space: nowrap; }

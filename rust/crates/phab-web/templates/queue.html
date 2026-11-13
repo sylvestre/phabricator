@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Active Revisions</h1>
+  <nav class="bucket-switch" aria-label="Grouping">
+    {%- for option in buckets %}
+    {%- if *option == bucket %}<strong>{{ option.name() }}</strong>{% else %}<a href="?bucket={{ option.key() }}">{{ option.name() }}</a>{% endif %}
+    {%- endfor %}
+  </nav>
+</header>
+{%- for group in groups %}
+<section class="queue-group">
+  <h2>{{ group.name }}{% if !group.items.is_empty() %} ({{ group.items.len() }}){% endif %}</h2>
+  {%- if group.items.is_empty() %}
+  {%- if let Some(no_data) = group.no_data %}<p class="muted">{{ no_data }}</p>{% endif %}
+  {%- else %}
+  <table class="queue">
+    {%- for item in group.items %}
+    <tr>
+      <td class="queue-monogram"><a href="/{{ item.monogram }}">{{ item.monogram }}</a></td>
+      <td><a href="/{{ item.monogram }}">{{ item.title }}</a></td>
+      <td class="muted">{{ item.author }}</td>
+      <td>{{ item.status }}</td>
+      <td class="muted"><time>{{ item.updated }}</time></td>
+    </tr>
+    {%- endfor %}
+  </table>
+  {%- endif %}
+</section>
+{%- endfor %}
+{% endblock %}

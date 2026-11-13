@@ -21,6 +21,7 @@ phab-db.workspace = true
 phab-diff.workspace = true
 phab-policy.workspace = true
 phab-remarkup.workspace = true
+serde.workspace = true
 sha2.workspace = true
 tracing.workspace = true
 

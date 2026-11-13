@@ -169,12 +169,11 @@ mod tests {
             view_policy: "users".to_owned(),
             edit_policy: "users".to_owned(),
             repository_phid: None,
+            active_diff_phid: None,
+            date_modified: 0,
             reviewers: reviewers
                 .iter()
-                .map(|(phid, status)| Reviewer {
-                    phid: Phid::new(*phid),
-                    status: (*status).to_owned(),
-                })
+                .map(|(phid, status)| Reviewer::new(Phid::new(*phid), status))
                 .collect(),
         }
     }

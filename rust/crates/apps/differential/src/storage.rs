@@ -20,6 +20,39 @@ pub struct Reviewer {
     pub phid: Phid,
     /// `reviewerStatus`, e.g. `accepted` or `resigned`.
     pub status: String,
+    /// `voidedPHID`: set when "Request Review" voided an accept.
+    pub voided_phid: Option<Phid>,
+    /// `lastActionDiffPHID`: the diff the reviewer last acted on.
+    pub last_action_diff_phid: Option<Phid>,
+}
+
+impl Reviewer {
+    /// A reviewer with a status and nothing else, as tests build them.
+    pub fn new(phid: Phid, status: &str) -> Self {
+        Self {
+            phid,
+            status: status.to_owned(),
+            voided_phid: None,
+            last_action_diff_phid: None,
+        }
+    }
+
+    /// `isCurrentAction()`: the reviewer acted on `diff`, or either is
+    /// unknown.
+    fn is_current_action(&self, diff: Option<&Phid>) -> bool {
+        match (diff, &self.last_action_diff_phid) {
+            (Some(diff), Some(action)) => diff == action,
+            _ => true,
+        }
+    }
+
+    /// `DifferentialReviewer::isAccepted()`: an accept which was not voided,
+    /// of `diff` or, with `differential.sticky-accept`, of an older one.
+    pub fn is_accepted(&self, diff: Option<&Phid>, sticky_accept: bool) -> bool {
+        self.status == "accepted"
+            && self.voided_phid.is_none()
+            && (self.is_current_action(diff) || sticky_accept)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +74,10 @@ pub struct Revision {
     pub edit_policy: String,
     /// The repository's PHID, if any.
     pub repository_phid: Option<Phid>,
+    /// The diff the revision shows.
+    pub active_diff_phid: Option<Phid>,
+    /// When it last changed.
+    pub date_modified: i64,
     /// The reviewers, resigned ones included.
     pub reviewers: Vec<Reviewer>,
 }
@@ -109,8 +146,8 @@ async fn select_by_phid(
     )
 }
 
-const REVISION_COLUMNS: &str =
-    "id, phid, title, status, authorPHID, viewPolicy, editPolicy, repositoryPHID";
+const REVISION_COLUMNS: &str = "id, phid, title, status, authorPHID, viewPolicy, editPolicy, repositoryPHID, \
+     activeDiffPHID, dateModified";
 
 /// The revisions with these PHIDs, in no particular order; unknown
 /// PHIDs are skipped.
@@ -175,6 +212,34 @@ pub async fn load_open_revisions_reviewed_by(
     with_reviewers(database, &rows).await
 }
 
+/// The open revisions `responsible` users and projects author or review
+/// (`withResponsibleUsers()`, as a union like PHP), most recently updated
+/// first.
+pub async fn load_responsible_revisions(
+    database: &Database,
+    responsible: &[Phid],
+) -> Result<Vec<Revision>, DbError> {
+    if responsible.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = phab_db::placeholders(responsible.len());
+    let sql = format!(
+        "SELECT {REVISION_COLUMNS} FROM {revisions} WHERE status IN ({statuses}) AND \
+           (authorPHID IN ({placeholders}) OR phid IN \
+             (SELECT revisionPHID FROM {reviewers} WHERE reviewerPHID IN ({placeholders}))) \
+         ORDER BY dateModified DESC, id DESC",
+        revisions = database.table("differential", "differential_revision"),
+        reviewers = database.table("differential", "differential_reviewer"),
+        statuses = phab_db::placeholders(OPEN_STATUSES.len()),
+    );
+    let query = phab_db::bind_all(phab_db::sqlx::query(&sql), OPEN_STATUSES.iter().copied());
+    let query = phab_db::bind_all(query, responsible.iter().map(Phid::as_str));
+    let rows = phab_db::bind_all(query, responsible.iter().map(Phid::as_str))
+        .fetch_all(database.pool())
+        .await?;
+    with_reviewers(database, &rows).await
+}
+
 /// Builds revisions from their rows, with their reviewers.
 async fn with_reviewers(
     database: &Database,
@@ -186,7 +251,7 @@ async fn with_reviewers(
         .collect::<Result<Vec<_>, _>>()?;
     let reviewer_rows = select_by_phid(
         database,
-        "revisionPHID, reviewerPHID, reviewerStatus",
+        "revisionPHID, reviewerPHID, reviewerStatus, voidedPHID, lastActionDiffPHID",
         &database.table("differential", "differential_reviewer"),
         "revisionPHID",
         &phids,
@@ -200,6 +265,8 @@ async fn with_reviewers(
             .push(Reviewer {
                 phid: Phid::new(rows::text(&row, "reviewerPHID")?),
                 status: rows::text(&row, "reviewerStatus")?,
+                voided_phid: rows::opt_phid(&row, "voidedPHID")?,
+                last_action_diff_phid: rows::opt_phid(&row, "lastActionDiffPHID")?,
             });
     }
     revision_rows
@@ -214,6 +281,8 @@ async fn with_reviewers(
                 view_policy: rows::text(row, "viewPolicy")?,
                 edit_policy: rows::text(row, "editPolicy")?,
                 repository_phid: rows::opt_phid(row, "repositoryPHID")?,
+                active_diff_phid: rows::opt_phid(row, "activeDiffPHID")?,
+                date_modified: rows::int(row, "dateModified")?,
                 reviewers: reviewers.remove(&phid).unwrap_or_default(),
                 phid: Phid::new(phid),
             })
