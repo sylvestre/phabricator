@@ -88,6 +88,12 @@ Run the whole stack with the Rust service:
 docker compose -f docker-compose.yml -f rust/docker-compose.rust.yml up
 ```
 
+`scripts/seed-dev-stack.sh` resets the development database to the demo
+(`docker/phabricator/demo.sql.gz`, which has the `admin` user) and adds users,
+projects and revisions in every review state, printing a `phsid` cookie per
+user. With the cookie set, open `http://phabricator.test/rust-ui/on`
+through the proxy on `localhost:1090`.
+
 The service reads the same configuration as PHP: `PHAB_CONFIG_DIR`
 (default `/app/phabricator/conf/local`) for `local.json`, then the
 `config_entry` table. `PHAB_LISTEN` sets the address (default
