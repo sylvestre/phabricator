@@ -35,10 +35,17 @@ pub(crate) struct ReviewerItem {
     blocking: bool,
 }
 
+/// A warning above the revision (`DifferentialRevisionWarning`).
+pub(crate) struct Warning {
+    title: String,
+    message_html: &'static str,
+}
+
 #[derive(Template)]
 #[template(path = "revision.html")]
 pub(crate) struct RevisionPage {
     shell: Shell,
+    warnings: Vec<Warning>,
     monogram: String,
     title: String,
     status: &'static str,
@@ -236,6 +243,103 @@ async fn lando_uri(
     }))
 }
 
+/// The project marking secure revisions, if the viewer can see it.
+async fn secure_project<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+) -> Result<Option<Phid>, PageError> {
+    let found = project::storage::load_by_name(state.database(), "secure-revision").await?;
+    let (visible, _) = project::policy::visible_projects(
+        state.database(),
+        state.config(),
+        viewer,
+        found,
+        state.now(),
+    )
+    .await
+    .map_err(|error| PageError::Internal(Box::new(error)))?;
+    Ok(visible.into_iter().next().map(|project| project.phid))
+}
+
+/// `isRevisionPrivate()`: tagged with the "secure-revision" project.
+async fn is_private(
+    database: &phab_db::Database,
+    revision: &Phid,
+    secure: &Phid,
+) -> Result<bool, PageError> {
+    let projects = edges::load_destination_phids(
+        database,
+        std::slice::from_ref(revision),
+        &[edges::OBJECT_HAS_PROJECT],
+        Some(std::slice::from_ref(secure)),
+    )
+    .await?;
+    Ok(!projects.is_empty())
+}
+
+/// `DifferentialRevisionWarning`: a secure revision says how to manage it,
+/// and warns when open public revisions depend on it.
+async fn warnings<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    revision: &Revision,
+) -> Result<Vec<Warning>, PageError> {
+    let database = state.database();
+    let Some(secure) = secure_project(state, viewer).await? else {
+        return Ok(Vec::new());
+    };
+    if !is_private(database, &revision.phid, &secure).await? {
+        return Ok(Vec::new());
+    }
+    let mut warnings = vec![Warning {
+        title: "This is a secure revision.".to_owned(),
+        message_html: "Please use the CC list of the associated bug in Bugzilla to manage access and \
+             subscribership of this revision. Changes made here may be overwritten.<br/>Please do not \
+             land this revision using `arc land` to prevent data leakage.",
+    }];
+
+    // Every revision reachable through "depended on by" edges.
+    let mut seen = vec![revision.phid.clone()];
+    let mut frontier = vec![revision.phid.clone()];
+    while !frontier.is_empty() {
+        let children = edges::load_destination_phids(
+            database,
+            &frontier,
+            &[edges::REVISION_DEPENDED_ON_BY_REVISION],
+            None,
+        )
+        .await?;
+        frontier = children
+            .into_iter()
+            .filter(|child| !seen.contains(child))
+            .collect();
+        seen.extend(frontier.iter().cloned());
+    }
+    let reachable = storage::load_revisions(database, &seen[1..]).await?;
+    let reachable =
+        storage::visible_revisions(database, state.config(), viewer, reachable, state.now())
+            .await
+            .map_err(|error| PageError::Internal(Box::new(error)))?;
+    let mut public = 0;
+    for child in reachable.iter().filter(|child| !child.is_closed()) {
+        if !is_private(database, &child.phid, &secure).await? {
+            public += 1;
+        }
+    }
+    if public > 0 {
+        let plural = if public > 1 { "s" } else { "" };
+        warnings.push(Warning {
+            title: format!("A public revision{plural} is depending on this secure revision."),
+            message_html: if public > 1 {
+                "Please change the child revisions to private by setting the security flag in Bugzilla."
+            } else {
+                "Please change the child revision to private by setting the security flag in Bugzilla."
+            },
+        });
+    }
+    Ok(warnings)
+}
+
 /// The `diff` program realignment runs: `PHAB_DIFF_COMMAND`, like
 /// `busybox diff`, as PHP's image runs the `BusyBox` one, whose alignment can
 /// differ from GNU diff's.
@@ -405,7 +509,9 @@ pub(crate) async fn show<S: WebState>(
 
     let monogram = format!("D{}", revision.id);
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
+    let warnings = warnings(state.as_ref(), &as_viewer, &revision).await?;
     Ok(Page(RevisionPage {
+        warnings,
         shell: Shell::for_user(
             state.config(),
             &viewer,

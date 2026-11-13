@@ -361,7 +361,20 @@ async fn revisions_show_their_header_text_and_diff() {
                fieldIndex, fieldValue) VALUES ('PHID-DREV-three', '{bug_index}', '1234567'); \
              INSERT INTO `{{ns}}_differential`.edge (src, type, dst, dateCreated, seq) VALUES \
                ('PHID-DREV-three', 5, 'PHID-DREV-four', 1, 0), \
-               ('PHID-DREV-three', 5, 'PHID-DREV-five', 1, 0); \
+               ('PHID-DREV-three', 5, 'PHID-DREV-five', 1, 0), \
+               ('PHID-DREV-three', 6, 'PHID-DREV-six', 1, 0), \
+               ('PHID-DREV-three', 41, 'PHID-PROJ-secure', 1, 0); \
+             INSERT INTO `{{ns}}_differential`.differential_revision (id, title, phid, status, summary, \
+               testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, viewPolicy, \
+               editPolicy, properties, activeDiffPHID) VALUES \
+             (6, 'Public child', 'PHID-DREV-six', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, \
+               '{{}}', 'k', 'users', 'users', '{{}}', ''); \
+             INSERT INTO `{{ns}}_project`.project (name, phid, authorPHID, dateCreated, dateModified, \
+               status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, hasWorkboard, \
+               hasMilestones, hasSubprojects, projectPath, projectDepth, projectPathKey, properties, \
+               subtype) VALUES \
+             ('secure-revision', 'PHID-PROJ-secure', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', \
+               'red', 'k', 0, 0, 0, 'a', 0, 'k001', '{{}}', 'default'); \
              INSERT INTO `{{ns}}_differential`.differential_diff (id, phid, revisionID, \
                authorPHID, repositoryPHID, sourceControlBaseRevision, lintStatus, unitStatus, \
                lineCount, dateCreated, dateModified, viewPolicy) VALUES \

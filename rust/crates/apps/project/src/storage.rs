@@ -111,6 +111,20 @@ pub const PROJECT_HAS_OBJECT: i64 = 42;
 /// The custom field key of `PhabricatorProjectDescriptionField`.
 const DESCRIPTION_FIELD: &str = "std:project:internal:description";
 
+/// The projects with this name (`withNames()`, compared without case by
+/// MySQL's collation).
+pub async fn load_by_name(database: &Database, name: &str) -> Result<Vec<Project>, DbError> {
+    let sql = format!(
+        "SELECT {COLUMNS} FROM {} p WHERE p.name = ?",
+        database.table("project", "project")
+    );
+    let rows = phab_db::sqlx::query(&sql)
+        .bind(name)
+        .fetch_all(database.pool())
+        .await?;
+    rows.iter().map(Project::from_row).collect()
+}
+
 /// The project with this ID, if any.
 pub async fn load_by_id(database: &Database, id: i64) -> Result<Option<Project>, DbError> {
     let sql = format!(
