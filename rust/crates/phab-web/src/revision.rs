@@ -236,6 +236,22 @@ async fn lando_uri(
     }))
 }
 
+/// The `diff` program realignment runs: `PHAB_DIFF_COMMAND`, like
+/// `busybox diff`, as PHP's image runs the `BusyBox` one, whose alignment can
+/// differ from GNU diff's.
+fn diff_command() -> phab_diff::realign::DiffCommand {
+    static COMMAND: std::sync::OnceLock<phab_diff::realign::DiffCommand> =
+        std::sync::OnceLock::new();
+    COMMAND
+        .get_or_init(|| {
+            std::env::var("PHAB_DIFF_COMMAND")
+                .ok()
+                .and_then(|command| phab_diff::realign::DiffCommand::parse(&command))
+                .unwrap_or_default()
+        })
+        .clone()
+}
+
 /// The changesets of the active diff, rendered.
 async fn changesets<S: WebState>(
     state: &S,
@@ -253,7 +269,10 @@ async fn changesets<S: WebState>(
         .await
         .map_err(internal)?;
     phab_diff::sort_for_display(&mut changesets);
-    let options = phab_diff::view::ViewOptions::default();
+    let options = phab_diff::view::ViewOptions {
+        diff_command: diff_command(),
+        ..phab_diff::view::ViewOptions::default()
+    };
     let rendered = changesets
         .iter()
         .map(|changeset| match phab_diff::view::build(changeset, &options) {

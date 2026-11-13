@@ -6,12 +6,15 @@ RUN cargo build --release --locked -p phab-server
 
 FROM debian:trixie-slim AS production
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates \
+    && apt-get install --yes --no-install-recommends busybox ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home app
 COPY --from=build /src/target/release/phab-server /usr/local/bin/phab-server
 USER app
+# PHP's image (Alpine) realigns changesets with BusyBox's diff; using the
+# same program keeps the alignment of whitespace changes identical.
 ENV PHAB_LISTEN=0.0.0.0:8080 \
-    PHAB_CONFIG_DIR=/app/phabricator/conf/local
+    PHAB_CONFIG_DIR=/app/phabricator/conf/local \
+    PHAB_DIFF_COMMAND="busybox diff"
 EXPOSE 8080
 CMD ["phab-server"]
