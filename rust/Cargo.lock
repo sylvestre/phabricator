@@ -1605,6 +1605,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-diff"
+version = "0.1.0"
+dependencies = [
+ "rstest",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "phab-parity"
 version = "0.1.0"
 dependencies = [

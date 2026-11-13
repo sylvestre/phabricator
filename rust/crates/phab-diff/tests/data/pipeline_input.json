@@ -1,0 +1,308 @@
+[
+ {
+  "name": "simple_change",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 3,
+    "new_offset": 1,
+    "new_len": 3,
+    "changes": " a\n-b\n+c\n d\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "add_only",
+  "hunks": [
+   {
+    "old_offset": 0,
+    "old_len": 0,
+    "new_offset": 1,
+    "new_len": 2,
+    "changes": "+x\n+y\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "delete_only",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 2,
+    "new_offset": 0,
+    "new_len": 0,
+    "changes": "-x\n-y\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "no_newline_old",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-x\n\\ No newline at end of file\n+x\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "no_newline_new",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-x\n+x\n\\ No newline at end of file\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "indent_spaces",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 2,
+    "new_offset": 1,
+    "new_len": 2,
+    "changes": "-foo();\n-  bar();\n+  foo();\n+bar();\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "indent_tabs",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-\tx = 1;\n+\t\tx = 1;\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "indent_mixed",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-  \tx\n+ \t \tx\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "indent_and_change",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-  return a;\n+    return b;\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "same_depth_different_ws",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-\tx\n+  x\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "unicode",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-Grumpy Cat ☃ says no\n+Grumpy Cät ☃ says yes\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "combining_leading",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-́abc\n+́abd\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "long_line",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "long_glyphs",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab\n+acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "crlf",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 2,
+    "new_offset": 1,
+    "new_len": 2,
+    "changes": " a\r\n-b\r\n+c\r\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "stripped_space",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 3,
+    "new_offset": 1,
+    "new_len": 3,
+    "changes": " a\n\n-b\n+c\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "empty_changes",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 0,
+    "new_offset": 1,
+    "new_len": 0,
+    "changes": ""
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "multiple_hunks",
+  "hunks": [
+   {
+    "old_offset": 3,
+    "old_len": 3,
+    "new_offset": 3,
+    "new_len": 3,
+    "changes": " c\n-d\n+D\n e\n"
+   },
+   {
+    "old_offset": 20,
+    "old_len": 3,
+    "new_offset": 20,
+    "new_len": 4,
+    "changes": " t\n+u\n u2\n v\n"
+   }
+  ],
+  "context": 1
+ },
+ {
+  "name": "context_mask",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 20,
+    "new_offset": 1,
+    "new_len": 20,
+    "changes": " l1\n l2\n l3\n l4\n l5\n l6\n l7\n l8\n l9\n-x\n+y\n m1\n m2\n m3\n m4\n m5\n m6\n m7\n m8\n m9\n-p\n+q\n"
+   }
+  ],
+  "context": 2
+ },
+ {
+  "name": "context_zero",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 5,
+    "new_offset": 1,
+    "new_len": 5,
+    "changes": " a\n b\n-c\n+C\n d\n e\n"
+   }
+  ],
+  "context": 0
+ },
+ {
+  "name": "smoothing",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 1,
+    "new_offset": 1,
+    "new_len": 1,
+    "changes": "-private function a($a, $b) {\n+public function and($b, $c) {\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "replace_block",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 3,
+    "new_offset": 1,
+    "new_len": 2,
+    "changes": "-one\n-two\n-three\n+uno\n+dos\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "unbalanced",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 2,
+    "new_offset": 1,
+    "new_len": 4,
+    "changes": "-a\n+b\n+c\n+d\n e\n"
+   }
+  ],
+  "context": 3
+ }
+]

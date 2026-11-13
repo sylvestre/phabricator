@@ -1,0 +1,1920 @@
+[
+    {
+        "name": "simple_change",
+        "old": [
+            {
+                "type": null,
+                "text": "a\n",
+                "line": 1
+            },
+            {
+                "type": "-",
+                "text": "b\n",
+                "line": 2
+            },
+            {
+                "type": null,
+                "text": "d\n",
+                "line": 3
+            }
+        ],
+        "new": [
+            {
+                "type": null,
+                "text": "a\n",
+                "line": 1
+            },
+            {
+                "type": "+",
+                "text": "c\n",
+                "line": 2
+            },
+            {
+                "type": null,
+                "text": "d\n",
+                "line": 3
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                1,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            1,
+            2
+        ],
+        "blocks_mask": [
+            true,
+            true,
+            true
+        ],
+        "old_corpus": [
+            "a\n",
+            "b\n",
+            "d\n"
+        ],
+        "new_corpus": [
+            "a\n",
+            "c\n",
+            "d\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "add_only",
+        "old": [
+            null,
+            null
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "x\n",
+                "line": 1
+            },
+            {
+                "type": "+",
+                "text": "y\n",
+                "line": 2
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [],
+        "depth_only": [],
+        "lines_mask": [
+            1
+        ],
+        "blocks_mask": [
+            true,
+            true
+        ],
+        "old_corpus": [
+            "\n",
+            "\n"
+        ],
+        "new_corpus": [
+            "x\n",
+            "y\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "delete_only",
+        "old": [
+            {
+                "type": "-",
+                "text": "x\n",
+                "line": 1
+            },
+            {
+                "type": "-",
+                "text": "y\n",
+                "line": 2
+            }
+        ],
+        "new": [
+            null,
+            null
+        ],
+        "has_any_changes": true,
+        "is_deleted": true,
+        "intraline": [],
+        "depth_only": [],
+        "lines_mask": [
+            1
+        ],
+        "blocks_mask": [
+            true,
+            true
+        ],
+        "old_corpus": [
+            "x\n",
+            "y\n"
+        ],
+        "new_corpus": [
+            "\n",
+            "\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "no_newline_old",
+        "old": [
+            {
+                "type": "-",
+                "text": "x\n",
+                "line": 1
+            },
+            {
+                "type": "\\",
+                "text": "No newline at end of file\n",
+                "line": 2
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "x\n",
+                "line": 1
+            },
+            null
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        2
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        2
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            1
+        ],
+        "blocks_mask": [
+            true,
+            true
+        ],
+        "old_corpus": [
+            "x\n"
+        ],
+        "new_corpus": [
+            "x\n",
+            "\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "no_newline_new",
+        "old": [
+            {
+                "type": "-",
+                "text": "x\n",
+                "line": 1
+            },
+            null
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "x\n",
+                "line": 1
+            },
+            {
+                "type": "\\",
+                "text": "No newline at end of file\n",
+                "line": 2
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        2
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        2
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            1
+        ],
+        "blocks_mask": [
+            true,
+            true
+        ],
+        "old_corpus": [
+            "x\n",
+            "\n"
+        ],
+        "new_corpus": [
+            "x\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "indent_spaces",
+        "old": [
+            {
+                "type": "-",
+                "text": "foo();\n",
+                "line": 1
+            },
+            {
+                "type": "-",
+                "text": "  bar();\n",
+                "line": 2
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "  foo();\n",
+                "line": 1
+            },
+            {
+                "type": "+",
+                "text": "bar();\n",
+                "line": 2
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        7
+                    ]
+                ],
+                [
+                    [
+                        ">",
+                        2
+                    ],
+                    [
+                        0,
+                        7
+                    ]
+                ]
+            ],
+            [
+                1,
+                [
+                    [
+                        "<",
+                        2
+                    ],
+                    [
+                        0,
+                        7
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        7
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [
+            [
+                0,
+                ">"
+            ],
+            [
+                1,
+                "<"
+            ]
+        ],
+        "lines_mask": [
+            1
+        ],
+        "blocks_mask": [
+            true,
+            true
+        ],
+        "old_corpus": [
+            "foo();\n",
+            "  bar();\n"
+        ],
+        "new_corpus": [
+            "  foo();\n",
+            "bar();\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "indent_tabs",
+        "old": [
+            {
+                "type": "-",
+                "text": "\tx = 1;\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "\t\tx = 1;\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        8
+                    ]
+                ],
+                [
+                    [
+                        ">",
+                        1
+                    ],
+                    [
+                        0,
+                        8
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [
+            [
+                0,
+                ">"
+            ]
+        ],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "\tx = 1;\n"
+        ],
+        "new_corpus": [
+            "\t\tx = 1;\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "indent_mixed",
+        "old": [
+            {
+                "type": "-",
+                "text": "  \tx\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": " \t \tx\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        5
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        1
+                    ],
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        4
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "  \tx\n"
+        ],
+        "new_corpus": [
+            " \t \tx\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "indent_and_change",
+        "old": [
+            {
+                "type": "-",
+                "text": "  return a;\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "    return b;\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        9
+                    ],
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        2
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        2
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    [
+                        0,
+                        7
+                    ],
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        2
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "  return a;\n"
+        ],
+        "new_corpus": [
+            "    return b;\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "same_depth_different_ws",
+        "old": [
+            {
+                "type": "-",
+                "text": "\tx\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "  x\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        2
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        2
+                    ],
+                    [
+                        0,
+                        2
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "\tx\n"
+        ],
+        "new_corpus": [
+            "  x\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "unicode",
+        "old": [
+            {
+                "type": "-",
+                "text": "Grumpy Cat ☃ says no\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "Grumpy Cät ☃ says yes\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        8
+                    ],
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        11
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        8
+                    ],
+                    [
+                        1,
+                        2
+                    ],
+                    [
+                        0,
+                        11
+                    ],
+                    [
+                        1,
+                        3
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "Grumpy Cat ☃ says no\n"
+        ],
+        "new_corpus": [
+            "Grumpy Cät ☃ says yes\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "combining_leading",
+        "old": [
+            {
+                "type": "-",
+                "text": "́abc\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "́abd\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        5
+                    ],
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        5
+                    ],
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "́abc\n"
+        ],
+        "new_corpus": [
+            "́abd\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "long_line",
+        "old": [
+            {
+                "type": "-",
+                "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        1,
+                        901
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        901
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        ],
+        "new_corpus": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "long_glyphs",
+        "old": [
+            {
+                "type": "-",
+                "text": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        1
+                    ],
+                    [
+                        1,
+                        119
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        1
+                    ],
+                    [
+                        1,
+                        119
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab\n"
+        ],
+        "new_corpus": [
+            "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "crlf",
+        "old": [
+            {
+                "type": null,
+                "text": "a\r\n",
+                "line": 1
+            },
+            {
+                "type": "-",
+                "text": "b\r\n",
+                "line": 2
+            }
+        ],
+        "new": [
+            {
+                "type": null,
+                "text": "a\r\n",
+                "line": 1
+            },
+            {
+                "type": "+",
+                "text": "c\r\n",
+                "line": 2
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                1,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        2
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        2
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            1
+        ],
+        "blocks_mask": [
+            true,
+            true
+        ],
+        "old_corpus": [
+            "a\r\n",
+            "b\r\n"
+        ],
+        "new_corpus": [
+            "a\r\n",
+            "c\r\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "stripped_space",
+        "old": [
+            {
+                "type": null,
+                "text": "a\n",
+                "line": 1
+            },
+            {
+                "type": null,
+                "text": "\n",
+                "line": 2
+            },
+            {
+                "type": "-",
+                "text": "b\n",
+                "line": 3
+            }
+        ],
+        "new": [
+            {
+                "type": null,
+                "text": "a\n",
+                "line": 1
+            },
+            {
+                "type": null,
+                "text": "\n",
+                "line": 2
+            },
+            {
+                "type": "+",
+                "text": "c\n",
+                "line": 3
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                2,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            1,
+            2
+        ],
+        "blocks_mask": [
+            true,
+            true,
+            true
+        ],
+        "old_corpus": [
+            "a\n",
+            "\n",
+            "b\n"
+        ],
+        "new_corpus": [
+            "a\n",
+            "\n",
+            "c\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "empty_changes",
+        "old": [
+            {
+                "type": null,
+                "text": "",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": null,
+                "text": "",
+                "line": 1
+            }
+        ],
+        "has_any_changes": false,
+        "is_deleted": false,
+        "intraline": [],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            false
+        ],
+        "old_corpus": [
+            ""
+        ],
+        "new_corpus": [
+            ""
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "multiple_hunks",
+        "old": [
+            {
+                "type": null,
+                "text": "c\n",
+                "line": 3
+            },
+            {
+                "type": "-",
+                "text": "d\n",
+                "line": 4
+            },
+            {
+                "type": null,
+                "text": "e\n",
+                "line": 5
+            },
+            {
+                "type": null,
+                "text": "t\n",
+                "line": 20
+            },
+            null,
+            {
+                "type": null,
+                "text": "u2\n",
+                "line": 21
+            },
+            {
+                "type": null,
+                "text": "v\n",
+                "line": 22
+            }
+        ],
+        "new": [
+            {
+                "type": null,
+                "text": "c\n",
+                "line": 3
+            },
+            {
+                "type": "+",
+                "text": "D\n",
+                "line": 4
+            },
+            {
+                "type": null,
+                "text": "e\n",
+                "line": 5
+            },
+            {
+                "type": null,
+                "text": "t\n",
+                "line": 20
+            },
+            {
+                "type": "+",
+                "text": "u\n",
+                "line": 21
+            },
+            {
+                "type": null,
+                "text": "u2\n",
+                "line": 22
+            },
+            {
+                "type": null,
+                "text": "v\n",
+                "line": 23
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                1,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            1,
+            2,
+            3,
+            4,
+            5
+        ],
+        "blocks_mask": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false
+        ],
+        "old_corpus": [
+            "c\n",
+            "d\n",
+            "e\n",
+            "t\n",
+            "\n",
+            "u2\n",
+            "v\n"
+        ],
+        "new_corpus": [
+            "c\n",
+            "D\n",
+            "e\n",
+            "t\n",
+            "u\n",
+            "u2\n",
+            "v\n"
+        ],
+        "hunk_starts": [
+            3,
+            20
+        ]
+    },
+    {
+        "name": "context_mask",
+        "old": [
+            {
+                "type": null,
+                "text": "l1\n",
+                "line": 1
+            },
+            {
+                "type": null,
+                "text": "l2\n",
+                "line": 2
+            },
+            {
+                "type": null,
+                "text": "l3\n",
+                "line": 3
+            },
+            {
+                "type": null,
+                "text": "l4\n",
+                "line": 4
+            },
+            {
+                "type": null,
+                "text": "l5\n",
+                "line": 5
+            },
+            {
+                "type": null,
+                "text": "l6\n",
+                "line": 6
+            },
+            {
+                "type": null,
+                "text": "l7\n",
+                "line": 7
+            },
+            {
+                "type": null,
+                "text": "l8\n",
+                "line": 8
+            },
+            {
+                "type": null,
+                "text": "l9\n",
+                "line": 9
+            },
+            {
+                "type": "-",
+                "text": "x\n",
+                "line": 10
+            },
+            {
+                "type": null,
+                "text": "m1\n",
+                "line": 11
+            },
+            {
+                "type": null,
+                "text": "m2\n",
+                "line": 12
+            },
+            {
+                "type": null,
+                "text": "m3\n",
+                "line": 13
+            },
+            {
+                "type": null,
+                "text": "m4\n",
+                "line": 14
+            },
+            {
+                "type": null,
+                "text": "m5\n",
+                "line": 15
+            },
+            {
+                "type": null,
+                "text": "m6\n",
+                "line": 16
+            },
+            {
+                "type": null,
+                "text": "m7\n",
+                "line": 17
+            },
+            {
+                "type": null,
+                "text": "m8\n",
+                "line": 18
+            },
+            {
+                "type": null,
+                "text": "m9\n",
+                "line": 19
+            },
+            {
+                "type": "-",
+                "text": "p\n",
+                "line": 20
+            }
+        ],
+        "new": [
+            {
+                "type": null,
+                "text": "l1\n",
+                "line": 1
+            },
+            {
+                "type": null,
+                "text": "l2\n",
+                "line": 2
+            },
+            {
+                "type": null,
+                "text": "l3\n",
+                "line": 3
+            },
+            {
+                "type": null,
+                "text": "l4\n",
+                "line": 4
+            },
+            {
+                "type": null,
+                "text": "l5\n",
+                "line": 5
+            },
+            {
+                "type": null,
+                "text": "l6\n",
+                "line": 6
+            },
+            {
+                "type": null,
+                "text": "l7\n",
+                "line": 7
+            },
+            {
+                "type": null,
+                "text": "l8\n",
+                "line": 8
+            },
+            {
+                "type": null,
+                "text": "l9\n",
+                "line": 9
+            },
+            {
+                "type": "+",
+                "text": "y\n",
+                "line": 10
+            },
+            {
+                "type": null,
+                "text": "m1\n",
+                "line": 11
+            },
+            {
+                "type": null,
+                "text": "m2\n",
+                "line": 12
+            },
+            {
+                "type": null,
+                "text": "m3\n",
+                "line": 13
+            },
+            {
+                "type": null,
+                "text": "m4\n",
+                "line": 14
+            },
+            {
+                "type": null,
+                "text": "m5\n",
+                "line": 15
+            },
+            {
+                "type": null,
+                "text": "m6\n",
+                "line": 16
+            },
+            {
+                "type": null,
+                "text": "m7\n",
+                "line": 17
+            },
+            {
+                "type": null,
+                "text": "m8\n",
+                "line": 18
+            },
+            {
+                "type": null,
+                "text": "m9\n",
+                "line": 19
+            },
+            {
+                "type": "+",
+                "text": "q\n",
+                "line": 20
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                9,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ],
+            [
+                19,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            7,
+            8,
+            9,
+            10,
+            11,
+            17,
+            18,
+            19
+        ],
+        "blocks_mask": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            true,
+            true
+        ],
+        "old_corpus": [
+            "l1\n",
+            "l2\n",
+            "l3\n",
+            "l4\n",
+            "l5\n",
+            "l6\n",
+            "l7\n",
+            "l8\n",
+            "l9\n",
+            "x\n",
+            "m1\n",
+            "m2\n",
+            "m3\n",
+            "m4\n",
+            "m5\n",
+            "m6\n",
+            "m7\n",
+            "m8\n",
+            "m9\n",
+            "p\n"
+        ],
+        "new_corpus": [
+            "l1\n",
+            "l2\n",
+            "l3\n",
+            "l4\n",
+            "l5\n",
+            "l6\n",
+            "l7\n",
+            "l8\n",
+            "l9\n",
+            "y\n",
+            "m1\n",
+            "m2\n",
+            "m3\n",
+            "m4\n",
+            "m5\n",
+            "m6\n",
+            "m7\n",
+            "m8\n",
+            "m9\n",
+            "q\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "context_zero",
+        "old": [
+            {
+                "type": null,
+                "text": "a\n",
+                "line": 1
+            },
+            {
+                "type": null,
+                "text": "b\n",
+                "line": 2
+            },
+            {
+                "type": "-",
+                "text": "c\n",
+                "line": 3
+            },
+            {
+                "type": null,
+                "text": "d\n",
+                "line": 4
+            },
+            {
+                "type": null,
+                "text": "e\n",
+                "line": 5
+            }
+        ],
+        "new": [
+            {
+                "type": null,
+                "text": "a\n",
+                "line": 1
+            },
+            {
+                "type": null,
+                "text": "b\n",
+                "line": 2
+            },
+            {
+                "type": "+",
+                "text": "C\n",
+                "line": 3
+            },
+            {
+                "type": null,
+                "text": "d\n",
+                "line": 4
+            },
+            {
+                "type": null,
+                "text": "e\n",
+                "line": 5
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                2,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            2
+        ],
+        "blocks_mask": [
+            false,
+            false,
+            true,
+            false,
+            false
+        ],
+        "old_corpus": [
+            "a\n",
+            "b\n",
+            "c\n",
+            "d\n",
+            "e\n"
+        ],
+        "new_corpus": [
+            "a\n",
+            "b\n",
+            "C\n",
+            "d\n",
+            "e\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "smoothing",
+        "old": [
+            {
+                "type": "-",
+                "text": "private function a($a, $b) {\n",
+                "line": 1
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "public function and($b, $c) {\n",
+                "line": 1
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        0,
+                        1
+                    ],
+                    [
+                        1,
+                        6
+                    ],
+                    [
+                        0,
+                        11
+                    ],
+                    [
+                        1,
+                        7
+                    ],
+                    [
+                        0,
+                        4
+                    ]
+                ],
+                [
+                    [
+                        0,
+                        1
+                    ],
+                    [
+                        1,
+                        5
+                    ],
+                    [
+                        0,
+                        11
+                    ],
+                    [
+                        1,
+                        9
+                    ],
+                    [
+                        0,
+                        4
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [],
+        "blocks_mask": [
+            true
+        ],
+        "old_corpus": [
+            "private function a($a, $b) {\n"
+        ],
+        "new_corpus": [
+            "public function and($b, $c) {\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "replace_block",
+        "old": [
+            {
+                "type": "-",
+                "text": "one\n",
+                "line": 1
+            },
+            {
+                "type": "-",
+                "text": "two\n",
+                "line": 2
+            },
+            {
+                "type": "-",
+                "text": "three\n",
+                "line": 3
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "uno\n",
+                "line": 1
+            },
+            {
+                "type": "+",
+                "text": "dos\n",
+                "line": 2
+            },
+            null
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        1,
+                        3
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        3
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ],
+            [
+                1,
+                [
+                    [
+                        1,
+                        3
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        3
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            1,
+            2
+        ],
+        "blocks_mask": [
+            true,
+            true,
+            true
+        ],
+        "old_corpus": [
+            "one\n",
+            "two\n",
+            "three\n"
+        ],
+        "new_corpus": [
+            "uno\n",
+            "dos\n",
+            "\n"
+        ],
+        "hunk_starts": []
+    },
+    {
+        "name": "unbalanced",
+        "old": [
+            {
+                "type": "-",
+                "text": "a\n",
+                "line": 1
+            },
+            null,
+            null,
+            {
+                "type": null,
+                "text": "e\n",
+                "line": 2
+            }
+        ],
+        "new": [
+            {
+                "type": "+",
+                "text": "b\n",
+                "line": 1
+            },
+            {
+                "type": "+",
+                "text": "c\n",
+                "line": 2
+            },
+            {
+                "type": "+",
+                "text": "d\n",
+                "line": 3
+            },
+            {
+                "type": null,
+                "text": "e\n",
+                "line": 4
+            }
+        ],
+        "has_any_changes": true,
+        "is_deleted": false,
+        "intraline": [
+            [
+                0,
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ],
+                [
+                    [
+                        1,
+                        1
+                    ],
+                    [
+                        0,
+                        1
+                    ]
+                ]
+            ]
+        ],
+        "depth_only": [],
+        "lines_mask": [
+            1,
+            2,
+            3
+        ],
+        "blocks_mask": [
+            true,
+            true,
+            true,
+            true
+        ],
+        "old_corpus": [
+            "a\n",
+            "\n",
+            "\n",
+            "e\n"
+        ],
+        "new_corpus": [
+            "b\n",
+            "c\n",
+            "d\n",
+            "e\n"
+        ],
+        "hunk_starts": []
+    }
+]
