@@ -143,3 +143,6 @@ a { color: var(--accent); }
   .columns { flex-direction: column; }
   .side-column { width: auto; }
 }
+
+.object-list { padding-left: 20px; }
+.remarkup-mention-disabled { text-decoration: line-through; }

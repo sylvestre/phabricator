@@ -63,6 +63,11 @@ pub const CONTRACT: &[TableContract] = &[
     },
     TableContract {
         database: "project",
+        table: "project_customfieldstorage",
+        columns: &["objectPHID", "fieldIndex", "fieldValue"],
+    },
+    TableContract {
+        database: "project",
         table: "project_slug",
         columns: &["projectPHID", "slug"],
     },

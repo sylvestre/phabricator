@@ -92,6 +92,8 @@ check "page fallbacks are replayed against PHP" "php / " -b "$optin" "$site/?fal
 check "skip header goes to PHP for pages" "php / " -b "$optin" -H 'X-Phab-Skip-Rust: 1' "$site/"
 check "pages not ported go to PHP" "php /D1 " -b "$optin" "$site/D1"
 check "profiles go to Rust with the opt-in" "rust /p/alice/" -b "$optin" "$site/p/alice/"
+check "projects go to Rust with the opt-in" "rust /tag/build/" -b "$optin" "$site/tag/build/"
+check "project boards go to PHP" "php /project/board/1/ " -b "$optin" "$site/project/board/1/"
 check "profile subpages go to PHP" "php /p/alice/calendar/ " -b "$optin" "$site/p/alice/calendar/"
 check "the switch always goes to Rust" "rust /rust-ui/on?next=/D1" "$site/rust-ui/on?next=/D1"
 check "Rust static files go to Rust" "rust /rsrc-rust/abc/phab.css" "$site/rsrc-rust/abc/phab.css"

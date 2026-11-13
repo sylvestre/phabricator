@@ -12,6 +12,7 @@ mod error;
 mod home;
 pub mod opt_in;
 mod people;
+mod projects;
 pub mod remarkup;
 mod response;
 mod router;

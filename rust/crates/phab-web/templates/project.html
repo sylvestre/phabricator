@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa {{ icon }} project-color-{{ color }}" aria-hidden="true"></span> {{ name }}</h1>
+  <ul class="tags">
+    {%- if let Some(hashtag) = hashtag %}<li class="tag">#{{ hashtag }}</li>{% endif %}
+    {%- if milestone %}<li class="tag">Milestone</li>{% endif %}
+    {%- if archived %}<li class="tag">Archived</li>{% endif %}
+    {%- if let Some(parent) = parent %}<li class="tag">Part of <a href="{{ parent.uri }}">{{ parent.name }}</a></li>{% endif %}
+  </ul>
+</header>
+<div class="columns">
+  <section class="main-column">
+    {%- if description.is_some() %}
+    <div class="remarkup">{{ self.description_html()|safe }}</div>
+    {%- endif %}
+    <h2>Revisions{% if revision_count > 0 %} ({{ revision_count }}){% endif %}</h2>
+    {%- if revisions.is_empty() %}
+    <p class="muted">No revisions are tagged with this project.</p>
+    {%- else %}
+    <ul class="object-list">
+      {%- for revision in revisions %}
+      <li><a href="{{ revision.uri }}"{% if revision.closed %} class="remarkup-object-closed"{% endif %}>{{ revision.name }}</a></li>
+      {%- endfor %}
+    </ul>
+    {%- if revision_count > revisions.len() %}
+    <p><a href="/differential/?projects={{ hashtag.as_deref().unwrap_or("") }}">View all</a></p>
+    {%- endif %}
+    {%- endif %}
+  </section>
+  <aside class="side-column">
+    <h2>Members{% if member_count > 0 %} ({{ member_count }}){% endif %}</h2>
+    {%- if members.is_empty() %}
+    <p class="muted">This project has no members.</p>
+    {%- else %}
+    <ul class="object-list">
+      {%- for member in members %}
+      <li><a href="{{ member.uri }}"{% if member.closed %} class="remarkup-mention-disabled"{% endif %}>{{ member.name }}</a></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <p class="muted">{{ watcher_count }} watching</p>
+    {%- if !children.is_empty() %}
+    <h2>Subprojects and milestones</h2>
+    <ul class="object-list">
+      {%- for child in children %}
+      <li><a href="{{ child.uri }}"{% if child.closed %} class="remarkup-object-closed"{% endif %}>{{ child.name }}</a></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+  </aside>
+</div>
+{% endblock %}

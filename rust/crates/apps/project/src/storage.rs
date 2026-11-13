@@ -104,6 +104,72 @@ pub async fn load_by_phid(database: &Database, phids: &[Phid]) -> Result<Vec<Pro
     rows.iter().map(Project::from_row).collect()
 }
 
+/// `PhabricatorObjectHasWatcherEdgeType`.
+pub const OBJECT_HAS_WATCHER: i64 = 47;
+/// `PhabricatorProjectProjectHasObjectEdgeType`.
+pub const PROJECT_HAS_OBJECT: i64 = 42;
+/// The custom field key of `PhabricatorProjectDescriptionField`.
+const DESCRIPTION_FIELD: &str = "std:project:internal:description";
+
+/// The project with this ID, if any.
+pub async fn load_by_id(database: &Database, id: i64) -> Result<Option<Project>, DbError> {
+    let sql = format!(
+        "SELECT {COLUMNS} FROM {} p WHERE p.id = ?",
+        database.table("project", "project")
+    );
+    let row = phab_db::sqlx::query(&sql)
+        .bind(id)
+        .fetch_optional(database.pool())
+        .await?;
+    row.as_ref().map(Project::from_row).transpose()
+}
+
+/// The subprojects and milestones of `parent`.
+pub async fn load_children(database: &Database, parent: &Phid) -> Result<Vec<Project>, DbError> {
+    let sql = format!(
+        "SELECT {COLUMNS} FROM {} p WHERE p.parentProjectPHID = ? ORDER BY p.milestoneNumber, p.name",
+        database.table("project", "project")
+    );
+    let rows = phab_db::sqlx::query(&sql)
+        .bind(parent.as_str())
+        .fetch_all(database.pool())
+        .await?;
+    rows.iter().map(Project::from_row).collect()
+}
+
+/// The description (`PhabricatorProjectDescriptionField`), from the
+/// custom field storage.
+pub async fn load_description(database: &Database, project: &Phid) -> Result<String, DbError> {
+    let sql = format!(
+        "SELECT fieldValue FROM {} WHERE objectPHID = ? AND fieldIndex = ?",
+        database.table("project", "project_customfieldstorage")
+    );
+    let row = phab_db::sqlx::query(&sql)
+        .bind(project.as_str())
+        .bind(phab_core::hash::digest_for_index(
+            DESCRIPTION_FIELD.as_bytes(),
+        ))
+        .fetch_optional(database.pool())
+        .await?;
+    row.map_or_else(|| Ok(String::new()), |row| rows::text(&row, "fieldValue"))
+}
+
+/// The destinations of a project's edges of one type, like members
+/// (`PROJECT_HAS_MEMBER`) or watchers ([`OBJECT_HAS_WATCHER`]).
+pub async fn load_edge_destinations(
+    database: &Database,
+    project: &Phid,
+    edge_type: i64,
+) -> Result<Vec<Phid>, DbError> {
+    phab_db::edges::load_destination_phids(
+        database,
+        std::slice::from_ref(project),
+        &[edge_type],
+        None,
+    )
+    .await
+}
+
 /// The projects `user` is a direct member of (`withMemberPHIDs()`).
 pub async fn load_member_projects(
     database: &Database,

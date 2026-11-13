@@ -252,6 +252,89 @@ async fn profiles_show_what_the_viewer_may_see() {
 }
 
 #[tokio::test]
+async fn project_pages_follow_policy() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    let description_index = hash::digest_for_index(b"std:project:internal:description");
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_project`.project (id, name, phid, authorPHID, dateCreated, dateModified, \
+               status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, hasWorkboard, \
+               hasMilestones, hasSubprojects, projectPath, projectDepth, projectPathKey, properties, \
+               subtype, primarySlug, parentProjectPHID, milestoneNumber) VALUES \
+             (1, 'Build', 'PHID-PROJ-build', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-cog', 'blue', \
+               'k', 0, 0, 0, 'a', 0, 'k001', '{{}}', 'default', 'build', NULL, NULL), \
+             (2, 'Hidden', 'PHID-PROJ-hidden', 'x', 1, 1, '0', 'no-one', 'users', 'users', 'fa-x', 'red', \
+               'k', 0, 0, 0, 'b', 0, 'k002', '{{}}', 'default', 'hidden', NULL, NULL), \
+             (3, 'Sprint 1', 'PHID-PROJ-sprint', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', 'red', \
+               'k', 0, 0, 0, 'c', 1, 'k003', '{{}}', 'default', NULL, 'PHID-PROJ-build', 1); \
+             INSERT INTO `{{ns}}_project`.project_slug (projectPHID, slug, dateCreated, dateModified) VALUES \
+               ('PHID-PROJ-build', 'build', 1, 1), ('PHID-PROJ-build', 'builds', 1, 1), \
+               ('PHID-PROJ-hidden', 'hidden', 1, 1); \
+             INSERT INTO `{{ns}}_project`.project_customfieldstorage (objectPHID, fieldIndex, fieldValue) \
+               VALUES ('PHID-PROJ-build', '{description_index}', 'Builds **Firefox**.'); \
+             INSERT INTO `{{ns}}_project`.edge (src, type, dst, dateCreated, seq) VALUES \
+               ('PHID-PROJ-build', 13, 'PHID-USER-alice', 1, 0), \
+               ('PHID-PROJ-build', 47, 'PHID-USER-mfa', 1, 0), \
+               ('PHID-PROJ-build', 42, 'PHID-DREV-one', 1, 0), \
+               ('PHID-PROJ-build', 42, 'PHID-DREV-secret', 1, 0); \
+             INSERT INTO `{{ns}}_differential`.differential_revision (id, title, phid, status, summary, \
+               testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, viewPolicy, \
+               editPolicy, properties, activeDiffPHID) VALUES \
+             (1, 'One', 'PHID-DREV-one', 'published', '', '', 'PHID-USER-alice', 1, 1, '{{}}', 'k', \
+               'users', 'users', '{{}}', ''), \
+             (2, 'Secret', 'PHID-DREV-secret', 'needs-review', '', '', 'PHID-USER-mfa', 1, 1, '{{}}', 'k', \
+               'no-one', 'no-one', '{{}}', '')"
+        ))
+        .await;
+    let alice = Some("phsid=alice-token");
+
+    let response = get(&test_db, Config::default(), "/tag/build/", alice).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    assert!(
+        page.contains("<title>Build · Phabricator</title>"),
+        "{page}"
+    );
+    assert!(page.contains("Builds <strong>Firefox</strong>."), "{page}");
+    assert!(page.contains("<a href=\"/p/alice/\">alice</a>"), "{page}");
+    assert!(page.contains("1 watching"), "{page}");
+    assert!(
+        page.contains("<a href=\"/project/view/3/\">Build (Sprint 1)</a>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("class=\"remarkup-object-closed\">D1: One</a>"),
+        "{page}"
+    );
+    assert!(!page.contains("Secret"), "{page}");
+
+    // Other hashtags, and other cases, go to the primary one.
+    let response = get(&test_db, Config::default(), "/tag/Builds/", alice).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(response.headers()[header::LOCATION], "/tag/build/");
+
+    let response = get(&test_db, Config::default(), "/project/view/3/", alice).await;
+    assert!(
+        text(response)
+            .await
+            .contains("<title>Build (Sprint 1) · Phabricator</title>")
+    );
+
+    // A project the viewer can't see is denied, and not redirected.
+    for path in ["/tag/hidden/", "/tag/HIDDEN/", "/project/view/2/"] {
+        let response = get(&test_db, Config::default(), path, alice).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+    }
+    for path in ["/tag/nope/", "/project/view/9/"] {
+        let response = get(&test_db, Config::default(), path, alice).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
 async fn stylesheet_is_served() {
     let Some(test_db) = setup(true).await else {
         return;
