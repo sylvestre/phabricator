@@ -13,6 +13,7 @@ use phab_policy::Viewer;
 use phab_remarkup::{Markup, Mode};
 
 use crate::error::PageError;
+use crate::feed::{self, StoryItem};
 use crate::response::Page;
 use crate::shell::Shell;
 use crate::state::WebState;
@@ -21,6 +22,8 @@ use crate::{remarkup, time};
 
 /// How many projects the side column lists.
 const PROJECT_LIMIT: usize = 5;
+/// `buildPeopleFeed()` shows this many stories.
+const ACTIVITY_LIMIT: usize = 100;
 /// `PhabricatorUserReviewQueueField` looks at this many revisions.
 const REVIEW_QUEUE_LIMIT: usize = 100;
 
@@ -45,6 +48,8 @@ pub(crate) struct Profile {
     blurb: Option<Markup>,
     projects: Vec<ProjectItem>,
     project_count: usize,
+    stories: Vec<StoryItem>,
+    skipped_stories: usize,
 }
 
 impl Profile {
@@ -132,6 +137,17 @@ pub(crate) async fn show<S: WebState>(
     } else {
         Some(remarkup::render(state.as_ref(), &as_viewer, &user_profile.blurb, Mode::Html).await?)
     };
+    // `buildPeopleFeed()`: the stories referencing the user.
+    let activity = feed::load(
+        state.as_ref(),
+        &as_viewer,
+        phab_app_feed::listing::Query {
+            cursor: phab_app_feed::listing::Cursor::Newest,
+            limit: ACTIVITY_LIMIT,
+            references: Some(std::slice::from_ref(&user.phid)),
+        },
+    )
+    .await?;
     let mut projects = projects(state.as_ref(), &as_viewer, &user.phid).await?;
     let project_count = projects.len();
     projects.truncate(PROJECT_LIMIT);
@@ -147,6 +163,8 @@ pub(crate) async fn show<S: WebState>(
         blurb,
         projects,
         project_count,
+        stories: feed::items(&activity),
+        skipped_stories: activity.skipped,
         user_phid: user.phid.as_str().to_owned(),
         user_name: user.user_name,
         real_name: user.real_name,

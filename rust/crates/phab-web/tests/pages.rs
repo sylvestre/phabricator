@@ -54,6 +54,7 @@ async fn setup(with_csrf_key: bool) -> Option<TestDatabase> {
     let test_db = TestDatabase::create(&[
         "user",
         "auth",
+        "feed",
         "differential",
         "project",
         "policy",

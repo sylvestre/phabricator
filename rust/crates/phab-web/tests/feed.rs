@@ -223,9 +223,14 @@ async fn feed_shows_visible_stories_with_titles() {
     assert!(page.contains("retitled"), "{page}");
     assert!(!page.contains("accepted"), "{page}");
 
-    // The stories referencing bob.
+    // The stories referencing bob, on the feed and on his profile.
     let (_, page) = get(&test_db, "/feed/?userPHIDs=PHID-USER-bob").await;
     assert!(page.contains("bob</a> accepted"), "{page}");
     assert!(!page.contains("retitled"), "{page}");
+    let (status, page) = get(&test_db, "/p/bob/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("bob</a> accepted"), "{page}");
+    assert!(!page.contains("retitled"), "{page}");
+    assert!(!page.contains("not shown here yet"), "{page}");
     test_db.drop_databases().await;
 }

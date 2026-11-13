@@ -23,7 +23,15 @@
     <div class="remarkup">{{ self.blurb_html()|safe }}</div>
     {%- endif %}
     <h2>Recent Activity</h2>
-    <p><a href="/feed/?userPHIDs={{ user_phid }}">View all activity</a></p>
+    <p><a href="/feed/?userPHIDs={{ user_phid }}">View all</a></p>
+    {%- if skipped_stories > 0 %}
+    <p class="notice">{{ skipped_stories }} {% if skipped_stories == 1 %}story is{% else %}stories are{% endif %} not shown here yet{% if let Some(uri) = shell.old_ui_uri %}: <a href="{{ uri }}">see them in the old interface</a>{% endif %}.</p>
+    {%- endif %}
+    {%- if stories.is_empty() %}
+    <p class="muted">To begin on such a grand journey, requires but just a single step.</p>
+    {%- else %}
+    {% include "stories.html" %}
+    {%- endif %}
   </section>
   <aside class="side-column">
     <h2>Projects{% if project_count > projects.len() %} ({{ project_count }}){% endif %}</h2>

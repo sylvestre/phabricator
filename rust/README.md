@@ -67,7 +67,7 @@ A method is moved in three steps:
 | `crates/phab-diff` | Differential diffs, changesets and hunks: storage, line alignment, intraline changes |
 | `crates/apps/conduit` | `conduit.ping` |
 | `crates/apps/people` | `user.whoami`, `bugzilla.account.search`, `bmoexternalaccount.search` |
-| `crates/apps/feed` | `feed.query_id` |
+| `crates/apps/feed` | `feed.query_id`, and the feed stories with their titles and handles |
 | `crates/apps/project` | Projects: loading by PHID or hashtag, and their policy |
 | `bins/phab-server` | The axum HTTP service |
 | `bins/phab-replay` | Replays scenario files against both stacks |
