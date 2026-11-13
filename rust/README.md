@@ -62,6 +62,7 @@ A method is moved in three steps:
 | `crates/phab-auth` | Conduit API tokens, session cookies and CSRF tokens |
 | `crates/phab-conduit` | Conduit request decoding, dispatch and response envelope |
 | `crates/phab-parity` | Compares PHP and Rust answers |
+| `crates/phab-remarkup` | Remarkup engine, checked against PHP's corpus and a PHP oracle |
 | `crates/phab-web` | Web viewer, page shell, static files and the opt-in switch |
 | `crates/apps/conduit` | `conduit.ping` |
 | `crates/apps/people` | `user.whoami`, `bugzilla.account.search`, `bmoexternalaccount.search` |
