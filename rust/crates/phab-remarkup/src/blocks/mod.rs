@@ -2,6 +2,7 @@
 
 pub mod code;
 pub mod default;
+pub mod frontmatter;
 pub mod header;
 pub mod html_table;
 pub mod interpreter;

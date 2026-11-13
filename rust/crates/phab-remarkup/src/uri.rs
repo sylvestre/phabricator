@@ -1,6 +1,7 @@
-//! The part of `PhutilURI` Remarkup needs: whether a URI parses, and its
-//! protocol. It follows PHP's `parse_url()` (`php_url_parse_ex2()`) for the
-//! scheme and host, which decide whether a link is rendered.
+//! The part of `PhutilURI` Remarkup needs: whether a URI parses, its
+//! protocol and whether it has a domain. It follows PHP's `parse_url()`
+//! (`php_url_parse_ex2()`) for the scheme and host, which decide whether a
+//! link is rendered.
 
 use crate::preg::{self, Pattern};
 
@@ -19,6 +20,37 @@ pub struct InvalidUri;
 
 /// `id(new PhutilURI($uri))->getProtocol()`.
 pub fn protocol(uri: &[u8]) -> Result<Vec<u8>, InvalidUri> {
+    Ok(parts(uri)?
+        .and_then(|parts| parts.scheme)
+        .unwrap_or_default())
+}
+
+/// Whether `id(new PhutilURI($uri))->getDomain()` is set.
+pub fn has_domain(uri: &[u8]) -> bool {
+    parts(uri)
+        .ok()
+        .flatten()
+        .and_then(|parts| parts.host)
+        .is_some_and(|host| !host.is_empty())
+}
+
+/// The scheme and authority of a URI: what is left of it after
+/// `setPath()` and before the path, like `https://bugzilla.mozilla.org`.
+pub fn origin(uri: &[u8]) -> Vec<u8> {
+    let Some(separator) = uri.windows(3).position(|window| window == b"://") else {
+        return Vec::new();
+    };
+    let authority = separator + 3;
+    let end = uri[authority..]
+        .iter()
+        .position(|byte| matches!(byte, b'/' | b'?' | b'#'))
+        .map_or(uri.len(), |offset| authority + offset);
+    uri[..end].to_vec()
+}
+
+/// What `PhutilURI` keeps of `parse_url()`, or `None` for a URI it can't
+/// parse; `Err` where its constructor throws.
+fn parts(uri: &[u8]) -> Result<Option<UrlParts>, InvalidUri> {
     if preg::is_match(&AMBIGUOUS, uri) {
         return Err(InvalidUri);
     }
@@ -39,13 +71,12 @@ pub fn protocol(uri: &[u8]) -> Result<Vec<u8>, InvalidUri> {
         parse_url(uri)
     };
 
-    let parts = parts.filter(|_| php_ltrim(uri) == uri).filter(|parts| {
+    Ok(parts.filter(|_| php_ltrim(uri) == uri).filter(|parts| {
         parts
             .host
             .as_deref()
             .is_none_or(|host| host.is_empty() || preg::is_match(&VALID_HOST, host))
-    });
-    Ok(parts.and_then(|parts| parts.scheme).unwrap_or_default())
+    }))
 }
 
 fn php_ltrim(text: &[u8]) -> &[u8] {

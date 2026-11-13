@@ -50,6 +50,65 @@ pub fn compile(source: &str) -> Regex {
         .unwrap_or_else(|error| panic!("invalid pattern {source:?}: {error}"))
 }
 
+/// Compiles a pattern for PHP's `u` flag: UTF-8 mode, with Unicode
+/// classes (PHP sets `PCRE2_UCP` along with `PCRE2_UTF`).
+///
+/// # Panics
+///
+/// If the pattern doesn't compile.
+pub fn compile_unicode(source: &str) -> Regex {
+    RegexBuilder::new()
+        .utf(true)
+        .ucp(true)
+        .jit_if_available(true)
+        .build(source)
+        .unwrap_or_else(|error| panic!("invalid pattern {source:?}: {error}"))
+}
+
+/// Compiles a PHP regular expression with its delimiters and flags, like
+/// `/^(Q|V)\d$/i` or `(x)`. `None` if it is not a valid one, where PHP
+/// would warn and not match.
+pub fn compile_php(regex: &[u8]) -> Option<Regex> {
+    let regex = std::str::from_utf8(regex).ok()?;
+    let open = regex.chars().next()?;
+    let close = match open {
+        '(' => ')',
+        '[' => ']',
+        '{' => '}',
+        '<' => '>',
+        other if other.is_alphanumeric() || other == '\\' || other.is_whitespace() => return None,
+        other => other,
+    };
+    let end = regex.rfind(close).filter(|end| *end > 0)?;
+    let pattern = &regex[open.len_utf8()..end];
+    let mut builder = RegexBuilder::new();
+    builder.jit_if_available(true);
+    let mut prefix = String::new();
+    for flag in regex[end + close.len_utf8()..].chars() {
+        match flag {
+            'i' => {
+                builder.caseless(true);
+            }
+            'm' => {
+                builder.multi_line(true);
+            }
+            's' => {
+                builder.dotall(true);
+            }
+            'x' => {
+                builder.extended(true);
+            }
+            'u' => {
+                builder.utf(true).ucp(true);
+            }
+            'U' => prefix.push_str("(?U)"),
+            'D' | 'S' | 'X' | 'A' => {}
+            _ => return None,
+        }
+    }
+    builder.build(&format!("{prefix}{pattern}")).ok()
+}
+
 /// The groups of one match, as PHP's `$matches` sees them.
 #[derive(Debug, Clone)]
 pub struct Groups<'s> {
@@ -117,6 +176,11 @@ fn captures_at<'s>(regex: &Regex, subject: &'s [u8], start: usize) -> Option<Gro
 
 fn tracing_error(regex: &Regex, error: &pcre2::Error) {
     tracing::warn!(pattern = regex.as_str(), %error, "pattern failed");
+}
+
+/// `preg_match()` with a pattern compiled at run time.
+pub fn captures_regex<'s>(regex: &Regex, subject: &'s [u8]) -> Option<Groups<'s>> {
+    captures_at(regex, subject, 0)
 }
 
 /// `preg_match()`.
@@ -278,6 +342,16 @@ mod tests {
             replace(&Pattern::new(pattern), subject, replacement),
             expected
         );
+    }
+
+    #[test]
+    fn php_regexes_keep_their_flags() {
+        let regex = compile_php(br"/^(Q|V|M|P)\d$/").unwrap();
+        assert!(regex.is_match(b"V1").unwrap());
+        assert!(!regex.is_match(b"D1").unwrap());
+        assert!(compile_php(b"(d\\d)i").unwrap().is_match(b"D1").unwrap());
+        assert!(compile_php(b"no delimiters").is_none());
+        assert!(compile_php(b"/a/q").is_none());
     }
 
     #[test]

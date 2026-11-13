@@ -4,10 +4,14 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use indexmap::IndexMap;
+use pcre2::bytes::Regex;
+
 use crate::markup::{self, Markup};
-use crate::php;
+use crate::objects::{ObjectMention, Resolved};
 use crate::rule::{BlockRule, InlineRule};
 use crate::storage::BlockStorage;
+use crate::{php, preg};
 
 /// `PhutilRemarkupEngine::MAX_CHILD_DEPTH`.
 const MAX_CHILD_DEPTH: usize = 32;
@@ -40,6 +44,41 @@ pub struct Config {
     pub generate_toc: bool,
     /// `phutil.codeblock.language-default`.
     pub default_language: Option<String>,
+    /// `phabricator.base-uri`, for `uri.full` links.
+    pub base_uri: Option<String>,
+    /// `phabricator.production-uri`, for links in text and mail; the base
+    /// URI if unset.
+    pub production_uri: Option<String>,
+    /// `uri.full`: object links are absolute.
+    pub uri_full: bool,
+    /// `remarkup.ignored-object-names`: a PHP regular expression of names
+    /// like "V1" which are not object references.
+    pub ignored_object_names: Option<String>,
+    /// `bugzilla.url`.
+    pub bugzilla_url: Option<String>,
+}
+
+impl Config {
+    /// `PhabricatorEnv::getProductionURI()`: absolute URIs stay as they
+    /// are.
+    pub fn production_uri(&self, path: &[u8]) -> Vec<u8> {
+        if crate::uri::has_domain(path) {
+            return path.to_vec();
+        }
+        let base = self
+            .production_uri
+            .as_deref()
+            .filter(|uri| !uri.is_empty())
+            .or(self.base_uri.as_deref())
+            .unwrap_or("");
+        [php::rtrim(base.as_bytes(), b"/"), path].concat()
+    }
+
+    /// `PhabricatorEnv::getURI()`.
+    pub fn full_uri(&self, path: &[u8]) -> Vec<u8> {
+        let base = self.base_uri.as_deref().unwrap_or("");
+        [php::rtrim(base.as_bytes(), b"/"), path].concat()
+    }
 }
 
 /// A link found by `PhutilRemarkupHyperlinkRule`, rendered once all text is
@@ -73,6 +112,18 @@ pub struct Metadata {
     /// `PhutilRemarkupHeaderBlockRule::KEY_HEADER_TOC`: anchor, level and
     /// rendered HTML of each header, in order.
     pub toc: Vec<(Vec<u8>, usize, Vec<u8>)>,
+    /// `PhabricatorObjectRemarkupRule::KEY_RULE_OBJECT`: object references
+    /// waiting to be resolved.
+    pub objects: Vec<ObjectMention>,
+    /// `PhabricatorMentionRemarkupRule::KEY_RULE_MENTION`: the tokens of
+    /// each mentioned username, lowercased.
+    pub mentions: IndexMap<Vec<u8>, Vec<Vec<u8>>>,
+    /// `KEY_RULE_MENTION_ORIGINAL`: each mention token's username as
+    /// written.
+    pub mention_originals: HashMap<Vec<u8>, Vec<u8>>,
+    /// `KEY_MENTIONED` and `KEY_MENTIONED_OBJECTS`: the PHIDs of the users
+    /// and objects the text mentions, in order.
+    pub mentioned_phids: Vec<String>,
 }
 
 /// What the rules see of the engine while marking up.
@@ -85,6 +136,9 @@ pub struct Context<'r> {
     /// What rules record.
     pub metadata: Metadata,
     quote_depth: usize,
+    /// The objects references point to, once resolved.
+    pub resolved: Resolved,
+    ignored_object_names: Option<Regex>,
 }
 
 impl<'r> Context<'r> {
@@ -132,6 +186,13 @@ impl<'r> Context<'r> {
     /// `getState()`.
     pub fn state(&self, state: &str) -> bool {
         self.states.contains_key(state)
+    }
+
+    /// Whether `remarkup.ignored-object-names` matches this text.
+    pub fn is_ignored_object_name(&self, text: &[u8]) -> bool {
+        self.ignored_object_names
+            .as_ref()
+            .is_some_and(|regex| regex.is_match(text).unwrap_or(false))
     }
 
     /// `getQuoteDepth()`.
@@ -197,6 +258,31 @@ pub struct Engine {
     rules: Vec<Box<dyn InlineRule>>,
 }
 
+/// Marked-up text whose object references are not resolved yet.
+pub struct Prepared<'e> {
+    context: Context<'e>,
+    output: Markup,
+}
+
+impl Prepared<'_> {
+    /// The object references to resolve: rule prefix and ID as written.
+    pub fn object_references(&self) -> Vec<(&'static str, Vec<u8>)> {
+        let mut references: Vec<(&'static str, Vec<u8>)> = Vec::new();
+        for mention in &self.context.metadata.objects {
+            let reference = (mention.prefix, mention.id.clone());
+            if !references.contains(&reference) {
+                references.push(reference);
+            }
+        }
+        references
+    }
+
+    /// The mentioned usernames, lowercased.
+    pub fn mentioned_usernames(&self) -> Vec<Vec<u8>> {
+        self.context.metadata.mentions.keys().cloned().collect()
+    }
+}
+
 /// What [`Engine::markup()`] produces.
 #[derive(Debug, Clone)]
 pub struct Rendered {
@@ -244,8 +330,16 @@ impl Engine {
         &self.config
     }
 
-    /// `markupText()`: `preprocessText()` then `postprocessText()`.
+    /// `markupText()` for text without object references to resolve:
+    /// [`Engine::prepare()`], then [`Engine::finish()`] with nothing
+    /// resolved (references render as written).
     pub fn markup(&self, text: &[u8], mode: Mode) -> Rendered {
+        self.finish(self.prepare(text, mode), Resolved::default())
+    }
+
+    /// `preprocessText()`: marks the blocks up, leaving tokens for what
+    /// needs the database.
+    pub fn prepare(&self, text: &[u8], mode: Mode) -> Prepared<'_> {
         let mut cx = Context {
             config: &self.config,
             mode,
@@ -254,6 +348,12 @@ impl Engine {
             states: HashMap::new(),
             metadata: Metadata::default(),
             quote_depth: 0,
+            resolved: Resolved::default(),
+            ignored_object_names: self
+                .config
+                .ignored_object_names
+                .as_deref()
+                .and_then(|regex| preg::compile_php(php::trim(regex.as_bytes()))),
         };
 
         let blocks = self.split_into_blocks(text, 0);
@@ -262,7 +362,20 @@ impl Engine {
             .map(|block| self.markup_block(&mut cx, block))
             .collect();
         let output = cx.flatten(&outputs);
+        Prepared {
+            context: cx,
+            output,
+        }
+    }
 
+    /// `postprocessText()`: renders the deferred tokens, objects with what
+    /// `resolved` says the viewer may see, and expands the storage.
+    pub fn finish(&self, prepared: Prepared<'_>, resolved: Resolved) -> Rendered {
+        let Prepared {
+            context: mut cx,
+            output,
+        } = prepared;
+        cx.resolved = resolved;
         for block in &self.blocks {
             block.postprocess(&mut cx);
         }
