@@ -1709,6 +1709,7 @@ dependencies = [
  "form_urlencoded",
  "hex",
  "phab-app-differential",
+ "phab-app-people",
  "phab-app-project",
  "phab-auth",
  "phab-core",

@@ -46,7 +46,16 @@ fn session_key(token: &str) -> String {
 /// Users `alice` (fine), `gone` (disabled) and `mfa` (partial session),
 /// with sessions `alice-token`, `gone-token` and `mfa-token`.
 async fn setup(with_csrf_key: bool) -> Option<TestDatabase> {
-    let test_db = TestDatabase::create(&["user", "auth"]).await?;
+    let test_db = TestDatabase::create(&[
+        "user",
+        "auth",
+        "differential",
+        "project",
+        "policy",
+        "spaces",
+        "repository",
+    ])
+    .await?;
     test_db
         .execute(&format!(
             "INSERT INTO `{{ns}}_user`.user (phid, userName, realName, dateCreated, dateModified, \
@@ -176,6 +185,69 @@ async fn missing_csrf_key_goes_to_php() {
         fallback_reason(&response),
         "the CSRF key does not exist yet"
     );
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn profiles_show_what_the_viewer_may_see() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_user`.user_profile (userPHID, title, blurb, icon, dateCreated, dateModified) \
+             VALUES ('PHID-USER-gone', '', 'Works on **D1**.', 'engineering', 1, 1); \
+             INSERT INTO `{ns}_project`.project (name, phid, authorPHID, dateCreated, dateModified, status, \
+               viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, hasWorkboard, hasMilestones, \
+               hasSubprojects, projectPath, projectDepth, projectPathKey, properties, subtype, primarySlug) \
+             VALUES \
+             ('Build', 'PHID-PROJ-build', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', 'blue', \
+               'k', 0, 0, 0, 'a', 0, 'k001', '{}', 'default', 'build'), \
+             ('Hidden', 'PHID-PROJ-hidden', 'x', 1, 1, '0', 'no-one', 'users', 'users', 'fa-x', 'blue', \
+               'k', 0, 0, 0, 'b', 0, 'k002', '{}', 'default', 'hidden'); \
+             INSERT INTO `{ns}_user`.edge (src, type, dst, dateCreated, seq) VALUES \
+               ('PHID-USER-gone', 14, 'PHID-PROJ-build', 1, 0), \
+               ('PHID-USER-gone', 14, 'PHID-PROJ-hidden', 1, 0); \
+             INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, summary, \
+               testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, viewPolicy, \
+               editPolicy, properties, activeDiffPHID) VALUES \
+             (1, 'One', 'PHID-DREV-one', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', \
+               'users', 'users', '{}', ''); \
+             INSERT INTO `{ns}_differential`.differential_reviewer (revisionPHID, reviewerPHID, \
+               reviewerStatus, dateCreated, dateModified, options) VALUES \
+             ('PHID-DREV-one', 'PHID-USER-gone', 'added', 1, 1, '{}')",
+        )
+        .await;
+
+    let response = get(
+        &test_db,
+        Config::default(),
+        "/p/GONE/",
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    assert!(page.contains("<title>gone · Phabricator</title>"), "{page}");
+    assert!(
+        page.contains("Gone <span class=\"muted\">(gone)</span>"),
+        "{page}"
+    );
+    assert!(page.contains("fa-code"), "{page}");
+    assert!(page.contains("<dd>Disabled</dd>"), "{page}");
+    assert!(page.contains(">1</a></dd>"), "review queue: {page}");
+    assert!(page.contains("Works on <strong><a href=\"/D1\""), "{page}");
+    assert!(page.contains("<a href=\"/tag/build/\">Build</a>"), "{page}");
+    assert!(!page.contains("Hidden"), "{page}");
+
+    let response = get(
+        &test_db,
+        Config::default(),
+        "/p/nobody/",
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     test_db.drop_databases().await;
 }
 

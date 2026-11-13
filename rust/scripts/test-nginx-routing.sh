@@ -91,6 +91,8 @@ check "other opt-in cookies go to PHP" "php / " -b 'phab_ui=php' "$site/"
 check "page fallbacks are replayed against PHP" "php / " -b "$optin" "$site/?fallback=1"
 check "skip header goes to PHP for pages" "php / " -b "$optin" -H 'X-Phab-Skip-Rust: 1' "$site/"
 check "pages not ported go to PHP" "php /D1 " -b "$optin" "$site/D1"
+check "profiles go to Rust with the opt-in" "rust /p/alice/" -b "$optin" "$site/p/alice/"
+check "profile subpages go to PHP" "php /p/alice/calendar/ " -b "$optin" "$site/p/alice/calendar/"
 check "the switch always goes to Rust" "rust /rust-ui/on?next=/D1" "$site/rust-ui/on?next=/D1"
 check "Rust static files go to Rust" "rust /rsrc-rust/abc/phab.css" "$site/rsrc-rust/abc/phab.css"
 docker stop routing-rust >/dev/null

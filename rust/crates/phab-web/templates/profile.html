@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>{% if !real_name.is_empty() %}{{ real_name }} <span class="muted">({{ user_name }})</span>{% else %}{{ user_name }}{% endif %}</h1>
+  <p class="profile-title">{% if let Some(icon) = icon %}<span class="fa {{ icon }}" aria-hidden="true"></span> {% endif %}{{ title }}</p>
+  {%- if !roles.is_empty() %}
+  <ul class="tags">{% for role in roles %}<li class="tag">{{ role }}</li>{% endfor %}</ul>
+  {%- endif %}
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>User Details</h2>
+    <dl class="properties">
+      {%- if let Some((absolute, relative)) = since %}
+      <dt>User Since</dt><dd><time>{{ absolute }}</time> ({{ relative }})</dd>
+      {%- endif %}
+      {%- if !roles.is_empty() %}
+      <dt>Roles</dt><dd>{{ roles|join(", ") }}</dd>
+      {%- endif %}
+      <dt>Review Queue</dt><dd><a href="/differential/?responsiblePHIDs%5B0%5D={{ user_phid }}&amp;statuses%5B0%5D=open()&amp;order=newest&amp;bucket=action">{{ review_queue }}</a></dd>
+    </dl>
+    {%- if blurb.is_some() %}
+    <div class="remarkup">{{ self.blurb_html()|safe }}</div>
+    {%- endif %}
+    <h2>Recent Activity</h2>
+    <p><a href="/feed/?userPHIDs={{ user_phid }}">View all activity</a></p>
+  </section>
+  <aside class="side-column">
+    <h2>Projects{% if project_count > projects.len() %} ({{ project_count }}){% endif %}</h2>
+    {%- if projects.is_empty() %}
+    <p class="muted">User does not belong to any projects.</p>
+    {%- else %}
+    <ul class="project-list">
+      {%- for project in projects %}
+      <li><a href="{{ project.uri }}">{{ project.name }}</a></li>
+      {%- endfor %}
+    </ul>
+    {%- if project_count > projects.len() %}
+    <p><a href="/project/?member={{ user_phid }}">View all</a></p>
+    {%- endif %}
+    {%- endif %}
+  </aside>
+</div>
+{% endblock %}

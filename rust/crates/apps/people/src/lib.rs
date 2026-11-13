@@ -2,6 +2,7 @@
 
 pub mod bugzilla;
 pub mod external_account;
+pub mod profile;
 pub mod profile_image;
 pub mod whoami;
 

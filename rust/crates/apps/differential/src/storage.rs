@@ -146,6 +146,35 @@ pub async fn load_revisions_by_id(
     with_reviewers(database, &rows).await
 }
 
+/// `DifferentialRevisionStatus`: the statuses which are not closed.
+pub const OPEN_STATUSES: &[&str] = &[
+    "needs-review",
+    "needs-revision",
+    "changes-planned",
+    "accepted",
+    "draft",
+];
+
+/// The open revisions `reviewer` reviews (`withReviewers()` and
+/// `withIsOpen(true)`), newest first.
+pub async fn load_open_revisions_reviewed_by(
+    database: &Database,
+    reviewer: &Phid,
+) -> Result<Vec<Revision>, DbError> {
+    let sql = format!(
+        "SELECT {REVISION_COLUMNS} FROM {} WHERE status IN ({}) AND phid IN \
+           (SELECT revisionPHID FROM {} WHERE reviewerPHID = ?) ORDER BY id DESC",
+        database.table("differential", "differential_revision"),
+        phab_db::placeholders(OPEN_STATUSES.len()),
+        database.table("differential", "differential_reviewer"),
+    );
+    let rows = phab_db::bind_all(phab_db::sqlx::query(&sql), OPEN_STATUSES.iter().copied())
+        .bind(reviewer.as_str())
+        .fetch_all(database.pool())
+        .await?;
+    with_reviewers(database, &rows).await
+}
+
 /// Builds revisions from their rows, with their reviewers.
 async fn with_reviewers(
     database: &Database,

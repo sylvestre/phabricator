@@ -104,6 +104,21 @@ pub async fn load_by_phid(database: &Database, phids: &[Phid]) -> Result<Vec<Pro
     rows.iter().map(Project::from_row).collect()
 }
 
+/// The projects `user` is a direct member of (`withMemberPHIDs()`).
+pub async fn load_member_projects(
+    database: &Database,
+    user: &Phid,
+) -> Result<Vec<Project>, DbError> {
+    let phids = phab_db::edges::load_destination_phids(
+        database,
+        std::slice::from_ref(user),
+        &[phab_db::edges::MEMBER_OF_PROJECT],
+        None,
+    )
+    .await?;
+    load_by_phid(database, &phids).await
+}
+
 /// The projects with these hashtags, as `(slug, project)` pairs. Slugs are
 /// matched exactly: callers lowercase them first, as
 /// `PhabricatorProjectProjectPHIDType::loadNamedObjects()` does.

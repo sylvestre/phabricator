@@ -11,11 +11,13 @@ pub mod assets;
 mod error;
 mod home;
 pub mod opt_in;
+mod people;
 pub mod remarkup;
 mod response;
 mod router;
 mod shell;
 mod state;
+mod time;
 mod viewer;
 
 pub use error::{FALLBACK_HEADER, PageError, fallback_response};
