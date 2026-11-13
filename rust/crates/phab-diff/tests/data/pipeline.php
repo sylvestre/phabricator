@@ -2,7 +2,7 @@
 
 // Runs the hunks of pipeline_input.json (stdin) through PHP's
 // DifferentialHunkParser, the way DifferentialChangesetParser::process()
-// does without realignment, and prints what the Rust port must reproduce.
+// does, realignment included, and prints what the Rust port must reproduce.
 // It needs the Phabricator libraries, so run it in the PHP container:
 //
 //   python3 pipeline_input.py
@@ -46,6 +46,12 @@ foreach ($cases as $case) {
 
   $parser = new DifferentialHunkParser();
   $parser->parseHunksForLineData($hunks);
+
+  $changeset = id(new DifferentialChangeset())->attachHunks($hunks);
+  $realign = new ReflectionMethod('DifferentialChangesetParser', 'realignDiff');
+  $realign->setAccessible(true);
+  $realign->invoke(new DifferentialChangesetParser(), $changeset, $parser);
+
   $parser->reparseHunksForSpecialAttributes();
   $parser->generateIntraLineDiffs();
 

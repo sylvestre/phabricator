@@ -67,6 +67,45 @@ CASES = [
     ),
     ("replace_block", [h(1, 3, 1, 2, "-one\n-two\n-three\n+uno\n+dos\n")], 3),
     ("unbalanced", [h(1, 2, 1, 4, "-a\n+b\n+c\n+d\n e\n")], 3),
+    # Realignment: whole files, where whitespace changes are aligned.
+    (
+        "realign_reindent",
+        [
+            h(
+                1,
+                5,
+                1,
+                6,
+                "-if (x) {\n-  a();\n-  b();\n-}\n+if (x)\n+{\n+    a();\n+    b(1);\n+}\n c\n",
+            )
+        ],
+        3,
+    ),
+    (
+        "realign_whitespace_only",
+        [h(1, 3, 1, 3, "-a = 1;\n-b=2;\n-c  =  3;\n+a=1;\n+b = 2;\n+c = 3;\n")],
+        3,
+    ),
+    (
+        "realign_moved_line",
+        [h(1, 4, 1, 4, " one\n-two\n three\n-four\n+four  \n+  two\n")],
+        3,
+    ),
+    (
+        "realign_tabs",
+        [h(1, 3, 1, 3, " {\n-\treturn x;\n+    return x;\n }\n")],
+        3,
+    ),
+    (
+        "realign_no_newline",
+        [h(1, 2, 1, 2, " a\n-b\n\\ No newline at end of file\n+ b\n")],
+        3,
+    ),
+    (
+        "realign_skipped_offset",
+        [h(2, 2, 2, 2, "-x = 1;\n+x=1;\n y\n")],
+        3,
+    ),
 ]
 
 if __name__ == "__main__":

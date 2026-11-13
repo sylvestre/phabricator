@@ -1,11 +1,26 @@
-//! The hunk pipeline of `DifferentialChangesetParser::process()` (without
-//! realignment) against PHP's output for `tests/data/pipeline_input.json`,
-//! produced by `tests/data/pipeline.php`.
+//! The hunk pipeline of `DifferentialChangesetParser::process()` against
+//! PHP's output for `tests/data/pipeline_input.json`, produced by
+//! `tests/data/pipeline.php` in the PHP container.
 
-use phab_diff::Hunk;
 use phab_diff::intraline::{Segment, SegmentKind};
 use phab_diff::parser::{DepthChange, HunkParser, Line, LineType, ParseError};
+use phab_diff::realign::{self, DiffCommand};
+use phab_diff::{ChangeType, Changeset, FileType, Hunk};
 use serde_json::{Value, json};
+
+/// The PHP image runs the `diff` of `BusyBox`; use it too when installed.
+fn diff_command() -> DiffCommand {
+    let busybox = std::process::Command::new("busybox")
+        .arg("diff")
+        .arg("--help")
+        .output()
+        .is_ok();
+    if busybox {
+        DiffCommand::new("busybox", &["diff"])
+    } else {
+        DiffCommand::default()
+    }
+}
 
 fn data(name: &str) -> Value {
     let path = format!("{}/tests/data/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -55,6 +70,23 @@ fn run(case: &Value) -> Value {
     let context = usize::try_from(case["context"].as_u64().unwrap()).unwrap();
 
     let mut parser = HunkParser::parse(&hunks).unwrap();
+    let changeset = Changeset {
+        id: 1,
+        phid: None,
+        diff_id: 1,
+        old_file: None,
+        filename: "file".to_owned(),
+        away_paths: Vec::new(),
+        change_type: ChangeType::Change,
+        file_type: FileType::Text,
+        metadata: Value::Null,
+        old_properties: Value::Null,
+        new_properties: Value::Null,
+        add_lines: 0,
+        del_lines: 0,
+        hunks: hunks.clone(),
+    };
+    realign::realign(&changeset, &mut parser, &diff_command()).unwrap();
     parser.reparse_for_special_attributes();
     let intraline = parser.intraline_diffs();
 

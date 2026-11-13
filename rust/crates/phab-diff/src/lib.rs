@@ -13,6 +13,7 @@ mod hunk;
 pub mod intraline;
 pub mod lines;
 pub mod parser;
+pub mod realign;
 pub mod storage;
 pub mod unified;
 

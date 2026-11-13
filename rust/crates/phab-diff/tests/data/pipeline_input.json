@@ -304,5 +304,83 @@
    }
   ],
   "context": 3
+ },
+ {
+  "name": "realign_reindent",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 5,
+    "new_offset": 1,
+    "new_len": 6,
+    "changes": "-if (x) {\n-  a();\n-  b();\n-}\n+if (x)\n+{\n+    a();\n+    b(1);\n+}\n c\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "realign_whitespace_only",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 3,
+    "new_offset": 1,
+    "new_len": 3,
+    "changes": "-a = 1;\n-b=2;\n-c  =  3;\n+a=1;\n+b = 2;\n+c = 3;\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "realign_moved_line",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 4,
+    "new_offset": 1,
+    "new_len": 4,
+    "changes": " one\n-two\n three\n-four\n+four  \n+  two\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "realign_tabs",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 3,
+    "new_offset": 1,
+    "new_len": 3,
+    "changes": " {\n-\treturn x;\n+    return x;\n }\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "realign_no_newline",
+  "hunks": [
+   {
+    "old_offset": 1,
+    "old_len": 2,
+    "new_offset": 1,
+    "new_len": 2,
+    "changes": " a\n-b\n\\ No newline at end of file\n+ b\n"
+   }
+  ],
+  "context": 3
+ },
+ {
+  "name": "realign_skipped_offset",
+  "hunks": [
+   {
+    "old_offset": 2,
+    "old_len": 2,
+    "new_offset": 2,
+    "new_len": 2,
+    "changes": "-x = 1;\n+x=1;\n y\n"
+   }
+  ],
+  "context": 3
  }
 ]
