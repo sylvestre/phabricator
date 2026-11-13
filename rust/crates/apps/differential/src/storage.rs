@@ -427,29 +427,76 @@ pub async fn load_transactions(
 ) -> Result<Vec<Transaction>, DbError> {
     let rows = select_by_phid(
         database,
-        "phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, transactionType, \
-         oldValue, newValue, metadata",
+        TRANSACTION_COLUMNS,
         &database.table("differential", "differential_transaction"),
         "phid",
         phids,
     )
     .await?;
+    rows.iter().map(transaction_from_row).collect()
+}
+
+const TRANSACTION_COLUMNS: &str = "phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
+     transactionType, oldValue, newValue, metadata, dateCreated";
+
+fn transaction_from_row(row: &MySqlRow) -> Result<Transaction, DbError> {
+    Ok(Transaction {
+        phid: Phid::new(rows::text(row, "phid")?),
+        author_phid: Phid::new(rows::text(row, "authorPHID")?),
+        object_phid: Phid::new(rows::text(row, "objectPHID")?),
+        view_policy: rows::text(row, "viewPolicy")?,
+        edit_policy: rows::text(row, "editPolicy")?,
+        comment_phid: rows::opt_phid(row, "commentPHID")?,
+        transaction_type: rows::text(row, "transactionType")?,
+        old_value: rows::json(row, "oldValue")?,
+        new_value: rows::json(row, "newValue")?,
+        metadata: rows::json(row, "metadata")?,
+    })
+}
+
+/// The transactions of a revision, oldest first, with when they happened:
+/// the timeline of the revision page.
+pub async fn load_object_transactions(
+    database: &Database,
+    object: &Phid,
+) -> Result<Vec<(Transaction, i64)>, DbError> {
+    let sql = format!(
+        "SELECT {TRANSACTION_COLUMNS} FROM {} WHERE objectPHID = ? ORDER BY id",
+        database.table("differential", "differential_transaction")
+    );
+    let rows = phab_db::sqlx::query(&sql)
+        .bind(object.as_str())
+        .fetch_all(database.pool())
+        .await?;
     rows.iter()
-        .map(|row| {
-            Ok(Transaction {
-                phid: Phid::new(rows::text(row, "phid")?),
-                author_phid: Phid::new(rows::text(row, "authorPHID")?),
-                object_phid: Phid::new(rows::text(row, "objectPHID")?),
-                view_policy: rows::text(row, "viewPolicy")?,
-                edit_policy: rows::text(row, "editPolicy")?,
-                comment_phid: rows::opt_phid(row, "commentPHID")?,
-                transaction_type: rows::text(row, "transactionType")?,
-                old_value: rows::json(row, "oldValue")?,
-                new_value: rows::json(row, "newValue")?,
-                metadata: rows::json(row, "metadata")?,
-            })
-        })
+        .map(|row| Ok((transaction_from_row(row)?, rows::int(row, "dateCreated")?)))
         .collect()
+}
+
+/// Which of `subjects` `viewer` can see, in order.
+pub async fn visible_subjects(
+    database: &Database,
+    config: &phab_core::Config,
+    viewer: &phab_policy::Viewer,
+    subjects: &[PolicySubject],
+    now: i64,
+) -> Result<Vec<bool>, VisibilityError> {
+    let refs: Vec<&PolicySubject> = subjects.iter().collect();
+    let facts = phab_policy::loader::load_facts(
+        database,
+        config,
+        viewer,
+        &refs,
+        &Repositories { database },
+        now,
+    )
+    .await?;
+    Ok(phab_policy::filter(
+        viewer,
+        &refs,
+        &[Capability::VIEW],
+        &facts,
+    )?)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

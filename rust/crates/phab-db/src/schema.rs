@@ -213,6 +213,7 @@ pub const CONTRACT: &[TableContract] = &[
             "oldValue",
             "newValue",
             "metadata",
+            "dateCreated",
         ],
     },
     TableContract {

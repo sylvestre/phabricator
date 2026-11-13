@@ -48,6 +48,16 @@
   <h2>Test Plan</h2>
   {%- if test_plan.is_some() %}<div class="remarkup">{{ self.test_plan_html()|safe }}</div>{% else %}<p class="muted">No test plan.</p>{% endif %}
 </section>
+<section class="timeline">
+  <h2>Timeline</h2>
+  {%- if timeline.is_empty() %}<p class="muted">Nothing happened yet.</p>{% endif %}
+  {%- for entry in timeline %}
+  <article class="timeline-entry">
+    <p class="timeline-title">{{ entry.title_html|safe }} <time class="muted">{{ entry.date }}</time></p>
+    {%- if let Some(comment) = entry.comment_html %}<div class="remarkup timeline-comment">{{ comment|safe }}</div>{% endif %}
+  </article>
+  {%- endfor %}
+</section>
 <section class="actions">
   <h2>Add Action</h2>
   <form method="post" action="/{{ monogram }}/action">

@@ -63,6 +63,7 @@ pub(crate) struct RevisionPage {
     test_plan: Option<Markup>,
     diff_id: Option<i64>,
     changesets: Vec<String>,
+    timeline: Vec<crate::timeline::Entry>,
 }
 
 impl RevisionPage {
@@ -511,6 +512,7 @@ pub(crate) async fn show<S: WebState>(
     let monogram = format!("D{}", revision.id);
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
     let warnings = warnings(state.as_ref(), &as_viewer, &revision).await?;
+    let timeline = crate::timeline::entries(state.as_ref(), &as_viewer, &revision).await?;
     Ok(Page(RevisionPage {
         warnings,
         actions: crate::actions::ACTIONS,
@@ -535,6 +537,7 @@ pub(crate) async fn show<S: WebState>(
         test_plan,
         diff_id,
         changesets,
+        timeline,
         monogram,
     }))
 }

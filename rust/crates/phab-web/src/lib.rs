@@ -24,6 +24,7 @@ mod router;
 mod shell;
 mod state;
 mod time;
+mod timeline;
 mod viewer;
 
 pub use error::{FALLBACK_HEADER, PageError, fallback_response};

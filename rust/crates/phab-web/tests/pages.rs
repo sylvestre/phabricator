@@ -410,11 +410,9 @@ async fn project_pages_follow_policy() {
     test_db.drop_databases().await;
 }
 
-#[tokio::test]
-async fn revisions_show_their_header_text_and_diff() {
-    let Some(test_db) = setup(true).await else {
-        return;
-    };
+/// D3 with reviewers, a bug, a stack, a timeline and a diff; it is
+/// secure, and D6, open and public, depends on it.
+async fn insert_revision_fixtures(test_db: &TestDatabase) {
     let bug_index = hash::digest_for_index(b"differential:bugzilla-bug-id");
     test_db
         .execute(&format!(
@@ -449,6 +447,19 @@ async fn revisions_show_their_header_text_and_diff() {
                subtype) VALUES \
              ('secure-revision', 'PHID-PROJ-secure', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', \
                'red', 'k', 0, 0, 0, 'a', 0, 'k001', '{{}}', 'default'); \
+             INSERT INTO `{{ns}}_differential`.differential_transaction (phid, authorPHID, \
+               objectPHID, viewPolicy, editPolicy, commentPHID, commentVersion, transactionType, \
+               oldValue, newValue, contentSource, metadata, dateCreated, dateModified) VALUES \
+             ('PHID-XACT-DREV-1', 'PHID-USER-alice', 'PHID-DREV-three', 'public', 'PHID-USER-alice', \
+               'PHID-XCMT-1', 1, 'core:comment', 'null', 'null', '{{}}', '{{}}', 10, 10), \
+             ('PHID-XACT-DREV-2', 'PHID-USER-mfa', 'PHID-DREV-three', 'public', 'PHID-USER-mfa', \
+               NULL, 0, 'differential.revision.accept', 'false', 'true', '{{}}', '{{}}', 20, 20); \
+             INSERT INTO `{{ns}}_differential`.differential_transaction_comment (phid, \
+               transactionPHID, authorPHID, viewPolicy, editPolicy, commentVersion, content, \
+               contentSource, isDeleted, dateCreated, dateModified, isNewFile, lineNumber, lineLength, \
+               hasReplies, attributes) VALUES \
+             ('PHID-XCMT-1', 'PHID-XACT-DREV-1', 'PHID-USER-alice', 'public', 'PHID-USER-alice', 1, \
+               'Looks **good**', '{{}}', 0, 10, 10, 0, 0, 0, 0, '{{}}'); \
              INSERT INTO `{{ns}}_differential`.differential_diff (id, phid, revisionID, \
                authorPHID, repositoryPHID, sourceControlBaseRevision, lintStatus, unitStatus, \
                lineCount, dateCreated, dateModified, viewPolicy) VALUES \
@@ -463,6 +474,14 @@ async fn revisions_show_their_header_text_and_diff() {
              (21, 10, 1, 2, 1, 2, 'text', 'utf8', 'byte', ' int x;\\n-int y = 1;\\n+int y = 2;\\n', 1, 1)"
         ))
         .await;
+}
+
+#[tokio::test]
+async fn revisions_show_their_header_text_and_diff() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    insert_revision_fixtures(&test_db).await;
 
     let response = get(
         &test_db,

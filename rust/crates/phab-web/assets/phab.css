@@ -188,3 +188,7 @@ a { color: var(--accent); }
 .title-value { font-style: italic; }
 .notice { padding: 8px 12px; background: var(--warning-bg); border-left: 4px solid var(--warning-border); }
 .pager { display: flex; gap: 16px; margin-top: 12px; }
+
+.timeline-entry { padding: 6px 0; border-top: 1px solid var(--border); }
+.timeline-title { margin: 0; }
+.timeline-comment { margin: 6px 0 0 16px; }
