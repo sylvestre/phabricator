@@ -1608,9 +1608,12 @@ dependencies = [
 name = "phab-diff"
 version = "0.1.0"
 dependencies = [
+ "flate2",
+ "phab-db",
  "rstest",
  "serde_json",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
