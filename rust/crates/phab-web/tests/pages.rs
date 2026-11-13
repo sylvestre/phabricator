@@ -19,6 +19,7 @@ struct State {
     database: Database,
     config: Config,
     remarkup: phab_remarkup::Engine,
+    php: Option<phab_web::php::PhpConduit>,
 }
 
 impl WebState for State {
@@ -36,6 +37,10 @@ impl WebState for State {
 
     fn remarkup(&self) -> &phab_remarkup::Engine {
         &self.remarkup
+    }
+
+    fn php(&self) -> Option<&phab_web::php::PhpConduit> {
+        self.php.as_ref()
     }
 }
 
@@ -90,20 +95,88 @@ async fn setup(with_csrf_key: bool) -> Option<TestDatabase> {
 }
 
 async fn get(test_db: &TestDatabase, config: Config, path: &str, cookie: Option<&str>) -> Response {
+    send(
+        test_db,
+        config,
+        None,
+        Request::get(path),
+        cookie,
+        Body::empty(),
+    )
+    .await
+}
+
+async fn send(
+    test_db: &TestDatabase,
+    config: Config,
+    php: Option<phab_web::php::PhpConduit>,
+    mut request: axum::http::request::Builder,
+    cookie: Option<&str>,
+    body: Body,
+) -> Response {
     let state = Arc::new(State {
         database: test_db.database().clone(),
         remarkup: phab_web::remarkup::new_engine(&config),
+        php,
         config,
     });
-    let mut request = Request::get(path);
     if let Some(cookie) = cookie {
         request = request.header(header::COOKIE, cookie);
     }
     phab_web::router::<State>()
         .with_state(state)
-        .oneshot(request.body(Body::empty()).unwrap())
+        .oneshot(request.body(body).unwrap())
         .await
         .unwrap()
+}
+
+/// What the fake PHP received: the cookie, the skip header and the form.
+type Received = Arc<std::sync::Mutex<Vec<(String, String, String, String)>>>;
+
+/// A stand-in for PHP's Conduit API, answering `answer`.
+async fn fake_php(answer: &'static str) -> (phab_web::php::PhpConduit, Received) {
+    let received: Received = Arc::default();
+    let log = received.clone();
+    let app = axum::Router::new().route(
+        "/api/{method}",
+        axum::routing::post(
+            move |axum::extract::Path(method): axum::extract::Path<String>,
+                  headers: axum::http::HeaderMap,
+                  body: String| {
+                let log = log.clone();
+                async move {
+                    let header = |name: &str| {
+                        headers
+                            .get(name)
+                            .and_then(|value| value.to_str().ok())
+                            .unwrap_or("")
+                            .to_owned()
+                    };
+                    log.lock().unwrap().push((
+                        method,
+                        header("cookie"),
+                        header("x-phab-skip-rust"),
+                        body,
+                    ));
+                    ([(header::CONTENT_TYPE, "application/json")], answer)
+                }
+            },
+        ),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (
+        phab_web::php::PhpConduit::new(format!("http://{address}")),
+        received,
+    )
+}
+
+fn form_value(body: &str, name: &str) -> String {
+    form_urlencoded::parse(body.as_bytes())
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.into_owned())
+        .unwrap_or_default()
 }
 
 async fn text(response: Response) -> String {
@@ -487,6 +560,94 @@ async fn the_queue_groups_revisions_by_required_action() {
     assert!(section("Ready to Review").contains("Review me"), "{page}");
     assert!(section("Ready to Land").contains("Mine to land"), "{page}");
     assert!(!page.contains("Hidden"), "{page}");
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn actions_go_to_php_as_the_user() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    let alice = Some("phsid=alice-token");
+    // A token from a page, as the browser would post it.
+    let page = text(get(&test_db, Config::default(), "/differential/", alice).await).await;
+    let token = page
+        .split("name=\"csrf-token\" content=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap()
+        .to_owned();
+    let post = |body: String, php| {
+        let request = Request::post("/D3/action")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+        send(
+            &test_db,
+            Config::default(),
+            php,
+            request,
+            alice,
+            Body::from(body),
+        )
+    };
+    let encode = |pairs: &[(&str, &str)]| {
+        form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(pairs)
+            .finish()
+    };
+
+    let (php, received) =
+        fake_php(r#"{"result":{"object":{"id":3}},"error_code":null,"error_info":null}"#).await;
+    let response = post(
+        encode(&[
+            ("__csrf__", &token),
+            ("action", "accept"),
+            ("comment", "LGTM"),
+        ]),
+        Some(php),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers()[header::LOCATION], "/D3");
+    let calls = received.lock().unwrap().clone();
+    assert_eq!(calls.len(), 1);
+    let (method, cookie, skip, body) = &calls[0];
+    assert_eq!(method, "differential.revision.edit");
+    assert_eq!(cookie, "phsid=alice-token");
+    assert_eq!(skip, "1");
+    assert!(form_value(body, "__csrf__").starts_with("B@"));
+    assert_eq!(form_value(body, "__conduit__"), "1");
+    let params: serde_json::Value = serde_json::from_str(&form_value(body, "params")).unwrap();
+    assert_eq!(
+        params,
+        json!({"objectIdentifier": "D3", "transactions": [
+            {"type": "accept", "value": true},
+            {"type": "comment", "value": "LGTM"},
+        ]})
+    );
+
+    // A stale token is refused before PHP hears about it.
+    let (php, received) = fake_php("{}").await;
+    let response = post(
+        encode(&[("__csrf__", "B@nope"), ("action", "accept")]),
+        Some(php),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(received.lock().unwrap().is_empty());
+
+    // PHP's validation errors are shown to the user.
+    let (php, _) = fake_php(r#"{"result":null,"error_code":"ERR-CONDUIT-CORE","error_info":"You can not accept this revision."}"#).await;
+    let response = post(
+        encode(&[("__csrf__", &token), ("action", "accept")]),
+        Some(php),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(
+        text(response)
+            .await
+            .contains("You can not accept this revision.")
+    );
     test_db.drop_databases().await;
 }
 

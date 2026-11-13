@@ -12,6 +12,7 @@ use phab_auth::session::{self, SESSION_COOKIE, Session, SessionType};
 use phab_auth::{Outcome, User, Writes, csrf};
 
 use crate::error::PageError;
+use crate::php::SessionToken;
 use crate::state::WebState;
 
 /// The viewer of a page: a logged-in, activated user with a full session.
@@ -27,9 +28,15 @@ pub struct WebUser {
     pub csrf_token: String,
     csrf_secret: CsrfSecret,
     csrf_key: CsrfKey,
+    session_token: SessionToken,
 }
 
 impl WebUser {
+    /// The session cookie, to call PHP as the user.
+    pub fn session_token(&self) -> &SessionToken {
+        &self.session_token
+    }
+
     /// `PhabricatorUser::validateCSRFToken()`.
     pub fn is_valid_csrf_token(&self, token: &str, now: i64) -> Result<bool, PageError> {
         Ok(csrf::is_valid_token(
@@ -100,6 +107,7 @@ impl<S: WebState> FromRequestParts<Arc<S>> for WebUser {
             csrf_token,
             csrf_secret: found.csrf_secret,
             csrf_key,
+            session_token: SessionToken(token.to_owned()),
         })
     }
 }

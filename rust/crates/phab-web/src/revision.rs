@@ -46,6 +46,7 @@ pub(crate) struct Warning {
 pub(crate) struct RevisionPage {
     shell: Shell,
     warnings: Vec<Warning>,
+    actions: &'static [(&'static str, &'static str)],
     monogram: String,
     title: String,
     status: &'static str,
@@ -392,7 +393,7 @@ async fn changesets<S: WebState>(
 }
 
 /// The ID of `D123`; `D0123` is not a monogram.
-fn parse_monogram(monogram: &str) -> Option<i64> {
+pub(crate) fn parse_monogram(monogram: &str) -> Option<i64> {
     monogram
         .strip_prefix('D')
         .filter(|digits| {
@@ -512,6 +513,7 @@ pub(crate) async fn show<S: WebState>(
     let warnings = warnings(state.as_ref(), &as_viewer, &revision).await?;
     Ok(Page(RevisionPage {
         warnings,
+        actions: crate::actions::ACTIONS,
         shell: Shell::for_user(
             state.config(),
             &viewer,

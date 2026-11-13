@@ -32,6 +32,8 @@ pub struct AppState {
     pub shadow: Option<shadow::Shadow>,
     /// The Remarkup engine of the pages.
     pub remarkup: phab_remarkup::Engine,
+    /// PHP's Conduit API, for the writes of the pages.
+    pub php: Option<phab_web::php::PhpConduit>,
 }
 
 impl phab_web::WebState for AppState {
@@ -49,6 +51,10 @@ impl phab_web::WebState for AppState {
 
     fn remarkup(&self) -> &phab_remarkup::Engine {
         &self.remarkup
+    }
+
+    fn php(&self) -> Option<&phab_web::php::PhpConduit> {
+        self.php.as_ref()
     }
 }
 

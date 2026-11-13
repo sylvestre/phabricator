@@ -48,6 +48,20 @@
   <h2>Test Plan</h2>
   {%- if test_plan.is_some() %}<div class="remarkup">{{ self.test_plan_html()|safe }}</div>{% else %}<p class="muted">No test plan.</p>{% endif %}
 </section>
+<section class="actions">
+  <h2>Add Action</h2>
+  <form method="post" action="/{{ monogram }}/action">
+    {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+    <label>Action
+      <select name="action">
+        <option value="">Comment</option>
+        {%- for (key, label) in actions %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <textarea name="comment" rows="6" aria-label="Comment"></textarea>
+    <button type="submit">Submit</button>
+  </form>
+</section>
 <section class="diff-section">
   <h2>Diff{% if let Some(id) = diff_id %} {{ id }}{% endif %}</h2>
   {%- for changeset in changesets %}

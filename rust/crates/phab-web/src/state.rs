@@ -16,4 +16,6 @@ pub trait WebState: Send + Sync + 'static {
     /// The Remarkup engine, built once from the configuration
     /// ([`crate::remarkup::new_engine()`]).
     fn remarkup(&self) -> &phab_remarkup::Engine;
+    /// PHP's Conduit API, which writes go to until the editor is ported.
+    fn php(&self) -> Option<&crate::php::PhpConduit>;
 }

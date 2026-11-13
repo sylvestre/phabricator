@@ -21,13 +21,17 @@ phab-db.workspace = true
 phab-diff.workspace = true
 phab-policy.workspace = true
 phab-remarkup.workspace = true
+reqwest.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-phab-remarkup.workspace = true
+form_urlencoded.workspace = true
 serde_json.workspace = true
+phab-remarkup.workspace = true
 phab-db = { workspace = true, features = ["test-support"] }
 rstest.workspace = true
 tokio.workspace = true

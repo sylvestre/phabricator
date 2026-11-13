@@ -22,6 +22,7 @@ async fn app() -> Option<(TestDatabase, axum::Router)> {
         },
         registry: Registry::default(),
         remarkup: phab_web::remarkup::new_engine(&Config::default()),
+        php: None,
         shadow: None,
     });
     Some((test_db, phab_server::router(state)))

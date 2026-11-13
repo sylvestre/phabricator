@@ -7,11 +7,13 @@
 //! answers `421` through [`PageError::Fallback`] and nginx replays the
 //! request against PHP, so the user sees the PHP page instead.
 
+mod actions;
 pub mod assets;
 mod diff_html;
 mod error;
 pub mod opt_in;
 mod people;
+pub mod php;
 mod projects;
 mod queue;
 pub mod remarkup;

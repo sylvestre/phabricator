@@ -59,6 +59,7 @@ async fn main() -> std::process::ExitCode {
     let remarkup = phab_web::remarkup::new_engine(&context.config);
     let state = Arc::new(AppState {
         remarkup,
+        php: phab_web::php::PhpConduit::from_env(),
         context,
         registry: methods(),
         shadow: phab_server::shadow::Shadow::from_env(),

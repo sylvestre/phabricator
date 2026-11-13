@@ -11,6 +11,7 @@ struct State {
     database: Database,
     config: Config,
     remarkup: phab_remarkup::Engine,
+    php: Option<phab_web::php::PhpConduit>,
 }
 
 impl WebState for State {
@@ -28,6 +29,10 @@ impl WebState for State {
 
     fn remarkup(&self) -> &phab_remarkup::Engine {
         &self.remarkup
+    }
+
+    fn php(&self) -> Option<&phab_web::php::PhpConduit> {
+        self.php.as_ref()
     }
 }
 
@@ -74,6 +79,7 @@ async fn references_resolve_under_policy() {
     let state = State {
         database: test_db.database().clone(),
         remarkup: phab_web::remarkup::new_engine(&config),
+        php: None,
         config,
     };
     let text = "D1, D2, D3 and @bob, @carol. bug 42 #Firefox-Build #team";

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::{Router, routing};
 
 use crate::state::WebState;
-use crate::{assets, opt_in, people, projects, queue, revision};
+use crate::{actions, assets, opt_in, people, projects, queue, revision};
 
 /// The pages, the static files and the interface switch. nginx decides
 /// which of them reach the service (`rust/nginx/rust-web.conf`).
@@ -14,6 +14,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .route("/", routing::get(queue::show::<S>))
         .route("/differential/", routing::get(queue::show::<S>))
         .route("/{monogram}", routing::get(revision::show::<S>))
+        .route("/{monogram}/action", routing::post(actions::submit::<S>))
         .route("/p/{username}/", routing::get(people::show::<S>))
         .route("/tag/{slug}/", routing::get(projects::by_slug::<S>))
         .route("/project/view/{id}/", routing::get(projects::by_id::<S>))

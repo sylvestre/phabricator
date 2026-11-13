@@ -29,6 +29,10 @@ pub enum PageError {
     /// The viewer may not see the object
     /// (`PhabricatorPolicyException`).
     PolicyDenied,
+    /// The request is wrong; the message says how.
+    BadRequest(&'static str),
+    /// PHP refused a write; its message is meant for the user.
+    Conduit(crate::php::ConduitError),
     /// Something failed; the details are logged, not shown.
     Internal(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -50,7 +54,7 @@ impl From<phab_db::DbError> for PageError {
 struct ErrorPage {
     shell: Shell,
     heading: &'static str,
-    message: &'static str,
+    message: String,
 }
 
 impl IntoResponse for PageError {
@@ -60,19 +64,33 @@ impl IntoResponse for PageError {
             Self::NotFound => (
                 StatusCode::NOT_FOUND,
                 "404 Not Found",
-                "The page you requested was not found.",
+                "The page you requested was not found.".to_owned(),
             ),
             Self::PolicyDenied => (
                 StatusCode::FORBIDDEN,
                 "Access Denied",
-                "You do not have permission to view this object.",
+                "You do not have permission to view this object.".to_owned(),
             ),
+            Self::BadRequest(message) => {
+                (StatusCode::BAD_REQUEST, "Bad Request", message.to_owned())
+            }
+            Self::Conduit(crate::php::ConduitError::Method { info, .. }) => {
+                (StatusCode::BAD_REQUEST, "Unable to Save", info)
+            }
+            Self::Conduit(error) => {
+                tracing::error!(%error, "write through PHP failed");
+                (
+                    StatusCode::BAD_GATEWAY,
+                    "Unable to Save",
+                    "Phabricator could not be reached; try again.".to_owned(),
+                )
+            }
             Self::Internal(error) => {
                 tracing::error!(%error, "page failed");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Unhandled Exception",
-                    "Something went wrong while building this page.",
+                    "Something went wrong while building this page.".to_owned(),
                 )
             }
         };
