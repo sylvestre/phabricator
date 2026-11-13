@@ -1,7 +1,8 @@
 #!/bin/sh
 # Checks the nginx routing between PHP and the Rust service with stand-ins:
 # php-fpm serving a script which echoes the request, and a stub "Rust"
-# service which answers, or answers 421 when the body contains "fallback".
+# service which answers, or answers 421 when the body or the query string
+# contains "fallback".
 set -eu
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
@@ -19,7 +20,7 @@ trap cleanup EXIT
 mkdir -p "$work/webroot" "$work/stub" "$work/nginx"
 cp -r "$repo/nginx/." "$work/nginx/"
 mkdir -p "$work/nginx/rust"
-cp "$repo"/rust/nginx/*.conf "$work/nginx/rust/"
+cp "$repo"/rust/nginx/*.conf "$repo"/rust/nginx/*.inc "$work/nginx/rust/"
 cat > "$work/webroot/index.php" <<'PHP'
 <?php echo 'php '.$_GET['__path__'].' '.file_get_contents('php://input');
 PHP
@@ -37,6 +38,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('content-length', '4')
         self.end_headers()
         self.wfile.write(b'rust')
+    def do_GET(self):
+        if 'fallback' in self.path:
+            self.send_response(421)
+            self.send_header('content-length', '0')
+            self.end_headers()
+            return
+        body = ('rust ' + self.path).encode()
+        self.send_response(200)
+        self.send_header('content-length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 http.server.HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
 PY
 
@@ -70,9 +82,21 @@ check "routed method goes to Rust" "rust" -X POST -d 'x=1' "$url"
 check "421 is replayed against PHP" "php /api/conduit.ping x=fallback" -X POST -d 'x=fallback' "$url"
 check "skip header goes to PHP" "php /api/conduit.ping x=1" -X POST -H 'X-Phab-Skip-Rust: 1' -d 'x=1' "$url"
 check "other methods go to PHP" "php /api/user.search x=1" -X POST -d 'x=1' "http://127.0.0.1:$port/api/user.search"
+
+site="http://127.0.0.1:$port"
+optin='phab_ui=rust'
+check "pages go to PHP without the opt-in" "php / " "$site/"
+check "pages go to Rust with the opt-in" "rust /" -b "$optin" "$site/"
+check "other opt-in cookies go to PHP" "php / " -b 'phab_ui=php' "$site/"
+check "page fallbacks are replayed against PHP" "php / " -b "$optin" "$site/?fallback=1"
+check "skip header goes to PHP for pages" "php / " -b "$optin" -H 'X-Phab-Skip-Rust: 1' "$site/"
+check "pages not ported go to PHP" "php /D1 " -b "$optin" "$site/D1"
+check "the switch always goes to Rust" "rust /rust-ui/on?next=/D1" "$site/rust-ui/on?next=/D1"
+check "Rust static files go to Rust" "rust /rsrc-rust/abc/phab.css" "$site/rsrc-rust/abc/phab.css"
 docker stop routing-rust >/dev/null
 docker exec routing-nginx nginx -s reload >/dev/null 2>&1
 sleep 1
 check "Rust service down goes to PHP" "php /api/conduit.ping x=1" -X POST -d 'x=1' "$url"
+check "pages go to PHP while Rust is down" "php / " -b "$optin" "$site/"
 
 exit "$failures"

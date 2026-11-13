@@ -1,4 +1,4 @@
-//! The HTTP routes: `/status` and the Conduit endpoint.
+//! The HTTP routes: `/status`, the Conduit endpoint and the web pages.
 
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,10 +17,10 @@ use tower_http::limit::RequestBodyLimitLayer;
 
 use crate::shadow;
 
+pub use phab_web::fallback_response;
+
 /// Matches `max_allowed_packet` of the MySQL server.
 const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
-/// Holds the reason of a `421` answer, which nginx replays against PHP.
-pub const FALLBACK_HEADER: &str = "x-phab-fallback";
 
 /// What the handlers share.
 pub struct AppState {
@@ -30,6 +30,20 @@ pub struct AppState {
     pub registry: Registry,
     /// Shadow mode, if enabled.
     pub shadow: Option<shadow::Shadow>,
+}
+
+impl phab_web::WebState for AppState {
+    fn database(&self) -> &phab_db::Database {
+        &self.context.database
+    }
+
+    fn config(&self) -> &phab_core::Config {
+        &self.context.config
+    }
+
+    fn now(&self) -> i64 {
+        now()
+    }
 }
 
 /// The current Unix time in seconds.
@@ -46,6 +60,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/status", routing::get(status))
         .route("/api/{method}", routing::any(conduit))
+        .merge(phab_web::router::<AppState>())
         .layer(RequestDecompressionLayer::new())
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .with_state(state)
@@ -86,15 +101,6 @@ pub fn http_request(headers: &HeaderMap, query: Option<String>, body: &Bytes) ->
         body: String::from_utf8_lossy(body).into_owned(),
         session_cookie,
     }
-}
-
-/// The `421 Misdirected Request` answer which sends the request to PHP.
-pub fn fallback_response(reason: &'static str) -> Response {
-    let mut response = StatusCode::MISDIRECTED_REQUEST.into_response();
-    response
-        .headers_mut()
-        .insert(FALLBACK_HEADER, HeaderValue::from_static(reason));
-    response
 }
 
 /// The headers `AphrontJSONResponse` sends for Conduit answers.

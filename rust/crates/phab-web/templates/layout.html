@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{%- if let Some(token) = shell.csrf_token %}
+<meta name="csrf-token" content="{{ token }}">
+{%- endif %}
+<title>{{ shell.title }} · Phabricator</title>
+<link rel="stylesheet" href="{{ shell.stylesheet }}">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-home" href="/">Phabricator</a>
+  <form class="site-search" action="/search/" method="get" role="search">
+    <input type="search" name="query" placeholder="Search" aria-label="Search">
+  </form>
+  {%- if let Some(user) = shell.user %}
+  <details class="user-menu">
+    <summary>{{ user.user_name }}</summary>
+    <ul>
+      <li><a href="/p/{{ user.user_name }}/">Profile</a></li>
+      <li><a href="/settings/">Settings</a></li>
+      {%- if let Some(uri) = shell.old_ui_uri %}
+      <li><a href="{{ uri }}">Use the old interface</a></li>
+      {%- endif %}
+      <li><a href="/logout/">Log out</a></li>
+    </ul>
+  </details>
+  {%- endif %}
+</header>
+{%- if let Some(motd) = shell.motd %}
+<aside class="motd" role="status">
+  <strong>{{ motd.title }}</strong>
+  <div>{{ motd.message_html|safe }}</div>
+</aside>
+{%- endif %}
+<main class="page">
+{% block content %}{% endblock %}
+</main>
+{%- if let Some(uri) = shell.old_ui_uri %}
+<footer class="site-footer">
+  This is the new interface. <a href="{{ uri }}">Open this page in the old interface</a>.
+</footer>
+{%- endif %}
+</body>
+</html>

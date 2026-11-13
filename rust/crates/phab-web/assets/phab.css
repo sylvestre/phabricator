@@ -1,0 +1,113 @@
+/* The stylesheet of the Rust interface. */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --text: #1f2328;
+  --muted: #59636e;
+  --border: #d1d9e0;
+  --accent: #0b5cad;
+  --header-bg: #1c2a3a;
+  --header-text: #f0f3f6;
+  --warning-bg: #fff8c5;
+  --warning-border: #d4a72c;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --text: #e6edf3;
+    --muted: #9198a1;
+    --border: #3d444d;
+    --accent: #58a6ff;
+    --header-bg: #010409;
+    --header-text: #e6edf3;
+    --warning-bg: #3b2e00;
+    --warning-border: #9e6a03;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--accent); }
+
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--header-bg);
+  color: var(--header-text);
+}
+
+.site-home {
+  color: var(--header-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-search { flex: 1; max-width: 420px; }
+
+.site-search input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.user-menu { position: relative; margin-left: auto; }
+.user-menu summary { cursor: pointer; }
+
+.user-menu ul {
+  position: absolute;
+  right: 0;
+  z-index: 1;
+  min-width: 200px;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.user-menu li a { display: block; padding: 4px 12px; text-decoration: none; }
+
+.motd {
+  margin: 16px;
+  padding: 8px 12px;
+  background: var(--warning-bg);
+  border-left: 4px solid var(--warning-border);
+}
+
+.page {
+  max-width: 1200px;
+  margin: 16px auto;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.site-footer {
+  margin: 16px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .site-header { flex-wrap: wrap; }
+  .site-search { order: 3; flex-basis: 100%; max-width: none; }
+  .page { margin: 8px; }
+}

@@ -14,7 +14,20 @@ decides per route which stack answers.
    replies `421 Misdirected Request` with an `X-Phab-Fallback` header saying
    why, and nginx replays the request against PHP.
 3. To give a route back to PHP, remove it from `rust/nginx/*.conf` and reload
-   nginx.
+   nginx. nginx also needs a reload when a file is added there.
+
+## Web pages
+
+The Rust service renders its own interface (`crates/phab-web`), not PHP's
+HTML. Users opt in: `/rust-ui/on?next=/` sets the `phab_ui=rust` cookie and
+`/rust-ui/off` clears it, and `rust/nginx/rust-web.conf` sends the ported
+pages to Rust only when the cookie is set. Every page links back to the old
+interface. Viewers Rust can't serve yet (logged out, multi-factor prompt
+pending, account not activated) get a `421` and see the PHP page.
+
+Pages share the session cookie with PHP, and their CSRF tokens are the ones
+PHP makes and accepts (`phab_auth::csrf`), so forms and Conduit calls posted
+to PHP from a Rust page work.
 
 PHP keeps owning the schema: `bin/storage upgrade` is the only migration
 tool. The tables and columns the Rust code uses are listed in
@@ -46,9 +59,10 @@ A method is moved in three steps:
 | `crates/phab-core` | PHIDs, `PhabricatorHash` digests, configuration stack |
 | `crates/phab-db` | MySQL access, edges, PHP `serialize()` codec, schema contract, test databases |
 | `crates/phab-policy` | Port of `PhabricatorPolicyFilter` (security boundary) |
-| `crates/phab-auth` | Conduit API tokens and session cookies |
+| `crates/phab-auth` | Conduit API tokens, session cookies and CSRF tokens |
 | `crates/phab-conduit` | Conduit request decoding, dispatch and response envelope |
 | `crates/phab-parity` | Compares PHP and Rust answers |
+| `crates/phab-web` | Web viewer, page shell, static files and the opt-in switch |
 | `crates/apps/conduit` | `conduit.ping` |
 | `crates/apps/people` | `user.whoami`, `bugzilla.account.search`, `bmoexternalaccount.search` |
 | `crates/apps/feed` | `feed.query_id` |

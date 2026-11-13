@@ -1,0 +1,29 @@
+[package]
+name = "phab-web"
+description = "The web interface of the Rust service: viewer, page shell, assets and the pages ported from PHP"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+askama.workspace = true
+axum.workspace = true
+form_urlencoded.workspace = true
+hex.workspace = true
+phab-auth.workspace = true
+phab-core.workspace = true
+phab-db.workspace = true
+sha2.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+phab-db = { workspace = true, features = ["test-support"] }
+rstest.workspace = true
+tokio.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true
