@@ -16,6 +16,7 @@ pub mod parser;
 pub mod realign;
 pub mod storage;
 pub mod unified;
+pub mod view;
 
 pub use changeset::{ChangeType, Changeset, FileType, sort_for_display};
 pub use hunk::{Hunk, Include};
