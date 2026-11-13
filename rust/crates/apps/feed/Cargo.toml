@@ -9,6 +9,8 @@ publish.workspace = true
 
 [dependencies]
 phab-app-differential.workspace = true
+phab-app-project.workspace = true
+phab-auth.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true

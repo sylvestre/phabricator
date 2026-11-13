@@ -246,7 +246,7 @@ pub const CONTRACT: &[TableContract] = &[
     TableContract {
         database: "feed",
         table: "feed_storyreference",
-        columns: &["chronologicalKey"],
+        columns: &["chronologicalKey", "objectPHID"],
     },
     TableContract {
         database: "auth",

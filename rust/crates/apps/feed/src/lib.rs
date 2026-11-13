@@ -1,5 +1,8 @@
-//! Methods of `PhabricatorFeedApplication`.
+//! `PhabricatorFeedApplication`: the `feed.query_id` method, and the stories
+//! with their titles for the feed pages.
 
+pub mod handles;
+pub mod listing;
 pub mod query_id;
 pub mod story;
 

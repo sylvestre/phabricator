@@ -78,21 +78,46 @@ pub enum Order {
     Newest,
 }
 
+/// What pages are ordered and cut by.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Column {
+    /// The story id, as `PhabricatorFeedIDQuery` pages.
+    #[default]
+    Id,
+    /// The chronological key, as `PhabricatorFeedQuery` pages `/feed/`.
+    ChronologicalKey,
+}
+
+impl Column {
+    fn sql(self) -> &'static str {
+        match self {
+            Self::Id => "story.id",
+            Self::ChronologicalKey => "story.chronologicalKey",
+        }
+    }
+}
+
 /// What a page of `PhabricatorFeedIDQuery` selects.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Page<'a> {
     /// `withIDs()`.
     pub ids: Option<&'a [u64]>,
-    /// Only rows past this id, in `order`.
+    /// Only rows past this value of `column`, in `order`.
     pub after: Option<u64>,
     /// The order of the rows and of `after`.
     pub order: Order,
     /// `None` loads every row.
     pub limit: Option<usize>,
+    /// The column of `order` and `after`.
+    pub column: Column,
+    /// `PhabricatorFeedQuery::withFilterPHIDs()`: only stories referencing
+    /// one of these objects, like their author.
+    pub references: Option<&'a [Phid]>,
 }
 
 impl Page<'_> {
     fn sql(&self, database: &Database) -> String {
+        let column = self.column.sql();
         let mut conditions = Vec::new();
         if let Some(ids) = self.ids {
             conditions.push(format!(
@@ -100,14 +125,17 @@ impl Page<'_> {
                 phab_db::placeholders(ids.len())
             ));
         }
+        if let Some(references) = self.references {
+            conditions.push(format!(
+                "ref.objectPHID IN ({})",
+                phab_db::placeholders(references.len())
+            ));
+        }
         if self.after.is_some() {
-            conditions.push(
-                match self.order {
-                    Order::Oldest => "story.id > ?",
-                    Order::Newest => "story.id < ?",
-                }
-                .to_owned(),
-            );
+            conditions.push(match self.order {
+                Order::Oldest => format!("{column} > ?"),
+                Order::Newest => format!("{column} < ?"),
+            });
         }
         let filter = if conditions.is_empty() {
             String::new()
@@ -126,7 +154,7 @@ impl Page<'_> {
             "SELECT story.id, story.phid, story.chronologicalKey, story.storyType, \
              story.storyData, story.authorPHID FROM {} story JOIN {} ref \
              ON ref.chronologicalKey = story.chronologicalKey{filter} \
-             GROUP BY story.chronologicalKey ORDER BY story.id {direction}{limit}",
+             GROUP BY story.chronologicalKey ORDER BY {column} {direction}{limit}",
             database.table("feed", "feed_storydata"),
             database.table("feed", "feed_storyreference"),
         )
@@ -136,13 +164,17 @@ impl Page<'_> {
 /// `PhabricatorFeedQuery::loadPage()`: stories without references are
 /// notifications and are not part of the feed.
 pub async fn load_page(database: &Database, page: Page<'_>) -> Result<Vec<StoryRow>, DbError> {
-    if page.ids.is_some_and(<[u64]>::is_empty) {
+    if page.ids.is_some_and(<[u64]>::is_empty) || page.references.is_some_and(<[Phid]>::is_empty) {
         return Ok(Vec::new());
     }
     let sql = page.sql(database);
     let query = phab_db::bind_all(
         phab_db::sqlx::query(&sql),
         page.ids.unwrap_or_default().iter().copied(),
+    );
+    let query = phab_db::bind_all(
+        query,
+        page.references.unwrap_or_default().iter().map(Phid::as_str),
     );
     let rows = phab_db::bind_all(query, page.after)
         .fetch_all(database.pool())
@@ -326,13 +358,13 @@ impl VisibleObjects {
         })
     }
 
-    /// Whether the viewer sees the story in feed; `None` if it can't see
-    /// every object the story is about.
-    fn feed_visibility(&self, candidate: &Candidate) -> Option<FeedVisibility> {
+    /// The story's transactions and whether each shows in feed; `None` if
+    /// the viewer can't see every object the story is about.
+    fn transactions(&self, candidate: &Candidate) -> Option<Vec<(Transaction, FeedVisibility)>> {
         if !self.revisions.contains(&candidate.object) {
             return None;
         }
-        let feed = candidate
+        candidate
             .transactions
             .iter()
             .map(|phid| {
@@ -341,29 +373,79 @@ impl VisibleObjects {
                     .comment_phid
                     .as_ref()
                     .and_then(|phid| self.comments.get(phid));
-                Some(feed::feed_visibility(xaction, comment))
+                Some((xaction.clone(), feed::feed_visibility(xaction, comment)))
             })
-            .collect::<Option<Vec<_>>>()?;
-        Some(feed::story_visibility(&feed))
+            .collect()
     }
+}
+
+/// What to do with a story whose visibility depends on code that is not
+/// ported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unported {
+    /// Fail with [`StoryError::Unsupported`], so PHP answers.
+    Fail,
+    /// Leave the story out and count it.
+    Skip,
+}
+
+/// A story the viewer can see, with its transactions.
+#[derive(Debug, Clone)]
+pub struct VisibleStory {
+    /// The story row.
+    pub row: StoryRow,
+    /// The revision it is about.
+    pub object: Phid,
+    /// Its transactions, in order, and whether each is hidden from feed
+    /// (`shouldHideForFeed()`).
+    pub transactions: Vec<(Transaction, bool)>,
+}
+
+impl VisibleStory {
+    /// `getPrimaryTransaction()`: the first transaction shown in feed.
+    pub fn primary_transaction(&self) -> Option<&Transaction> {
+        phab_app_differential::title::primary_transaction(&self.transactions)
+    }
+}
+
+/// The stories of a page a viewer can see.
+#[derive(Debug, Clone, Default)]
+pub struct Stories {
+    /// The visible stories, in order.
+    pub visible: Vec<VisibleStory>,
+    /// How many stories were left out because Rust can't tell whether the
+    /// viewer may see them ([`Unported::Skip`]).
+    pub skipped: usize,
 }
 
 /// The stories of a page `viewer` can see, in order: `willFilterPage()` of
 /// `PhabricatorFeedQuery`, then the policy filter.
-pub async fn visible_stories(
+pub async fn load_visible(
     database: &Database,
     config: &Config,
     viewer: &Viewer,
     rows: Vec<StoryRow>,
     now: i64,
-) -> Result<Vec<StoryRow>, StoryError> {
-    let candidates = rows
-        .into_iter()
-        .filter(|row| row.story_type.eq_ignore_ascii_case(TRANSACTION_STORY))
-        .filter_map(|row| Candidate::parse(row).transpose())
-        .collect::<Result<Vec<_>, _>>()?;
+    unported: Unported,
+) -> Result<Stories, StoryError> {
+    let mut skipped = 0;
+    let mut candidates = Vec::new();
+    for row in rows {
+        if !row.story_type.eq_ignore_ascii_case(TRANSACTION_STORY) {
+            continue;
+        }
+        match Candidate::parse(row) {
+            Ok(Some(candidate)) => candidates.push(candidate),
+            Ok(None) => {}
+            Err(StoryError::Unsupported(_)) if unported == Unported::Skip => skipped += 1,
+            Err(error) => return Err(error),
+        }
+    }
     if candidates.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Stories {
+            visible: Vec::new(),
+            skipped,
+        });
     }
     let objects = VisibleObjects::load(database, config, viewer, &candidates, now).await?;
 
@@ -372,15 +454,42 @@ pub async fn visible_stories(
 
     let mut visible = Vec::new();
     for candidate in candidates {
-        match objects.feed_visibility(&candidate) {
-            Some(FeedVisibility::Visible) if can_see_stories => visible.push(candidate.row),
-            Some(FeedVisibility::Unknown) => {
-                return Err(StoryError::Unsupported(
-                    "feed visibility of a transaction is not ported",
-                ));
-            }
+        let Some(transactions) = objects.transactions(&candidate) else {
+            continue;
+        };
+        let feed: Vec<FeedVisibility> = transactions.iter().map(|(_, feed)| *feed).collect();
+        match feed::story_visibility(&feed) {
+            FeedVisibility::Visible if can_see_stories => visible.push(VisibleStory {
+                object: candidate.object,
+                row: candidate.row,
+                transactions: transactions
+                    .into_iter()
+                    .map(|(xaction, feed)| (xaction, feed == FeedVisibility::Hidden))
+                    .collect(),
+            }),
+            FeedVisibility::Unknown => match unported {
+                Unported::Fail => {
+                    return Err(StoryError::Unsupported(
+                        "feed visibility of a transaction is not ported",
+                    ));
+                }
+                Unported::Skip => skipped += 1,
+            },
             _ => {}
         }
     }
-    Ok(visible)
+    Ok(Stories { visible, skipped })
+}
+
+/// The rows of [`load_visible()`], failing on what is not ported: what
+/// `feed.query_id` needs.
+pub async fn visible_stories(
+    database: &Database,
+    config: &Config,
+    viewer: &Viewer,
+    rows: Vec<StoryRow>,
+    now: i64,
+) -> Result<Vec<StoryRow>, StoryError> {
+    let stories = load_visible(database, config, viewer, rows, now, Unported::Fail).await?;
+    Ok(stories.visible.into_iter().map(|story| story.row).collect())
 }

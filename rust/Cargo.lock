@@ -1520,6 +1520,8 @@ name = "phab-app-feed"
 version = "0.1.0"
 dependencies = [
  "phab-app-differential",
+ "phab-app-project",
+ "phab-auth",
  "phab-conduit",
  "phab-core",
  "phab-db",
@@ -1710,6 +1712,7 @@ dependencies = [
  "form_urlencoded",
  "hex",
  "phab-app-differential",
+ "phab-app-feed",
  "phab-app-people",
  "phab-app-project",
  "phab-auth",

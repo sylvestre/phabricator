@@ -1,0 +1,5 @@
+<ul class="feed">
+  {%- for story in stories %}
+  <li class="feed-story"><span class="feed-title">{{ story.title_html|safe }}</span> <time class="muted">{{ story.date }}</time></li>
+  {%- endfor %}
+</ul>

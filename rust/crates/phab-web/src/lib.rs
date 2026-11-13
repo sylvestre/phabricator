@@ -11,6 +11,7 @@ mod actions;
 pub mod assets;
 mod diff_html;
 mod error;
+mod feed;
 pub mod opt_in;
 mod people;
 pub mod php;

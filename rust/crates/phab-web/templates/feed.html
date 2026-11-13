@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1>Feed</h1>
+{%- if skipped > 0 %}
+<p class="notice">{{ skipped }} {% if skipped == 1 %}story is{% else %}stories are{% endif %} not shown here yet{% if let Some(uri) = shell.old_ui_uri %}: <a href="{{ uri }}">see all activity in the old interface</a>{% endif %}.</p>
+{%- endif %}
+{%- if stories.is_empty() %}
+<p class="muted">No stories.</p>
+{%- else %}
+{% include "stories.html" %}
+{%- endif %}
+<nav class="pager">
+  {%- if let Some(uri) = newer %}<a href="{{ uri }}">Newer</a>{% endif %}
+  {%- if let Some(uri) = older %}<a href="{{ uri }}">Older</a>{% endif %}
+</nav>
+{% endblock %}

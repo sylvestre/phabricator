@@ -181,3 +181,10 @@ a { color: var(--accent); }
 .actions form { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
 .actions textarea { font: inherit; padding: 6px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 .actions button { align-self: flex-start; padding: 4px 16px; }
+.feed { padding: 0; list-style: none; }
+.feed-story { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.feed-story time { font-size: 13px; }
+.handle-restricted { color: var(--muted); }
+.title-value { font-style: italic; }
+.notice { padding: 8px 12px; background: var(--warning-bg); border-left: 4px solid var(--warning-border); }
+.pager { display: flex; gap: 16px; margin-top: 12px; }

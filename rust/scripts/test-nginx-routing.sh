@@ -98,6 +98,8 @@ check "profiles go to Rust with the opt-in" "rust /p/alice/" -b "$optin" "$site/
 check "projects go to Rust with the opt-in" "rust /tag/build/" -b "$optin" "$site/tag/build/"
 check "project boards go to PHP" "php /project/board/1/ " -b "$optin" "$site/project/board/1/"
 check "profile subpages go to PHP" "php /p/alice/calendar/ " -b "$optin" "$site/p/alice/calendar/"
+check "the feed goes to Rust with the opt-in" "rust /feed/?after=12" -b "$optin" "$site/feed/?after=12"
+check "feed queries go to PHP" "php /feed/query/all/ " -b "$optin" "$site/feed/query/all/"
 check "the switch always goes to Rust" "rust /rust-ui/on?next=/D1" "$site/rust-ui/on?next=/D1"
 check "Rust static files go to Rust" "rust /rsrc-rust/abc/phab.css" "$site/rsrc-rust/abc/phab.css"
 docker stop routing-rust >/dev/null
