@@ -12,13 +12,17 @@ askama.workspace = true
 axum.workspace = true
 form_urlencoded.workspace = true
 hex.workspace = true
+phab-app-differential.workspace = true
 phab-auth.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
+phab-policy.workspace = true
+phab-remarkup.workspace = true
 sha2.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+phab-remarkup.workspace = true
 serde_json.workspace = true
 phab-db = { workspace = true, features = ["test-support"] }
 rstest.workspace = true

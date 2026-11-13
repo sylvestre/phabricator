@@ -11,6 +11,7 @@ pub mod assets;
 mod error;
 mod home;
 pub mod opt_in;
+pub mod remarkup;
 mod response;
 mod router;
 mod shell;

@@ -85,6 +85,7 @@ async fn php_answers_and_rust_is_compared() {
             hostname: "web1".to_owned(),
         },
         registry,
+        remarkup: phab_web::remarkup::new_engine(&Config::default()),
         shadow: Some(shadow),
     });
     let app = phab_server::router(Arc::clone(&state));

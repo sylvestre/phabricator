@@ -1510,6 +1510,7 @@ dependencies = [
  "phab-policy",
  "rstest",
  "serde_json",
+ "thiserror",
  "tokio",
 ]
 
@@ -1661,6 +1662,7 @@ dependencies = [
  "phab-core",
  "phab-db",
  "phab-parity",
+ "phab-remarkup",
  "phab-web",
  "reqwest",
  "rustix",
@@ -1682,9 +1684,12 @@ dependencies = [
  "axum",
  "form_urlencoded",
  "hex",
+ "phab-app-differential",
  "phab-auth",
  "phab-core",
  "phab-db",
+ "phab-policy",
+ "phab-remarkup",
  "rstest",
  "serde_json",
  "sha2",

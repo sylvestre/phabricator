@@ -13,4 +13,7 @@ pub trait WebState: Send + Sync + 'static {
     fn config(&self) -> &Config;
     /// The current Unix time in seconds (`PhabricatorTime::getNow()`).
     fn now(&self) -> i64;
+    /// The Remarkup engine, built once from the configuration
+    /// ([`crate::remarkup::new_engine()`]).
+    fn remarkup(&self) -> &phab_remarkup::Engine;
 }

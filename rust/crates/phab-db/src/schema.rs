@@ -144,6 +144,9 @@ pub const CONTRACT: &[TableContract] = &[
         database: "differential",
         table: "differential_revision",
         columns: &[
+            "id",
+            "title",
+            "status",
             "phid",
             "authorPHID",
             "viewPolicy",

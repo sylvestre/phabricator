@@ -18,6 +18,7 @@ const DIGEST_KEY_HEX: &str = "00112233445566778899aabbccddeeff";
 struct State {
     database: Database,
     config: Config,
+    remarkup: phab_remarkup::Engine,
 }
 
 impl WebState for State {
@@ -31,6 +32,10 @@ impl WebState for State {
 
     fn now(&self) -> i64 {
         NOW
+    }
+
+    fn remarkup(&self) -> &phab_remarkup::Engine {
+        &self.remarkup
     }
 }
 
@@ -77,6 +82,7 @@ async fn setup(with_csrf_key: bool) -> Option<TestDatabase> {
 async fn get(test_db: &TestDatabase, config: Config, path: &str, cookie: Option<&str>) -> Response {
     let state = Arc::new(State {
         database: test_db.database().clone(),
+        remarkup: phab_web::remarkup::new_engine(&config),
         config,
     });
     let mut request = Request::get(path);

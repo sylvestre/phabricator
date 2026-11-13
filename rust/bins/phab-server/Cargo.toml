@@ -17,6 +17,7 @@ phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
 phab-parity.workspace = true
+phab-remarkup.workspace = true
 phab-web.workspace = true
 reqwest.workspace = true
 rustix.workspace = true

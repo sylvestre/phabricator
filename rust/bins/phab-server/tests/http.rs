@@ -21,6 +21,7 @@ async fn app() -> Option<(TestDatabase, axum::Router)> {
             hostname: "web1".to_owned(),
         },
         registry: Registry::default(),
+        remarkup: phab_web::remarkup::new_engine(&Config::default()),
         shadow: None,
     });
     Some((test_db, phab_server::router(state)))

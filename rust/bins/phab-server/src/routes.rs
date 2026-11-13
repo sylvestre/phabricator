@@ -30,6 +30,8 @@ pub struct AppState {
     pub registry: Registry,
     /// Shadow mode, if enabled.
     pub shadow: Option<shadow::Shadow>,
+    /// The Remarkup engine of the pages.
+    pub remarkup: phab_remarkup::Engine,
 }
 
 impl phab_web::WebState for AppState {
@@ -43,6 +45,10 @@ impl phab_web::WebState for AppState {
 
     fn now(&self) -> i64 {
         now()
+    }
+
+    fn remarkup(&self) -> &phab_remarkup::Engine {
+        &self.remarkup
     }
 }
 

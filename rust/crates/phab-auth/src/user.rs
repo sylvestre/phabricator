@@ -119,6 +119,27 @@ pub async fn load_users_by_phid(database: &Database, phids: &[Phid]) -> Result<V
     rows.iter().map(User::from_row).collect()
 }
 
+/// Loads the users with these usernames, compared without case like
+/// MySQL's collation does; unknown names are skipped.
+pub async fn load_users_by_username(
+    database: &Database,
+    names: &[&str],
+) -> Result<Vec<User>, DbError> {
+    if names.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!(
+        "SELECT {} FROM {} u WHERE u.userName IN ({})",
+        select_columns("u"),
+        database.table("user", "user"),
+        phab_db::placeholders(names.len()),
+    );
+    let rows = phab_db::bind_all(phab_db::sqlx::query(&sql), names.iter().copied())
+        .fetch_all(database.pool())
+        .await?;
+    rows.iter().map(User::from_row).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;

@@ -12,6 +12,7 @@ phab-core.workspace = true
 phab-db.workspace = true
 phab-policy.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 phab-db = { workspace = true, features = ["test-support"] }
