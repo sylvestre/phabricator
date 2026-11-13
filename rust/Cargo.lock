@@ -1543,6 +1543,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-project"
+version = "0.1.0"
+dependencies = [
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "phab-auth"
 version = "0.1.0"
 dependencies = [
@@ -1698,6 +1709,7 @@ dependencies = [
  "form_urlencoded",
  "hex",
  "phab-app-differential",
+ "phab-app-project",
  "phab-auth",
  "phab-core",
  "phab-db",

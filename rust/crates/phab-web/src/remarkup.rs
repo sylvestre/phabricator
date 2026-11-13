@@ -1,10 +1,12 @@
 //! Remarkup for the pages: the engine set up from the Phabricator
-//! configuration, with object references resolved as the viewer may see
-//! them (`PhabricatorMarkupEngine` with a viewer).
+//! configuration, with object references (`D123`, `#project`, `@user`)
+//! resolved as the viewer may see them (`PhabricatorMarkupEngine` with a
+//! viewer).
 
 use std::collections::HashMap;
 
 use phab_app_differential::storage;
+use phab_app_project as project;
 use phab_core::Config;
 use phab_policy::Viewer;
 use phab_remarkup::{Engine, Markup, MentionedUser, Mode, ObjectHandle, Prepared, Resolved};
@@ -52,6 +54,66 @@ pub async fn render<S: WebState>(
     let prepared = engine.prepare(text.as_bytes(), mode);
     let resolved = resolve(state, viewer, &prepared).await?;
     Ok(engine.finish(prepared, resolved).output)
+}
+
+/// Resolves `#hashtag` references: hashtags match without case, like
+/// `PhabricatorProjectProjectPHIDType::loadNamedObjects()`.
+async fn resolve_projects<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    prepared: &Prepared<'_>,
+    resolved: &mut Resolved,
+) -> Result<(), PageError> {
+    let written: Vec<(Vec<u8>, String)> = prepared
+        .object_references()
+        .into_iter()
+        .filter(|(prefix, _)| *prefix == "#")
+        .filter_map(|(_, id)| {
+            let slug = String::from_utf8(id.clone()).ok()?.to_lowercase();
+            Some((id, slug))
+        })
+        .collect();
+    if written.is_empty() {
+        return Ok(());
+    }
+    let mut slugs: Vec<String> = written.iter().map(|(_, slug)| slug.clone()).collect();
+    slugs.sort();
+    slugs.dedup();
+    let found = project::storage::load_by_slug(state.database(), &slugs).await?;
+    let (visible, graph) = project::policy::visible_projects(
+        state.database(),
+        state.config(),
+        viewer,
+        found.iter().map(|(_, project)| project.clone()).collect(),
+        state.now(),
+    )
+    .await
+    .map_err(|error| PageError::Internal(Box::new(error)))?;
+    let visible: HashMap<&phab_core::Phid, &project::Project> = visible
+        .iter()
+        .map(|project| (&project.phid, project))
+        .collect();
+    for (id, slug) in written {
+        let Some(project) = found
+            .iter()
+            .find(|(found_slug, _)| *found_slug == slug)
+            .and_then(|(_, project)| visible.get(&project.phid))
+        else {
+            continue;
+        };
+        let name = project.display_name(graph.parent(project));
+        resolved.objects.insert(
+            ("#", id),
+            ObjectHandle {
+                phid: project.phid.as_str().to_owned(),
+                name: name.clone().into_bytes(),
+                full_name: name.into_bytes(),
+                uri: project.uri().into_bytes(),
+                closed: project.is_archived(),
+            },
+        );
+    }
+    Ok(())
 }
 
 /// Loads what the references of `prepared` point to, keeping what
@@ -105,6 +167,8 @@ async fn resolve<S: WebState>(
             );
         }
     }
+
+    resolve_projects(state, viewer, prepared, &mut resolved).await?;
 
     // Users are visible to everyone who can log in.
     let usernames: Vec<String> = prepared

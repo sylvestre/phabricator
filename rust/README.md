@@ -68,6 +68,7 @@ A method is moved in three steps:
 | `crates/apps/conduit` | `conduit.ping` |
 | `crates/apps/people` | `user.whoami`, `bugzilla.account.search`, `bmoexternalaccount.search` |
 | `crates/apps/feed` | `feed.query_id` |
+| `crates/apps/project` | Projects: loading by PHID or hashtag, and their policy |
 | `bins/phab-server` | The axum HTTP service |
 | `bins/phab-replay` | Replays scenario files against both stacks |
 

@@ -1,0 +1,21 @@
+[package]
+name = "phab-app-project"
+description = "Projects: storage, slugs and the policy of PhabricatorProject"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+phab-core.workspace = true
+phab-db.workspace = true
+phab-policy.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+phab-db = { workspace = true, features = ["test-support"] }
+tokio.workspace = true
+
+[lints]
+workspace = true

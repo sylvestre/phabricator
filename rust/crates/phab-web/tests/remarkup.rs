@@ -58,7 +58,16 @@ async fn references_resolve_under_policy() {
              (1, 'Open <one>', 'PHID-DREV-one', 'published', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', \
                'users', 'users', '{}', ''), \
              (2, 'Secret', 'PHID-DREV-two', 'needs-review', '', '', 'PHID-USER-bob', 1, 1, '{}', 'k', \
-               'no-one', 'no-one', '{}', '')",
+               'no-one', 'no-one', '{}', ''); \
+             INSERT INTO `{ns}_project`.project (name, phid, authorPHID, dateCreated, dateModified, status, \
+               viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, hasWorkboard, hasMilestones, \
+               hasSubprojects, projectPath, projectDepth, projectPathKey, properties, subtype, primarySlug) VALUES \
+             ('Firefox Build', 'PHID-PROJ-build', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', 'blue', \
+               'k', 0, 0, 0, 'a', 0, 'k001', '{}', 'default', 'firefox-build'), \
+             ('Secret team', 'PHID-PROJ-team', 'x', 1, 1, '0', 'no-one', 'users', 'users', 'fa-x', 'blue', \
+               'k', 0, 0, 0, 'b', 0, 'k002', '{}', 'default', 'team'); \
+             INSERT INTO `{ns}_project`.project_slug (projectPHID, slug, dateCreated, dateModified) VALUES \
+               ('PHID-PROJ-build', 'firefox-build', 1, 1), ('PHID-PROJ-team', 'team', 1, 1)",
         )
         .await;
     let config = Config::default();
@@ -67,7 +76,7 @@ async fn references_resolve_under_policy() {
         remarkup: phab_web::remarkup::new_engine(&config),
         config,
     };
-    let text = "D1, D2, D3 and @bob, @carol. bug 42";
+    let text = "D1, D2, D3 and @bob, @carol. bug 42 #Firefox-Build #team";
 
     let as_alice = Viewer::user(Phid::new("PHID-USER-alice"), false);
     let html = phab_web::remarkup::render(&state, &as_alice, text, Mode::Html)

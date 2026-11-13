@@ -45,7 +45,26 @@ pub const CONTRACT: &[TableContract] = &[
     TableContract {
         database: "project",
         table: "project",
-        columns: &["phid"],
+        columns: &[
+            "id",
+            "phid",
+            "name",
+            "status",
+            "icon",
+            "color",
+            "viewPolicy",
+            "editPolicy",
+            "joinPolicy",
+            "parentProjectPHID",
+            "milestoneNumber",
+            "primarySlug",
+            "spacePHID",
+        ],
+    },
+    TableContract {
+        database: "project",
+        table: "project_slug",
+        columns: &["projectPHID", "slug"],
     },
     TableContract {
         database: "differential",
