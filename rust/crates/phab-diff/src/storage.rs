@@ -94,13 +94,29 @@ pub struct Diff {
 
 /// Loads the diff with this ID.
 pub async fn load_diff(database: &Database, id: i64) -> Result<Option<Diff>, StorageError> {
+    load_diff_where(database, "id = ?", id.to_string()).await
+}
+
+/// The diff with this PHID, as a revision's `activeDiffPHID` names it.
+pub async fn load_diff_by_phid(
+    database: &Database,
+    phid: &str,
+) -> Result<Option<Diff>, StorageError> {
+    load_diff_where(database, "phid = ?", phid.to_owned()).await
+}
+
+async fn load_diff_where(
+    database: &Database,
+    condition: &str,
+    value: String,
+) -> Result<Option<Diff>, StorageError> {
     let sql = format!(
         "SELECT id, phid, revisionID, authorPHID, repositoryPHID, viewPolicy, \
-           sourceControlBaseRevision, dateCreated FROM {} WHERE id = ?",
+           sourceControlBaseRevision, dateCreated FROM {} WHERE {condition}",
         database.table("differential", "differential_diff")
     );
     let row = phab_db::sqlx::query(&sql)
-        .bind(id)
+        .bind(value)
         .fetch_optional(database.pool())
         .await?;
     let Some(row) = row else {

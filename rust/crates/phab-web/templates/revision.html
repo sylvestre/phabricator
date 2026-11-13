@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="revision-header">
+  <h1>{{ monogram }}: {{ title }}</h1>
+  <ul class="tags">
+    <li class="tag status-{% if closed %}closed{% else %}open{% endif %}">{{ status }}</li>
+    {%- if let Some(uri) = lando_uri %}
+    <li class="tag"><a href="{{ uri }}">View Stack in Lando</a></li>
+    {%- endif %}
+  </ul>
+</header>
+<dl class="properties">
+  <dt>Author</dt>
+  <dd>{% if let Some(uri) = author.uri %}<a href="{{ uri }}">{{ author.name }}</a>{% else %}{{ author.name }}{% endif %}</dd>
+  <dt>Created</dt><dd><time>{{ created }}</time></dd>
+  <dt>Updated</dt><dd><time>{{ modified }}</time></dd>
+  <dt>Reviewers</dt>
+  <dd>
+    {%- if reviewers.is_empty() %}<span class="muted">None</span>{% else %}
+    <ul class="reviewers">
+      {%- for reviewer in reviewers %}
+      <li>{% if let Some(uri) = reviewer.link.uri %}<a href="{{ uri }}"{% if reviewer.link.closed %} class="remarkup-mention-disabled"{% endif %}>{{ reviewer.link.name }}</a>{% else %}{{ reviewer.link.name }}{% endif %}{% if reviewer.blocking %} <span class="tag">Blocking</span>{% endif %} <span class="muted">{{ reviewer.status }}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+  </dd>
+  <dt>Bugzilla Bug ID</dt>
+  <dd>{% if let Some((bug, uri)) = bug %}<a href="{{ uri }}">{{ bug }}</a>{% else %}Not provided{% endif %}</dd>
+  {%- if !parents.is_empty() || !children.is_empty() %}
+  <dt>Stack</dt>
+  <dd>
+    <ul class="stack">
+      {%- for link in parents %}<li>Depends on {% if let Some(uri) = link.uri %}<a href="{{ uri }}"{% if link.closed %} class="remarkup-object-closed"{% endif %}>{{ link.name }}</a>{% endif %}</li>{% endfor %}
+      {%- for link in children %}<li>Blocks {% if let Some(uri) = link.uri %}<a href="{{ uri }}"{% if link.closed %} class="remarkup-object-closed"{% endif %}>{{ link.name }}</a>{% endif %}</li>{% endfor %}
+    </ul>
+  </dd>
+  {%- endif %}
+</dl>
+<section>
+  <h2>Summary</h2>
+  {%- if summary.is_some() %}<div class="remarkup">{{ self.summary_html()|safe }}</div>{% else %}<p class="muted">No summary.</p>{% endif %}
+  <h2>Test Plan</h2>
+  {%- if test_plan.is_some() %}<div class="remarkup">{{ self.test_plan_html()|safe }}</div>{% else %}<p class="muted">No test plan.</p>{% endif %}
+</section>
+<section class="diff-section">
+  <h2>Diff{% if let Some(id) = diff_id %} {{ id }}{% endif %}</h2>
+  {%- for changeset in changesets %}
+  {{ changeset|safe }}
+  {%- endfor %}
+</section>
+{% endblock %}

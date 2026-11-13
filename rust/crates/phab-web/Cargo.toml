@@ -18,6 +18,7 @@ phab-app-project.workspace = true
 phab-auth.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
+phab-diff.workspace = true
 phab-policy.workspace = true
 phab-remarkup.workspace = true
 sha2.workspace = true

@@ -23,6 +23,7 @@ phab-app-feed = { path = "crates/apps/feed" }
 phab-parity = { path = "crates/phab-parity" }
 phab-web = { path = "crates/phab-web" }
 phab-remarkup = { path = "crates/phab-remarkup" }
+phab-diff = { path = "crates/phab-diff" }
 
 askama = "0.14"
 axum = "0.8"

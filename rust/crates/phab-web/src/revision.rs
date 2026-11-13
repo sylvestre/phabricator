@@ -1,0 +1,413 @@
+//! `/D<id>`: a revision, read-only (`DifferentialRevisionViewController`,
+//! W4). The timeline, inline comments and diff history come next.
+
+use std::sync::Arc;
+
+use askama::Template;
+use axum::extract::{Path, State};
+use axum::http::Uri;
+use phab_app_differential::details;
+use phab_app_differential::storage::{self, Revision};
+use phab_app_project as project;
+use phab_core::{Config, Phid, PhidType};
+use phab_db::edges;
+use phab_policy::Viewer;
+use phab_remarkup::{Markup, Mode};
+
+use crate::error::PageError;
+use crate::response::Page;
+use crate::shell::Shell;
+use crate::state::WebState;
+use crate::viewer::WebUser;
+use crate::{diff_html, remarkup, time};
+
+/// A linked name.
+pub(crate) struct Link {
+    name: String,
+    uri: Option<String>,
+    closed: bool,
+}
+
+/// A reviewer and what they did.
+pub(crate) struct ReviewerItem {
+    link: Link,
+    status: &'static str,
+    blocking: bool,
+}
+
+#[derive(Template)]
+#[template(path = "revision.html")]
+pub(crate) struct RevisionPage {
+    shell: Shell,
+    monogram: String,
+    title: String,
+    status: &'static str,
+    closed: bool,
+    author: Link,
+    created: String,
+    modified: String,
+    reviewers: Vec<ReviewerItem>,
+    bug: Option<(i64, String)>,
+    parents: Vec<Link>,
+    children: Vec<Link>,
+    lando_uri: Option<String>,
+    summary: Option<Markup>,
+    test_plan: Option<Markup>,
+    diff_id: Option<i64>,
+    changesets: Vec<String>,
+}
+
+impl RevisionPage {
+    fn html(markup: Option<&Markup>) -> &str {
+        markup.map_or("", |markup| {
+            std::str::from_utf8(markup.as_bytes()).unwrap_or("")
+        })
+    }
+
+    fn summary_html(&self) -> &str {
+        Self::html(self.summary.as_ref())
+    }
+
+    fn test_plan_html(&self) -> &str {
+        Self::html(self.test_plan.as_ref())
+    }
+}
+
+/// `DifferentialRevisionStatus` names.
+fn status_name(status: &str) -> &'static str {
+    match status {
+        "needs-review" => "Needs Review",
+        "needs-revision" => "Needs Revision",
+        "changes-planned" => "Changes Planned",
+        "accepted" => "Accepted",
+        "published" => "Closed",
+        "abandoned" => "Abandoned",
+        "draft" => "Draft",
+        _ => "Unknown",
+    }
+}
+
+/// `DifferentialReviewerStatus` as the reviewer list shows it.
+fn reviewer_status(status: &str) -> &'static str {
+    match status {
+        "accepted" => "Accepted",
+        "rejected" => "Requested Changes",
+        "commented" => "Commented",
+        "accepted-older" => "Accepted Prior Diff",
+        "rejected-older" => "Requested Changes to Prior Diff",
+        "resigned" => "Resigned",
+        _ => "Review Requested",
+    }
+}
+
+/// Names for users and projects, under the viewer's policy. Anything else,
+/// or anything the viewer can't see, is a restricted handle like PHP's.
+async fn links<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    phids: &[Phid],
+) -> Result<Vec<(Phid, Link)>, PageError> {
+    let users: Vec<Phid> = phids
+        .iter()
+        .filter(|phid| phid.phid_type() == PhidType::USER)
+        .cloned()
+        .collect();
+    let projects: Vec<Phid> = phids
+        .iter()
+        .filter(|phid| phid.phid_type() == PhidType::PROJECT)
+        .cloned()
+        .collect();
+    let mut found: Vec<(Phid, Link)> =
+        phab_auth::user::load_users_by_phid(state.database(), &users)
+            .await?
+            .into_iter()
+            .map(|user| {
+                let link = Link {
+                    uri: Some(format!("/p/{}/", user.user_name)),
+                    closed: user.is_disabled,
+                    name: user.user_name,
+                };
+                (user.phid, link)
+            })
+            .collect();
+    let loaded = project::storage::load_by_phid(state.database(), &projects).await?;
+    let (visible, graph) = project::policy::visible_projects(
+        state.database(),
+        state.config(),
+        viewer,
+        loaded,
+        state.now(),
+    )
+    .await
+    .map_err(|error| PageError::Internal(Box::new(error)))?;
+    found.extend(visible.iter().map(|project| {
+        (
+            project.phid.clone(),
+            Link {
+                name: format!("#{}", project.display_name(graph.parent(project))),
+                uri: Some(project.uri()),
+                closed: project.is_archived(),
+            },
+        )
+    }));
+    Ok(phids
+        .iter()
+        .map(|phid| {
+            let link = found
+                .iter()
+                .position(|(found, _)| found == phid)
+                .map_or_else(
+                    || Link {
+                        name: "Restricted Object".to_owned(),
+                        uri: None,
+                        closed: false,
+                    },
+                    |index| found.swap_remove(index).1,
+                );
+            (phid.clone(), link)
+        })
+        .collect())
+}
+
+async fn revision_links<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    phids: &[Phid],
+) -> Result<Vec<Link>, PageError> {
+    let revisions = storage::load_revisions(state.database(), phids).await?;
+    let mut revisions = storage::visible_revisions(
+        state.database(),
+        state.config(),
+        viewer,
+        revisions,
+        state.now(),
+    )
+    .await
+    .map_err(|error| PageError::Internal(Box::new(error)))?;
+    revisions.sort_by_key(|revision| revision.id);
+    Ok(revisions
+        .into_iter()
+        .map(|revision| Link {
+            name: format!("D{}: {}", revision.id, revision.title),
+            uri: Some(format!("/D{}", revision.id)),
+            closed: revision.is_closed(),
+        })
+        .collect())
+}
+
+/// `LandoLinkEventListener` (moz-extensions): repositories tagged with the
+/// "lando" project use `lando.url`, the others `lando-ui.url`.
+async fn lando_uri(
+    config: &Config,
+    database: &phab_db::Database,
+    revision: &Revision,
+) -> Result<Option<String>, PageError> {
+    let legacy = config.nonempty_string("lando-ui.url");
+    let new = config.nonempty_string("lando.url");
+    if legacy.is_none() && new.is_none() {
+        return Ok(None);
+    }
+    let Some(repository) = &revision.repository_phid else {
+        return Ok(None);
+    };
+    let project_phids = edges::load_destination_phids(
+        database,
+        std::slice::from_ref(repository),
+        &[edges::OBJECT_HAS_PROJECT],
+        None,
+    )
+    .await?;
+    let uses_new = project::storage::load_by_phid(database, &project_phids)
+        .await?
+        .iter()
+        .any(|project| project.name.eq_ignore_ascii_case("lando"));
+    let base = if uses_new { new } else { legacy };
+    Ok(base.map(|base| {
+        let origin = base.trim_end_matches('/');
+        let origin = origin
+            .find("://")
+            .and_then(|scheme| {
+                origin[scheme + 3..]
+                    .find('/')
+                    .map(|path| &origin[..scheme + 3 + path])
+            })
+            .unwrap_or(origin);
+        format!("{origin}/D{}/", revision.id)
+    }))
+}
+
+/// The changesets of the active diff, rendered.
+async fn changesets<S: WebState>(
+    state: &S,
+    diff_phid: &Phid,
+) -> Result<(Option<i64>, Vec<String>), PageError> {
+    let database = state.database();
+    let internal = |error: phab_diff::storage::StorageError| PageError::Internal(Box::new(error));
+    let Some(diff) = phab_diff::storage::load_diff_by_phid(database, diff_phid.as_str())
+        .await
+        .map_err(internal)?
+    else {
+        return Ok((None, Vec::new()));
+    };
+    let mut changesets = phab_diff::storage::load_changesets(database, diff.id)
+        .await
+        .map_err(internal)?;
+    phab_diff::sort_for_display(&mut changesets);
+    let options = phab_diff::view::ViewOptions::default();
+    let rendered = changesets
+        .iter()
+        .map(|changeset| match phab_diff::view::build(changeset, &options) {
+            Ok(view) => diff_html::changeset(&view),
+            Err(error) => {
+                tracing::warn!(%error, changeset = changeset.id, "changeset failed to render");
+                "<section class=\"changeset\"><p class=\"changeset-shield\">This file could not be shown.</p></section>"
+                    .to_owned()
+            }
+        })
+        .collect();
+    Ok((Some(diff.id), rendered))
+}
+
+/// The ID of `D123`; `D0123` is not a monogram.
+fn parse_monogram(monogram: &str) -> Option<i64> {
+    monogram
+        .strip_prefix('D')
+        .filter(|digits| {
+            !digits.is_empty()
+                && !digits.starts_with('0')
+                && digits.bytes().all(|byte| byte.is_ascii_digit())
+        })
+        .and_then(|digits| digits.parse().ok())
+}
+
+/// A Remarkup field, if not empty.
+async fn remarkup_field<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    text: &str,
+) -> Result<Option<Markup>, PageError> {
+    if text.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        remarkup::render(state, viewer, text, Mode::Html).await?,
+    ))
+}
+
+/// The author and the reviewers, in the order PHP lists them.
+async fn people<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    revision: &Revision,
+) -> Result<(Link, Vec<ReviewerItem>), PageError> {
+    let mut phids: Vec<Phid> = revision
+        .reviewers
+        .iter()
+        .map(|reviewer| reviewer.phid.clone())
+        .collect();
+    if let Some(author) = &revision.author_phid {
+        phids.push(author.clone());
+    }
+    let mut links = links(state, viewer, &phids).await?;
+    let author = revision
+        .author_phid
+        .as_ref()
+        .and_then(|author| links.iter().position(|(phid, _)| phid == author))
+        .map_or_else(
+            || Link {
+                name: "Unknown".to_owned(),
+                uri: None,
+                closed: false,
+            },
+            |index| links.remove(index).1,
+        );
+    let reviewers = revision
+        .reviewers
+        .iter()
+        .filter_map(|reviewer| {
+            let index = links.iter().position(|(phid, _)| *phid == reviewer.phid)?;
+            Some(ReviewerItem {
+                link: links.remove(index).1,
+                status: reviewer_status(&reviewer.status),
+                blocking: reviewer.status == "blocking",
+            })
+        })
+        .collect();
+    Ok((author, reviewers))
+}
+
+/// `GET /D{id}`: the route is `/{monogram}`, as path parameters can't
+/// share a segment with text.
+pub(crate) async fn show<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(monogram): Path<String>,
+    uri: Uri,
+) -> Result<Page<RevisionPage>, PageError> {
+    let id = parse_monogram(&monogram).ok_or(PageError::NotFound)?;
+    let database = state.database();
+    let as_viewer = viewer.user.viewer();
+    let revision = storage::load_revisions_by_id(database, &[id])
+        .await?
+        .pop()
+        .ok_or(PageError::NotFound)?;
+    let revision = storage::visible_revisions(
+        database,
+        state.config(),
+        &as_viewer,
+        vec![revision],
+        state.now(),
+    )
+    .await
+    .map_err(|error| PageError::Internal(Box::new(error)))?
+    .pop()
+    .ok_or(PageError::PolicyDenied)?;
+
+    let details = details::load_details(database, &revision.phid)
+        .await?
+        .ok_or(PageError::NotFound)?;
+    let bug = details::load_bug_id(database, &revision.phid)
+        .await?
+        .map(|bug| {
+            let base = phab_remarkup::phabricator::bugzilla_origin(
+                state.config().nonempty_string("bugzilla.url").unwrap_or(""),
+            );
+            (bug, format!("{base}/show_bug.cgi?id={bug}"))
+        });
+    let (parent_phids, child_phids) = details::load_stack_edges(database, &revision.phid).await?;
+
+    let (author, reviewers) = people(state.as_ref(), &as_viewer, &revision).await?;
+    let summary = remarkup_field(state.as_ref(), &as_viewer, &details.summary).await?;
+    let test_plan = remarkup_field(state.as_ref(), &as_viewer, &details.test_plan).await?;
+    let (diff_id, changesets) = match &details.active_diff_phid {
+        Some(diff) => changesets(state.as_ref(), diff).await?,
+        None => (None, Vec::new()),
+    };
+
+    let monogram = format!("D{}", revision.id);
+    let current = uri.path_and_query().map_or("/", |path| path.as_str());
+    Ok(Page(RevisionPage {
+        shell: Shell::for_user(
+            state.config(),
+            &viewer,
+            &format!("{monogram} {}", revision.title),
+            current,
+        ),
+        title: revision.title.clone(),
+        status: status_name(&revision.status),
+        closed: revision.is_closed(),
+        author,
+        created: time::format_utc(details.date_created),
+        modified: time::format_utc(details.date_modified),
+        reviewers,
+        bug,
+        parents: revision_links(state.as_ref(), &as_viewer, &parent_phids).await?,
+        children: revision_links(state.as_ref(), &as_viewer, &child_phids).await?,
+        lando_uri: lando_uri(state.config(), database, &revision).await?,
+        summary,
+        test_plan,
+        diff_id,
+        changesets,
+        monogram,
+    }))
+}

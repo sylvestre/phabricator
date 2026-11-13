@@ -20,7 +20,7 @@ pub mod preg;
 pub mod rule;
 pub mod rules;
 pub mod storage;
-mod uri;
+pub(crate) mod uri;
 
 pub use engine::{Config, Context, Engine, Mode, Prepared, Rendered};
 pub use markup::Markup;

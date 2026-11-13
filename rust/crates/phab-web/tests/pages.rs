@@ -54,6 +54,7 @@ async fn setup(with_csrf_key: bool) -> Option<TestDatabase> {
         "policy",
         "spaces",
         "repository",
+        "file",
     ])
     .await?;
     test_db
@@ -330,6 +331,89 @@ async fn project_pages_follow_policy() {
     for path in ["/tag/nope/", "/project/view/9/"] {
         let response = get(&test_db, Config::default(), path, alice).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn revisions_show_their_header_text_and_diff() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    let bug_index = hash::digest_for_index(b"differential:bugzilla-bug-id");
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_differential`.differential_revision (id, title, phid, status, summary, \
+               testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, viewPolicy, \
+               editPolicy, properties, activeDiffPHID) VALUES \
+             (3, 'Fix <crash>', 'PHID-DREV-three', 'needs-review', 'Fixes **it**.', '', \
+               'PHID-USER-alice', 1, 1, '{{}}', 'k', 'users', 'users', '{{}}', 'PHID-DIFF-seven'), \
+             (4, 'Parent', 'PHID-DREV-four', 'published', '', '', 'PHID-USER-alice', 1, 1, '{{}}', 'k', \
+               'users', 'users', '{{}}', ''), \
+             (5, 'Secret parent', 'PHID-DREV-five', 'needs-review', '', '', 'PHID-USER-mfa', 1, 1, \
+               '{{}}', 'k', 'no-one', 'no-one', '{{}}', ''); \
+             INSERT INTO `{{ns}}_differential`.differential_reviewer (revisionPHID, reviewerPHID, \
+               reviewerStatus, dateCreated, dateModified, options) VALUES \
+             ('PHID-DREV-three', 'PHID-USER-mfa', 'blocking', 1, 1, '{{}}'), \
+             ('PHID-DREV-three', 'PHID-USER-gone', 'accepted', 1, 1, '{{}}'); \
+             INSERT INTO `{{ns}}_differential`.differential_customfieldstorage (objectPHID, \
+               fieldIndex, fieldValue) VALUES ('PHID-DREV-three', '{bug_index}', '1234567'); \
+             INSERT INTO `{{ns}}_differential`.edge (src, type, dst, dateCreated, seq) VALUES \
+               ('PHID-DREV-three', 5, 'PHID-DREV-four', 1, 0), \
+               ('PHID-DREV-three', 5, 'PHID-DREV-five', 1, 0); \
+             INSERT INTO `{{ns}}_differential`.differential_diff (id, phid, revisionID, \
+               authorPHID, repositoryPHID, sourceControlBaseRevision, lintStatus, unitStatus, \
+               lineCount, dateCreated, dateModified, viewPolicy) VALUES \
+             (7, 'PHID-DIFF-seven', 3, 'PHID-USER-alice', NULL, 'abc', 0, 0, 3, 1, 1, 'users'); \
+             INSERT INTO `{{ns}}_differential`.differential_changeset (id, phid, diffID, oldFile, \
+               filename, awayPaths, changeType, fileType, metadata, oldProperties, newProperties, \
+               addLines, delLines, dateCreated, dateModified) VALUES \
+             (10, 'PHID-DCHG-ten', 7, NULL, 'src/a.c', '[]', 2, 1, '{{}}', '[]', '[]', 1, 1, 1, 1); \
+             INSERT INTO `{{ns}}_differential`.differential_hunk (id, changesetID, oldOffset, \
+               oldLen, newOffset, newLen, dataType, dataEncoding, dataFormat, data, dateCreated, \
+               dateModified) VALUES \
+             (21, 10, 1, 2, 1, 2, 'text', 'utf8', 'byte', ' int x;\\n-int y = 1;\\n+int y = 2;\\n', 1, 1)"
+        ))
+        .await;
+
+    let response = get(
+        &test_db,
+        Config::default(),
+        "/D3",
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    assert!(page.contains("<h1>D3: Fix &#60;crash&#62;</h1>"), "{page}");
+    assert!(page.contains("Needs Review"), "{page}");
+    assert!(
+        page.contains("<a href=\"/p/mfa/\">mfa</a> <span class=\"tag\">Blocking</span>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("show_bug.cgi?id=1234567\">1234567</a>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("Depends on <a href=\"/D4\" class=\"remarkup-object-closed\">D4: Parent</a>"),
+        "{page}"
+    );
+    assert!(!page.contains("Secret parent"), "{page}");
+    assert!(page.contains("Fixes <strong>it</strong>."), "{page}");
+    assert!(page.contains("src/a.c"), "{page}");
+    assert!(
+        page.contains("int y = <span class=\"bright\">2</span>;"),
+        "{page}"
+    );
+
+    for (path, status) in [
+        ("/D5", StatusCode::FORBIDDEN),
+        ("/D9", StatusCode::NOT_FOUND),
+        ("/Dx", StatusCode::NOT_FOUND),
+    ] {
+        let response = get(&test_db, Config::default(), path, Some("phsid=alice-token")).await;
+        assert_eq!(response.status(), status, "{path}");
     }
     test_db.drop_databases().await;
 }

@@ -8,6 +8,7 @@
 //! request against PHP, so the user sees the PHP page instead.
 
 pub mod assets;
+mod diff_html;
 mod error;
 mod home;
 pub mod opt_in;
@@ -15,6 +16,7 @@ mod people;
 mod projects;
 pub mod remarkup;
 mod response;
+mod revision;
 mod router;
 mod shell;
 mod state;

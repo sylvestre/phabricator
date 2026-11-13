@@ -76,3 +76,9 @@ pub fn engine(config: Config) -> Engine {
     ];
     Engine::new(config, blocks, rules)
 }
+
+/// The scheme and host of `bugzilla.url`, which links to bugs replace the
+/// path of (`PhutilURI::setPath()`).
+pub fn bugzilla_origin(url: &str) -> String {
+    String::from_utf8_lossy(&crate::uri::origin(url.as_bytes())).into_owned()
+}

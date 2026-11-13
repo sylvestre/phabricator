@@ -1714,6 +1714,7 @@ dependencies = [
  "phab-auth",
  "phab-core",
  "phab-db",
+ "phab-diff",
  "phab-policy",
  "phab-remarkup",
  "rstest",
