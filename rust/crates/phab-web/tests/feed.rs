@@ -38,6 +38,10 @@ impl WebState for State {
     fn remarkup(&self) -> &phab_remarkup::Engine {
         &self.remarkup
     }
+
+    fn php(&self) -> Option<&phab_web::php::PhpConduit> {
+        None
+    }
 }
 
 fn chronological_key(id: u64) -> u64 {
