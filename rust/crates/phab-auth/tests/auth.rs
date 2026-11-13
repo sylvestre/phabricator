@@ -1,5 +1,6 @@
 //! API token and session authentication against a test database.
 
+use phab_auth::csrf::{self, CsrfSecret};
 use phab_auth::session::SessionType;
 use phab_auth::token::InvalidAuth;
 use phab_auth::{Outcome, Writes, session, token};
@@ -220,6 +221,62 @@ async fn sessions() {
     assert_eq!(key, hash::hmac_sha256(b"weaktoken", &digest_key).unwrap());
     assert!(i64::from(expires) > NOW + 2 * 86_400);
 
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn csrf_key() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    let database = test_db.database();
+    assert!(matches!(
+        csrf::load_key(database).await.unwrap(),
+        Outcome::Unsupported(_)
+    ));
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_auth`.auth_hmackey (keyName, keyValue, dateCreated, dateModified) \
+             VALUES ('csrf', '6b3379', 1, 1)",
+        )
+        .await;
+    assert_eq!(
+        csrf::load_key(database).await.unwrap(),
+        Outcome::Done(csrf::CsrfKey::new(b"k3y".to_vec()))
+    );
+
+    // Tokens are made from the new session digest, even for a legacy key.
+    let config = Config::default();
+    let weak = hash::weak_digest(b"weaktoken", config.hmac_key().unwrap().as_bytes()).unwrap();
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_auth`.auth_hmackey (keyName, keyValue, dateCreated, dateModified) \
+             VALUES ('session.digest', '{DIGEST_KEY_HEX}', 1, 1); \
+             INSERT INTO `{{ns}}_user`.phabricator_session \
+               (userPHID, type, sessionKey, sessionStart, sessionExpires, phid) VALUES \
+             ('PHID-USER-alice', 'web', '{weak}', 1, {NOW}, 'PHID-SSSN-1')",
+        ))
+        .await;
+    let found = session::load_user_for_session(
+        database,
+        &config,
+        SessionType::Web,
+        "weaktoken",
+        NOW,
+        Writes::Skipped,
+    )
+    .await
+    .unwrap();
+    let Outcome::Done(Some(found)) = found else {
+        panic!("the session was not found");
+    };
+    let digest = hash::hmac_sha256(b"weaktoken", &hex_decode(DIGEST_KEY_HEX)).unwrap();
+    // `accountSecret` is BINARY(64): MySQL pads it, and PHP reads it padded.
+    let account_secret = format!("s{}", "\0".repeat(63));
+    assert_eq!(
+        found.csrf_secret,
+        CsrfSecret::for_session(&found.user.phid, &account_secret, &digest)
+    );
     test_db.drop_databases().await;
 }
 

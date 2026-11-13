@@ -50,6 +50,18 @@ fn hmac_hex<M: Mac + KeyInit>(message: &[u8], key: &[u8]) -> Result<String, Hash
     Ok(hex::encode(mac.finalize().into_bytes()))
 }
 
+/// `phutil_hashes_are_identical()`: compares two digests in time which
+/// depends only on their length.
+pub fn hashes_are_identical(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    left.iter()
+        .zip(right)
+        .fold(0u8, |difference, (a, b)| difference | (a ^ b))
+        == 0
+}
+
 /// `PhabricatorHash::digestForIndex()`.
 pub fn digest_for_index(message: &[u8]) -> String {
     let hash = Sha1::digest(message);
@@ -134,6 +146,18 @@ mod tests {
     )]
     fn hmac_sha256_matches_php(#[case] message: &str, #[case] expected: &str) {
         assert_eq!(hmac_sha256(message.as_bytes(), b"k3y").unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case("abc", "abc", true)]
+    #[case("abc", "abd", false)]
+    #[case("abc", "ab", false)]
+    #[case("", "", true)]
+    fn identical_hashes(#[case] left: &str, #[case] right: &str, #[case] expected: bool) {
+        assert_eq!(
+            hashes_are_identical(left.as_bytes(), right.as_bytes()),
+            expected
+        );
     }
 
     #[test]

@@ -77,6 +77,7 @@ pub const CONTRACT: &[TableContract] = &[
             "isEmailVerified",
             "isApproved",
             "isMailingList",
+            "accountSecret",
         ],
     },
     TableContract {

@@ -8,6 +8,7 @@
 use phab_core::{Config, Phid, hash};
 use phab_db::{Database, rows};
 
+use crate::csrf::CsrfSecret;
 use crate::user::{self, User as UserRecord};
 use crate::{AuthError, Outcome, User, Writes};
 
@@ -96,7 +97,10 @@ pub struct Session {
 
 /// The HMAC key PHP keeps in `phabricator_auth.auth_hmackey`, decoded from
 /// hex. `None` if PHP has not generated it yet.
-async fn named_hmac_key(database: &Database, name: &str) -> Result<Option<Vec<u8>>, AuthError> {
+pub(crate) async fn named_hmac_key(
+    database: &Database,
+    name: &str,
+) -> Result<Option<Vec<u8>>, AuthError> {
     let sql = format!(
         "SELECT keyValue FROM {} WHERE keyName = ?",
         database.table("auth", "auth_hmackey")
@@ -119,6 +123,8 @@ pub struct SessionUser {
     pub user: User,
     /// The session itself.
     pub session: Session,
+    /// What the user's CSRF tokens are made from.
+    pub csrf_secret: CsrfSecret,
 }
 
 /// Loads the user for a session token, extending the session like PHP.
@@ -145,7 +151,8 @@ pub async fn load_user_for_session(
     let sql = format!(
         "SELECT s.id AS s_id, s.phid AS s_phid, s.sessionExpires AS s_sessionExpires, \
            s.sessionStart AS s_sessionStart, s.highSecurityUntil AS s_highSecurityUntil, \
-           s.isPartial AS s_isPartial, IF(s.sessionKey = ?, 1, 0) AS s_weak, {} \
+           s.isPartial AS s_isPartial, IF(s.sessionKey = ?, 1, 0) AS s_weak, \
+           u.accountSecret AS u_accountSecret, {} \
          FROM {} u JOIN {} s ON u.phid = s.userPHID \
            AND s.type = ? AND s.sessionKey IN (?, ?)",
         user::select_columns("u"),
@@ -174,6 +181,13 @@ pub async fn load_user_for_session(
         is_partial: rows::flag(&row, "s_isPartial")?,
     };
     let is_weak = rows::flag(&row, "s_weak")?;
+    // PHP keeps the new digest on the session, even before upgrading a weak
+    // key, and builds CSRF tokens from it.
+    let csrf_secret = CsrfSecret::for_session(
+        &user.phid,
+        &rows::text(&row, "u_accountSecret")?,
+        &session_key,
+    );
 
     if session_type == SessionType::Web && !user.can_establish_web_sessions() {
         return Ok(Outcome::Done(None));
@@ -194,7 +208,11 @@ pub async fn load_user_for_session(
         }
     }
 
-    Ok(Outcome::Done(Some(SessionUser { user, session })))
+    Ok(Outcome::Done(Some(SessionUser {
+        user,
+        session,
+        csrf_secret,
+    })))
 }
 
 /// Whether a session should be pushed back to its full lifetime: sessions

@@ -1,11 +1,12 @@
 //! Authentication shared with the PHP application: Conduit API tokens
-//! ([`token`]) and session cookies ([`session`]).
+//! ([`token`]), session cookies ([`session`]) and CSRF tokens ([`csrf`]).
 //!
 //! Only the read side is ported. Paths PHP handles which these modules do
 //! not (signed requests, cluster tokens, missing HMAC keys PHP would create)
 //! come back as [`Outcome::Unsupported`], so the caller can hand the request
 //! to PHP instead of answering differently.
 
+pub mod csrf;
 mod error;
 mod outcome;
 pub mod session;
