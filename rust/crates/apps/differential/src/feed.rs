@@ -13,7 +13,7 @@ const TYPE_SUBSCRIBERS: &str = "core:subscribers";
 const TYPE_EDGE: &str = "core:edge";
 
 /// Whether a transaction shows in feed. `Unknown` when the answer depends on
-/// logic that is not ported (custom fields).
+/// logic that is not ported (custom fields other than Mozilla's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeedVisibility {
     /// Shown in feed.
@@ -162,7 +162,18 @@ fn should_hide(transaction: &Transaction, comment: Option<&Comment>) -> FeedVisi
         {
             (transaction.old_value == Value::Null).into()
         }
-        "core:customfield" => FeedVisibility::Unknown,
+        // The Mozilla fields never hide their transactions; the others
+        // depend on differential.fields.
+        "core:customfield" => {
+            let key = transaction
+                .metadata_value("customfield:key")
+                .and_then(Value::as_str);
+            if crate::title::is_known_custom_field(key) {
+                FeedVisibility::Visible
+            } else {
+                FeedVisibility::Unknown
+            }
+        }
         TYPE_EDGE => match edge_type(transaction) {
             Some(edges::OBJECT_MENTIONS_OBJECT | edges::MUTED | edges::MUTED_BY) => {
                 FeedVisibility::Hidden
@@ -275,7 +286,8 @@ mod tests {
     #[case("core:edge", json!([]), json!([]), json!({"edge:type": 5}), FeedVisibility::Hidden)]
     #[case("core:edge", json!([]), json!([]), json!({"edge:type": "52"}), FeedVisibility::Hidden)]
     #[case("core:edge", json!([]), json!([]), json!({"edge:type": 41}), FeedVisibility::Visible)]
-    #[case("core:customfield", json!(null), json!("x"), json!({}), FeedVisibility::Unknown)]
+    #[case("core:customfield", json!(null), json!("x"), json!({"customfield:key": "std:x"}), FeedVisibility::Unknown)]
+    #[case("core:customfield", json!(""), json!("1"), json!({"customfield:key": "differential:bugzilla-bug-id"}), FeedVisibility::Visible)]
     #[case("core:view-policy", json!(null), json!("users"), json!({}), FeedVisibility::Hidden)]
     #[case("core:view-policy", json!("admin"), json!("users"), json!({}), FeedVisibility::Visible)]
     #[case("differential.revision.title", json!(""), json!("t"), json!({"core.create": true}), FeedVisibility::Hidden)]
@@ -304,7 +316,12 @@ mod tests {
 
     #[test]
     fn comments_make_transactions_visible() {
-        let custom = transaction("core:customfield", json!(null), json!("x"), json!({}));
+        let custom = transaction(
+            "core:customfield",
+            json!(null),
+            json!("x"),
+            json!({"customfield:key": "std:x"}),
+        );
         assert_eq!(
             feed_visibility(&custom, Some(&comment("hello"))),
             FeedVisibility::Visible

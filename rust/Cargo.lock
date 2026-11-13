@@ -1509,6 +1509,7 @@ dependencies = [
  "phab-db",
  "phab-policy",
  "rstest",
+ "serde",
  "serde_json",
  "thiserror",
  "tokio",

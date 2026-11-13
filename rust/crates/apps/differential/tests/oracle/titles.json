@@ -1,0 +1,514 @@
+[
+ {
+  "type": "differential:inline",
+  "old": null,
+  "new": null,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:update",
+  "old": null,
+  "new": null,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "accept",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "reject",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "rethink",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "abandon",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "commit",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "request_review",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "reclaim",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "resign",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "claim",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "reopen",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "none",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "update",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "create",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "add_ccs",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential:action",
+  "old": null,
+  "new": "close",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.abandon",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.accept",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.close",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.commandeer",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.plan",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reclaim",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reject",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reopen",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.resign",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.summary",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.testplan",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.request",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.request",
+  "old": null,
+  "new": true,
+  "metadata": {
+   "promotion.source": "author"
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "draft",
+  "old": null,
+  "new": true,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "draft",
+  "old": null,
+  "new": false,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.title",
+  "old": "Old <x>",
+  "new": "New",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.author",
+  "old": "PHID-USER-bob",
+  "new": "PHID-USER-alice",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.author",
+  "old": "PHID-USER-alice",
+  "new": "PHID-USER-bob",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.author",
+  "old": "PHID-USER-bob",
+  "new": "PHID-USER-hidden",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.status",
+  "old": null,
+  "new": "accepted",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.status",
+  "old": null,
+  "new": "needs-revision",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.status",
+  "old": null,
+  "new": "needs-review",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reviewers",
+  "old": {},
+  "new": {
+   "PHID-USER-bob": "added"
+  },
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reviewers",
+  "old": {},
+  "new": {
+   "PHID-USER-bob": "added",
+   "PHID-PROJ-build": "added"
+  },
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reviewers",
+  "old": {
+   "PHID-USER-bob": "added"
+  },
+  "new": {},
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reviewers",
+  "old": {
+   "PHID-USER-bob": "added",
+   "PHID-USER-hidden": "added"
+  },
+  "new": {},
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reviewers",
+  "old": {
+   "PHID-USER-bob": "added"
+  },
+  "new": {
+   "PHID-PROJ-build": "added"
+  },
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reviewers",
+  "old": {
+   "PHID-USER-bob": "added"
+  },
+  "new": {
+   "PHID-USER-bob": "blocking"
+  },
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reviewers",
+  "old": {
+   "PHID-USER-bob": "blocking"
+  },
+  "new": {
+   "PHID-USER-bob": "added",
+   "PHID-PROJ-build": "added"
+  },
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "differential.revision.reviewers",
+  "old": {
+   "PHID-USER-bob": "blocking",
+   "PHID-PROJ-build": "added"
+  },
+  "new": {
+   "PHID-USER-bob": "added",
+   "PHID-PROJ-build": "blocking"
+  },
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:create",
+  "old": null,
+  "new": null,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:comment",
+  "old": null,
+  "new": null,
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:comment",
+  "old": null,
+  "new": null,
+  "metadata": {},
+  "author": "PHID-USER-hidden"
+ },
+ {
+  "type": "core:view-policy",
+  "old": "users",
+  "new": "admin",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:edit-policy",
+  "old": "users",
+  "new": "admin",
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:subscribers",
+  "old": [],
+  "new": [
+   "PHID-USER-bob"
+  ],
+  "metadata": {},
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:edge",
+  "old": {},
+  "new": {
+   "PHID-PROJ-build": {
+    "dst": "PHID-PROJ-build"
+   }
+  },
+  "metadata": {
+   "edge:type": 41
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:edge",
+  "old": {},
+  "new": {
+   "PHID-PROJ-build": {
+    "dst": "PHID-PROJ-build"
+   },
+   "PHID-PROJ-two": {
+    "dst": "PHID-PROJ-two"
+   }
+  },
+  "metadata": {
+   "edge:type": 41
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:edge",
+  "old": {
+   "PHID-PROJ-build": {
+    "dst": "PHID-PROJ-build"
+   }
+  },
+  "new": {},
+  "metadata": {
+   "edge:type": 41
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:edge",
+  "old": {
+   "PHID-PROJ-build": {
+    "dst": "PHID-PROJ-build"
+   }
+  },
+  "new": {
+   "PHID-PROJ-two": {
+    "dst": "PHID-PROJ-two"
+   }
+  },
+  "metadata": {
+   "edge:type": 41
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:edge",
+  "old": {},
+  "new": {
+   "PHID-USER-bob": {
+    "dst": "PHID-USER-bob"
+   }
+  },
+  "metadata": {
+   "edge:type": 35
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:edge",
+  "old": {},
+  "new": {},
+  "metadata": {
+   "edge:type": 41
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:customfield",
+  "old": "",
+  "new": "123",
+  "metadata": {
+   "customfield:key": "differential:bugzilla-bug-id"
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:customfield",
+  "old": "",
+  "new": "{}",
+  "metadata": {
+   "customfield:key": "differential:uplift-request"
+  },
+  "author": "PHID-USER-alice"
+ },
+ {
+  "type": "core:customfield",
+  "old": "a",
+  "new": "b",
+  "metadata": {
+   "customfield:key": "differential:merge-conflict-status"
+  },
+  "author": "PHID-USER-alice"
+ }
+]

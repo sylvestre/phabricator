@@ -5,5 +5,6 @@ pub mod buckets;
 pub mod details;
 pub mod feed;
 pub mod storage;
+pub mod title;
 
 pub use storage::{Comment, Repositories, Revision, Transaction};
