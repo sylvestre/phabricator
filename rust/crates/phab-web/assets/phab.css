@@ -202,6 +202,7 @@ a { color: var(--accent); }
 .actions form { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
 .actions textarea { font: inherit; padding: 6px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 .actions button { align-self: flex-start; padding: 4px 16px; }
+.comment-preview { padding: 6px 10px; border: 1px dashed var(--border); border-radius: 4px; }
 .feed { padding: 0; list-style: none; }
 .feed-story { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .feed-story time { font-size: 13px; }

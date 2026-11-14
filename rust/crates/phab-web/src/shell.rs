@@ -50,6 +50,8 @@ pub struct Shell {
     pub motd: Option<Motd>,
     /// Where the stylesheet is served.
     pub stylesheet: String,
+    /// Where the script is served.
+    pub script: String,
     /// Where the "old interface" link goes.
     pub old_ui_uri: Option<String>,
 }
@@ -67,6 +69,7 @@ impl Shell {
             csrf_token: Some(viewer.csrf_token.clone()),
             motd: Motd::from_config(config),
             stylesheet: assets::uri("phab.css"),
+            script: assets::uri("phab.js"),
             old_ui_uri: Some(opt_in::off_uri(current_uri)),
         }
     }
@@ -80,6 +83,7 @@ impl Shell {
             csrf_token: None,
             motd: None,
             stylesheet: assets::uri("phab.css"),
+            script: assets::uri("phab.js"),
             old_ui_uri: None,
         }
     }

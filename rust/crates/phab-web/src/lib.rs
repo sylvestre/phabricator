@@ -16,6 +16,7 @@ mod highlight;
 pub mod opt_in;
 mod people;
 pub mod php;
+mod preview;
 mod projects;
 mod queue;
 pub mod remarkup;

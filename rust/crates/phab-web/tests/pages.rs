@@ -957,12 +957,60 @@ async fn stylesheet_is_served() {
     let Some(test_db) = setup(true).await else {
         return;
     };
-    let uri = phab_web::assets::uri("phab.css");
-    let response = get(&test_db, Config::default(), &uri, None).await;
+    for (name, content_type) in [
+        ("phab.css", "text/css; charset=UTF-8"),
+        ("phab.js", "text/javascript; charset=UTF-8"),
+    ] {
+        let uri = phab_web::assets::uri(name);
+        let response = get(&test_db, Config::default(), &uri, None).await;
+        assert_eq!(response.status(), StatusCode::OK, "{name}");
+        assert_eq!(response.headers()[header::CONTENT_TYPE], content_type);
+    }
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn comments_are_previewed() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    let alice = Some("phsid=alice-token");
+    let page = text(get(&test_db, Config::default(), "/differential/", alice).await).await;
+    assert!(page.contains("/phab.js\" defer></script>"), "{page}");
+    let token = page
+        .split("name=\"csrf-token\" content=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap()
+        .to_owned();
+    let preview = |body: String| {
+        send(
+            &test_db,
+            Config::default(),
+            None,
+            Request::post("/rust-ui/preview")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+            alice,
+            Body::from(body),
+        )
+    };
+    let form = |csrf: &str, text: &str| {
+        form_urlencoded::Serializer::new(String::new())
+            .extend_pairs([("__csrf__", csrf), ("text", text)])
+            .finish()
+    };
+
+    let response = preview(form(&token, "Hi **@alice** <b>")).await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers()[header::CONTENT_TYPE],
-        "text/css; charset=UTF-8"
+    let html = text(response).await;
+    assert!(
+        html.contains(r#"<strong><a href="/p/alice/" class="remarkup-mention""#),
+        "{html}"
     );
+    assert!(html.contains("&lt;b&gt;"), "{html}");
+    assert!(!html.contains("<html"), "{html}");
+
+    let response = preview(form("B@stale", "Hi")).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     test_db.drop_databases().await;
 }

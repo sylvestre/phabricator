@@ -21,11 +21,18 @@ struct Asset {
 }
 
 static ASSETS: LazyLock<Vec<Asset>> = LazyLock::new(|| {
-    [(
-        "phab.css",
-        "text/css; charset=UTF-8",
-        include_bytes!("../assets/phab.css").as_slice(),
-    )]
+    [
+        (
+            "phab.css",
+            "text/css; charset=UTF-8",
+            include_bytes!("../assets/phab.css").as_slice(),
+        ),
+        (
+            "phab.js",
+            "text/javascript; charset=UTF-8",
+            include_bytes!("../assets/phab.js").as_slice(),
+        ),
+    ]
     .into_iter()
     .map(|(name, content_type, bytes)| {
         let mut hash = hex::encode(Sha256::digest(bytes));
