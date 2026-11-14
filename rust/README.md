@@ -51,6 +51,8 @@ A method is moved in three steps:
    from `PHAB_SHADOW_METHODS`: the Rust answer goes to clients.
 
 `rust/scripts/test-nginx-routing.sh` checks the nginx side with stand-ins.
+[`TESTING.md`](TESTING.md) describes the whole testing strategy and what
+each ported component needs before it serves traffic.
 
 ## Layout
 
