@@ -803,6 +803,46 @@ async fn revisions_show_their_header_text_and_diff() {
 }
 
 #[tokio::test]
+async fn revision_pages_have_what_the_script_needs() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    insert_revision_fixtures(&test_db).await;
+    let page = text(
+        get(
+            &test_db,
+            Config::default(),
+            "/D3",
+            Some("phsid=alice-token"),
+        )
+        .await,
+    )
+    .await;
+    // What phab.js needs to place new inline comments and replies.
+    assert!(
+        page.contains(r#"<section class="diff-section" data-revision="D3" data-diff="7">"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<section class="changeset" data-path="src/a.c">"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<td class="n" data-side="new" data-line="2">2</td>"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<div class="inline-comment" data-phid="PHID-XCMT-2">"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<input type="hidden" name="inlines" value="">"#),
+        "{page}"
+    );
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
 async fn the_queue_groups_revisions_by_required_action() {
     let Some(test_db) = setup(true).await else {
         return;
@@ -1005,6 +1045,46 @@ async fn reviewers_and_subscribers_are_added_by_name() {
             {"type": "subscribers.add", "value": ["PHID-USER-alice"]},
         ])
     );
+
+    // Inline comments written on the page are published in the same edit.
+    let (php, received) =
+        fake_php(r#"{"result":{"object":{"id":3}},"error_code":null,"error_info":null}"#).await;
+    let inlines = r#"[{"path": "src/a.c", "line": 2, "isNewFile": true, "diff": 7, "content": "Why 2?"},
+        {"replyToCommentPHID": "PHID-XCMT-2", "content": "Because."}]"#;
+    let response = post(
+        encode(&[
+            ("__csrf__", &token),
+            ("inlines", inlines),
+            ("comment", "See inline"),
+        ]),
+        Some(php),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        response.headers()[header::LOCATION],
+        "/D3#inlines-published"
+    );
+    let calls = received.lock().unwrap().clone();
+    let params: serde_json::Value =
+        serde_json::from_str(&form_value(&calls[0].3, "params")).unwrap();
+    assert_eq!(
+        params["transactions"],
+        json!([
+            {"type": "inline", "value": {"path": "src/a.c", "line": 2, "length": 1,
+                "isNewFile": true, "diff": 7, "content": "Why 2?"}},
+            {"type": "inline", "value": {"replyToCommentPHID": "PHID-XCMT-2", "content": "Because."}},
+            {"type": "comment", "value": "See inline"},
+        ])
+    );
+    let (php, received) = fake_php("{}").await;
+    let response = post(
+        encode(&[("__csrf__", &token), ("inlines", "[{\"path\": \"a\"}]")]),
+        Some(php),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(received.lock().unwrap().is_empty());
 
     // Unknown and disabled users are refused, saying who.
     for (name, message) in [

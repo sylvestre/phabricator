@@ -47,6 +47,106 @@ pub(crate) struct ActionForm {
     /// Users and `#projects` to add as subscribers.
     #[serde(default)]
     subscribers: String,
+    /// The inline comments written on the page, as a JSON list
+    /// ([`InlineDraft`]); `phab.js` keeps them until the form is sent.
+    #[serde(default)]
+    inlines: String,
+}
+
+/// At most this many inline comments in one edit.
+const MAX_INLINES: usize = 500;
+
+/// An inline comment of the form: a new one on lines of a file, or a reply
+/// to a published one. They become the `inline` transactions of the edit
+/// (`DifferentialRevisionEditEngine`'s Conduit documentation).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(untagged)]
+enum InlineDraft {
+    /// A reply, on the lines of the comment it replies to.
+    Reply {
+        #[serde(rename = "replyToCommentPHID")]
+        reply_to_comment_phid: String,
+        content: String,
+    },
+    /// A comment on lines of a file of the diff.
+    #[serde(rename_all = "camelCase")]
+    New {
+        path: String,
+        line: i64,
+        #[serde(default = "one")]
+        length: i64,
+        #[serde(default = "yes")]
+        is_new_file: bool,
+        diff: Option<i64>,
+        content: String,
+    },
+}
+
+fn one() -> i64 {
+    1
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl InlineDraft {
+    /// The value of the `inline` transaction, if the comment is complete.
+    fn value(&self) -> Option<Value> {
+        match self {
+            Self::Reply {
+                reply_to_comment_phid,
+                content,
+            } => (reply_to_comment_phid.starts_with("PHID-XCMT-") && !content.trim().is_empty())
+                .then(|| json!({"replyToCommentPHID": reply_to_comment_phid, "content": content})),
+            Self::New {
+                path,
+                line,
+                length,
+                is_new_file,
+                diff,
+                content,
+            } => {
+                let complete =
+                    !path.is_empty() && *line >= 1 && *length >= 1 && !content.trim().is_empty();
+                complete.then(|| {
+                    let mut value = json!({
+                        "path": path,
+                        "line": line,
+                        "length": length,
+                        "isNewFile": is_new_file,
+                        "content": content,
+                    });
+                    if let Some(diff) = diff {
+                        value["diff"] = json!(diff);
+                    }
+                    value
+                })
+            }
+        }
+    }
+}
+
+/// The `inline` transactions of the form's `inlines`; an error says what
+/// is wrong with them.
+fn inline_transactions(inlines: &str) -> Result<Vec<Value>, &'static str> {
+    if inlines.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let drafts: Vec<InlineDraft> =
+        serde_json::from_str(inlines).map_err(|_| "The inline comments could not be read.")?;
+    if drafts.len() > MAX_INLINES {
+        return Err("There are too many inline comments to publish at once.");
+    }
+    drafts
+        .iter()
+        .map(|draft| {
+            draft
+                .value()
+                .map(|value| json!({"type": "inline", "value": value}))
+                .ok_or("An inline comment is empty or has no place in the diff.")
+        })
+        .collect()
 }
 
 /// A name typed in the form.
@@ -138,12 +238,13 @@ async fn resolve<S: WebState>(
 }
 
 /// The `transactions` of `differential.revision.edit`: the action, the
-/// reviewers and subscribers, then the comment, like the old interface's
-/// "Add Comment" form.
+/// reviewers and subscribers, the inline comments, then the comment, like
+/// the old interface's "Add Comment" form.
 fn transactions(
     form: &ActionForm,
     reviewers: &[(Phid, bool)],
     subscribers: &[(Phid, bool)],
+    inlines: Vec<Value>,
 ) -> Option<Vec<Value>> {
     let mut transactions = Vec::new();
     if !form.action.is_empty() {
@@ -169,6 +270,7 @@ fn transactions(
         let value: Vec<&str> = subscribers.iter().map(|(phid, _)| phid.as_str()).collect();
         transactions.push(json!({"type": "subscribers.add", "value": value}));
     }
+    transactions.extend(inlines);
     if !form.comment.trim().is_empty() {
         transactions.push(json!({"type": "comment", "value": form.comment}));
     }
@@ -193,9 +295,15 @@ pub(crate) async fn submit<S: WebState>(
     }
     let reviewers = resolve(state.as_ref(), &viewer, &names(&form.reviewers)).await?;
     let subscribers = resolve(state.as_ref(), &viewer, &names(&form.subscribers)).await?;
-    let transactions = transactions(&form, &reviewers, &subscribers)
+    let inlines = inline_transactions(&form.inlines).map_err(PageError::BadRequest)?;
+    // phab.js forgets the inline comments it kept once they are published.
+    let back = if inlines.is_empty() {
+        format!("/D{id}")
+    } else {
+        format!("/D{id}#inlines-published")
+    };
+    let transactions = transactions(&form, &reviewers, &subscribers, inlines)
         .ok_or(PageError::BadRequest("This action does not exist."))?;
-    let back = format!("/D{id}");
     if !transactions.is_empty() {
         let php = state
             .php()
@@ -228,20 +336,55 @@ mod tests {
             comment: comment.to_owned(),
             reviewers: String::new(),
             subscribers: String::new(),
+            inlines: String::new(),
+        }
+    }
+
+    #[test]
+    fn inline_comments_become_inline_transactions() {
+        let inlines = r#"[
+            {"path": "src/a.c", "line": 2, "isNewFile": false, "diff": 7, "content": "Why?"},
+            {"path": "src/a.c", "line": 4, "length": 3, "content": "Typo"},
+            {"replyToCommentPHID": "PHID-XCMT-1", "content": "Fixed."}
+        ]"#;
+        assert_eq!(
+            inline_transactions(inlines),
+            Ok(vec![
+                json!({"type": "inline", "value": {"path": "src/a.c", "line": 2, "length": 1,
+                    "isNewFile": false, "diff": 7, "content": "Why?"}}),
+                json!({"type": "inline", "value": {"path": "src/a.c", "line": 4, "length": 3,
+                    "isNewFile": true, "content": "Typo"}}),
+                json!({"type": "inline", "value": {"replyToCommentPHID": "PHID-XCMT-1",
+                    "content": "Fixed."}}),
+            ])
+        );
+        assert_eq!(inline_transactions(" "), Ok(vec![]));
+        for wrong in [
+            "{",
+            r#"[{"path": "a", "line": 0, "content": "x"}]"#,
+            r#"[{"path": "a", "line": 1, "content": "  "}]"#,
+            r#"[{"path": "", "line": 1, "content": "x"}]"#,
+            r#"[{"replyToCommentPHID": "PHID-USER-1", "content": "x"}]"#,
+            r#"[{"line": 1, "content": "x"}]"#,
+        ] {
+            assert!(inline_transactions(wrong).is_err(), "{wrong}");
         }
     }
 
     #[test]
     fn actions_and_comments_become_transactions() {
         assert_eq!(
-            transactions(&form("accept", "LGTM"), &[], &[]),
+            transactions(&form("accept", "LGTM"), &[], &[], vec![]),
             Some(vec![
                 json!({"type": "accept", "value": true}),
                 json!({"type": "comment", "value": "LGTM"})
             ])
         );
-        assert_eq!(transactions(&form("", "  "), &[], &[]), Some(vec![]));
-        assert_eq!(transactions(&form("destroy", ""), &[], &[]), None);
+        assert_eq!(
+            transactions(&form("", "  "), &[], &[], vec![]),
+            Some(vec![])
+        );
+        assert_eq!(transactions(&form("destroy", ""), &[], &[], vec![]), None);
         assert_eq!(
             transactions(
                 &form("", "Over to you"),
@@ -250,6 +393,7 @@ mod tests {
                     (Phid::new("PHID-PROJ-b"), true)
                 ],
                 &[(Phid::new("PHID-USER-c"), false)],
+                vec![],
             ),
             Some(vec![
                 json!({"type": "reviewers.add", "value": ["PHID-USER-a", "blocking(PHID-PROJ-b)"]}),

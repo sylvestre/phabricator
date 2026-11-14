@@ -180,12 +180,18 @@ fn line_row(
     marker: char,
     text: &str,
 ) {
-    let number = |line: Option<i64>| line.map(|line| line.to_string()).unwrap_or_default();
+    // The numbers say where an inline comment goes (`phab.js`).
+    let number = |side: &str, line: Option<i64>| match line {
+        Some(line) => {
+            format!("<td class=\"n\" data-side=\"{side}\" data-line=\"{line}\">{line}</td>")
+        }
+        None => "<td class=\"n\"></td>".to_owned(),
+    };
     let _ = writeln!(
         html,
-        "<tr class=\"{class}\"><td class=\"n\">{}</td><td class=\"n\">{}</td><td class=\"code\"><span class=\"marker\">{marker}</span>{text}</td></tr>",
-        number(old),
-        number(new),
+        "<tr class=\"{class}\">{}{}<td class=\"code\"><span class=\"marker\">{marker}</span>{text}</td></tr>",
+        number("old", old),
+        number("new", new),
     );
 }
 
@@ -268,6 +274,8 @@ fn line_html(html: &mut String, old: Option<&Cell>, new: Option<&Cell>, highligh
 
 /// An inline comment, ready to show under the line it ends on.
 pub struct Inline {
+    /// The comment's PHID, to reply to it.
+    pub phid: String,
     /// On the new side, or the old one.
     pub is_new_file: bool,
     /// The line it ends on (`lineNumber + lineLength`).
@@ -281,8 +289,10 @@ pub struct Inline {
 fn inline_html(html: &mut String, inline: &Inline) {
     let _ = writeln!(
         html,
-        "<tr class=\"diff-inline\"><td colspan=\"3\"><div class=\"inline-comment\"><p class=\"inline-author\">{}</p><div class=\"remarkup\">{}</div></div></td></tr>",
-        inline.author_html, inline.body_html
+        "<tr class=\"diff-inline\"><td colspan=\"3\"><div class=\"inline-comment\" data-phid=\"{}\"><p class=\"inline-author\">{}</p><div class=\"remarkup\">{}</div></div></td></tr>",
+        escape(&inline.phid),
+        inline.author_html,
+        inline.body_html
     );
 }
 
@@ -324,7 +334,7 @@ pub fn changeset_with_inlines(
     let mut html = String::new();
     let _ = write!(
         html,
-        "<section class=\"changeset\"><h3 class=\"changeset-path\">{}",
+        "<section class=\"changeset\" data-path=\"{0}\"><h3 class=\"changeset-path\">{0}",
         escape(&view.display_filename)
     );
     let label = change_label(view);
@@ -424,7 +434,10 @@ mod tests {
             "{html}"
         );
         assert!(
-            html.contains("<tr class=\"diff-removed\"><td class=\"n\">2</td><td class=\"n\"></td>"),
+            html.contains(
+                "<tr class=\"diff-removed\"><td class=\"n\" data-side=\"old\" \
+                 data-line=\"2\">2</td><td class=\"n\"></td>"
+            ),
             "{html}"
         );
         assert!(

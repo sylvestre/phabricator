@@ -218,3 +218,11 @@ a { color: var(--accent); }
 .diff-inline td { padding: 6px 12px; background: var(--bg); }
 .inline-comment { max-width: 760px; padding: 6px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font: 14px/1.5 system-ui, sans-serif; white-space: normal; }
 .inline-author { margin: 0 0 4px; }
+
+/* Inline comments written on the page (phab.js). */
+.diff .n[data-line] { cursor: pointer; }
+.diff .n[data-line]:hover { color: var(--text); text-decoration: underline; }
+.inline-draft, .inline-editor { border-style: dashed; }
+.inline-editor textarea { display: block; width: 100%; box-sizing: border-box; margin-bottom: 6px; font: inherit; }
+.inline-comment button { margin-right: 6px; }
+.inline-unplaced { margin: 8px 0; }

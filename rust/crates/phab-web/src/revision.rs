@@ -426,6 +426,7 @@ async fn inlines<S: WebState>(
             .entry(comment.changeset_id)
             .or_default()
             .push(diff_html::Inline {
+                phid: comment.phid.to_string(),
                 is_new_file: comment.is_new_file,
                 last_line: comment.line_number + comment.line_length,
                 author_html: format!(

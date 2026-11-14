@@ -64,7 +64,8 @@
 </section>
 <section class="actions">
   <h2>Add Action</h2>
-  <form method="post" action="/{{ monogram }}/action">
+  <form method="post" action="/{{ monogram }}/action" id="revision-actions">
+    <input type="hidden" name="inlines" value="">
     {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
     <label>Action
       <select name="action">
@@ -80,10 +81,11 @@
     </label>
     <textarea name="comment" rows="6" aria-label="Comment" data-preview="comment-preview"></textarea>
     <div class="remarkup comment-preview" id="comment-preview" aria-live="polite" hidden></div>
+    <p class="muted inline-count" hidden></p>
     <button type="submit">Submit</button>
   </form>
 </section>
-<section class="diff-section">
+<section class="diff-section" data-revision="{{ monogram }}"{% if let Some(id) = diff_id %} data-diff="{{ id }}"{% endif %}>
   <h2>Diff{% if let Some(id) = diff_id %} {{ id }}{% endif %}</h2>
   {%- for changeset in changesets %}
   {{ changeset|safe }}

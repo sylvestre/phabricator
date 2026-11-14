@@ -77,3 +77,162 @@ for (const input of document.querySelectorAll("input[data-typeahead]")) {
     }, 150);
   });
 }
+
+// Inline comments: a click on a line number opens an editor under the
+// line, and "Reply" one under a published comment. The comments are kept
+// in the browser until the action form is sent, which publishes them in
+// the same edit as the action and the comment (the `inline` transactions).
+const diffSection = document.querySelector(".diff-section[data-revision]");
+const actionForm = document.getElementById("revision-actions");
+if (diffSection && actionForm) {
+  const key = `phab-inlines:${diffSection.dataset.revision}`;
+  const field = actionForm.elements.namedItem("inlines");
+  const count = actionForm.querySelector(".inline-count");
+  let drafts = [];
+  try {
+    drafts = JSON.parse(localStorage.getItem(key) ?? "[]");
+  } catch (error) {
+    drafts = [];
+  }
+  if (location.hash === "#inlines-published") {
+    drafts = [];
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+
+  const save = () => {
+    if (drafts.length > 0) {
+      localStorage.setItem(key, JSON.stringify(drafts));
+    } else {
+      localStorage.removeItem(key);
+    }
+    field.value = drafts.length > 0 ? JSON.stringify(drafts) : "";
+    count.hidden = drafts.length === 0;
+    const plural = drafts.length === 1 ? "" : "s";
+    count.textContent = `${drafts.length} inline comment${plural} will be published with this action.`;
+  };
+
+  const element = (name, className, text) => {
+    const node = document.createElement(name);
+    node.className = className;
+    if (text !== undefined) {
+      node.textContent = text;
+    }
+    return node;
+  };
+  const button = (label, className) => {
+    const node = element("button", className, label);
+    node.type = "button";
+    return node;
+  };
+  const row = (content) => {
+    const tr = element("tr", "diff-inline");
+    const td = document.createElement("td");
+    td.colSpan = 3;
+    td.append(content);
+    tr.append(td);
+    return tr;
+  };
+  // Puts `tr` after `anchor` and the comments already under it.
+  const placeAfter = (anchor, tr) => {
+    let last = anchor;
+    while (last.nextElementSibling?.classList.contains("diff-inline")) {
+      last = last.nextElementSibling;
+    }
+    last.after(tr);
+  };
+
+  // The row a comment goes under: the comment it replies to, or the last
+  // line it is on. None when the diff doesn't show it any more.
+  const anchorOf = (draft) => {
+    if (draft.replyToCommentPHID) {
+      const phid = CSS.escape(draft.replyToCommentPHID);
+      return diffSection.querySelector(`.inline-comment[data-phid="${phid}"]`)?.closest("tr");
+    }
+    const side = draft.isNewFile ? "new" : "old";
+    const last = draft.line + (draft.length ?? 1) - 1;
+    for (const changeset of diffSection.querySelectorAll(".changeset[data-path]")) {
+      if (changeset.dataset.path === draft.path) {
+        return changeset.querySelector(`td.n[data-side="${side}"][data-line="${last}"]`)?.closest("tr");
+      }
+    }
+    return null;
+  };
+
+  let unplaced = null;
+  const show = (draft) => {
+    const box = element("div", "inline-comment inline-draft");
+    const remove = button("Remove", "inline-remove");
+    box.append(element("p", "inline-author", "Not published yet"), element("div", "inline-draft-text", draft.content), remove);
+    const anchor = anchorOf(draft);
+    let node = box;
+    if (anchor) {
+      node = row(box);
+      placeAfter(anchor, node);
+    } else {
+      if (!unplaced) {
+        unplaced = element("div", "inline-unplaced");
+        unplaced.append(element("p", "muted", "Inline comments on lines this diff doesn't show:"));
+        diffSection.querySelector("h2").after(unplaced);
+      }
+      box.prepend(element("p", "muted", `${draft.path ?? ""}:${draft.line ?? ""}`));
+      unplaced.append(box);
+    }
+    remove.addEventListener("click", () => {
+      drafts = drafts.filter((kept) => kept !== draft);
+      node.remove();
+      save();
+    });
+  };
+
+  const openEditor = (anchor, place) => {
+    const textarea = document.createElement("textarea");
+    textarea.rows = 4;
+    textarea.setAttribute("aria-label", "Inline comment");
+    const keep = button("Keep", "inline-keep");
+    const cancel = button("Cancel", "inline-cancel");
+    const box = element("div", "inline-comment inline-editor");
+    box.append(textarea, keep, cancel);
+    const tr = row(box);
+    placeAfter(anchor, tr);
+    textarea.focus();
+    cancel.addEventListener("click", () => tr.remove());
+    keep.addEventListener("click", () => {
+      if (textarea.value.trim() === "") {
+        return;
+      }
+      const draft = { ...place, content: textarea.value };
+      drafts.push(draft);
+      save();
+      tr.remove();
+      show(draft);
+    });
+  };
+
+  for (const comment of diffSection.querySelectorAll(".inline-comment[data-phid]")) {
+    comment.append(button("Reply", "inline-reply"));
+  }
+  diffSection.addEventListener("click", (event) => {
+    const cell = event.target.closest("td.n[data-line]");
+    if (cell) {
+      const place = {
+        path: cell.closest(".changeset[data-path]").dataset.path,
+        line: Number(cell.dataset.line),
+        isNewFile: cell.dataset.side === "new",
+      };
+      if (diffSection.dataset.diff) {
+        place.diff = Number(diffSection.dataset.diff);
+      }
+      openEditor(cell.closest("tr"), place);
+      return;
+    }
+    const reply = event.target.closest("button.inline-reply");
+    if (reply) {
+      const comment = reply.closest(".inline-comment[data-phid]");
+      openEditor(comment.closest("tr"), { replyToCommentPHID: comment.dataset.phid });
+    }
+  });
+  for (const draft of drafts) {
+    show(draft);
+  }
+  save();
+}
