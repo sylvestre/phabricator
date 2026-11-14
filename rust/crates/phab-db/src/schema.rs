@@ -195,6 +195,7 @@ pub const CONTRACT: &[TableContract] = &[
         columns: &[
             "revisionPHID",
             "reviewerPHID",
+            "lastActorPHID",
             "reviewerStatus",
             "voidedPHID",
             "lastActionDiffPHID",

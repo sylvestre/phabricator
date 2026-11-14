@@ -2,8 +2,8 @@
 //! through `PhabricatorApplicationSearchEngine::buildConduitResponse()`.
 //!
 //! Ported: the `ids` and `phids` constraints, the default order (`newest`),
-//! paging, and every field. Other constraints, orders, saved queries and
-//! attachments are left to PHP (`MethodError::Unsupported`).
+//! paging, every field and every attachment. Other constraints, orders and
+//! saved queries are left to PHP (`MethodError::Unsupported`).
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -159,14 +159,200 @@ fn check_unported(request: &ApiRequest<'_>) -> Result<(), MethodError> {
         Some(Value::String(order)) if order == "newest" => {}
         Some(_) => return Err(MethodError::Unsupported("revision search orders")),
     }
-    match request.value("attachments") {
-        None | Some(Value::Null) => {}
-        Some(Value::Array(list)) if list.is_empty() => {}
-        // array_select_keys() ignores the keys which are not attachments.
-        Some(Value::Object(map)) if !map.keys().any(|key| ATTACHMENTS.contains(&key.as_str())) => {}
-        Some(_) => return Err(MethodError::Unsupported("revision search attachments")),
-    }
     Ok(())
+}
+
+/// The attachments asked for, in the order of the request:
+/// `array_select_keys()` keeps the keys which are attachments, whatever
+/// their value.
+fn requested_attachments(value: Option<&Value>) -> Result<Vec<&'static str>, MethodError> {
+    match value {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(list)) if list.is_empty() => Ok(Vec::new()),
+        Some(Value::Object(map)) => Ok(map
+            .keys()
+            .filter_map(|key| ATTACHMENTS.iter().find(|known| **known == key))
+            .copied()
+            .collect()),
+        Some(_) => Err(MethodError::Unsupported("attachments which are not a map")),
+    }
+}
+
+/// A `differential_reviewer` row, with what the attachments show.
+struct ReviewerRow {
+    reviewer: String,
+    status: String,
+    actor: Option<String>,
+    voided: Option<String>,
+    last_action_diff: Option<String>,
+}
+
+/// The reviewers of each revision, in the order `loadReviewers()` reads
+/// them.
+async fn load_reviewers(
+    database: &Database,
+    revisions: &[Revision],
+) -> Result<HashMap<Phid, Vec<ReviewerRow>>, MethodError> {
+    let mut reviewers: HashMap<Phid, Vec<ReviewerRow>> = HashMap::new();
+    if revisions.is_empty() {
+        return Ok(reviewers);
+    }
+    let sql = format!(
+        "SELECT revisionPHID, reviewerPHID, reviewerStatus, lastActorPHID, voidedPHID, \
+           lastActionDiffPHID FROM {} WHERE revisionPHID IN ({}) ORDER BY id ASC",
+        database.table("differential", "differential_reviewer"),
+        phab_db::placeholders(revisions.len())
+    );
+    let rows = phab_db::bind_all(
+        phab_db::sqlx::query(&sql),
+        revisions.iter().map(|revision| revision.phid.as_str()),
+    )
+    .fetch_all(database.pool())
+    .await?;
+    for row in &rows {
+        let list = reviewers
+            .entry(Phid::new(rows::text(row, "revisionPHID")?))
+            .or_default();
+        let reviewer = rows::text(row, "reviewerPHID")?;
+        let entry = ReviewerRow {
+            status: rows::text(row, "reviewerStatus")?,
+            actor: rows::opt_text(row, "lastActorPHID")?,
+            voided: rows::opt_text(row, "voidedPHID")?,
+            last_action_diff: rows::opt_text(row, "lastActionDiffPHID")?,
+            reviewer: reviewer.clone(),
+        };
+        // mpull() keyed by reviewer: a later row replaces an earlier one.
+        match list.iter_mut().find(|known| known.reviewer == reviewer) {
+            Some(known) => *known = entry,
+            None => list.push(entry),
+        }
+    }
+    Ok(reviewers)
+}
+
+/// The destinations of one edge type from each revision, newest first.
+async fn load_edge_lists(
+    database: &Database,
+    revisions: &[Revision],
+    edge_type: i64,
+) -> Result<HashMap<Phid, Vec<Phid>>, MethodError> {
+    let sources: Vec<Phid> = revisions
+        .iter()
+        .map(|revision| revision.phid.clone())
+        .collect();
+    let mut lists: HashMap<Phid, Vec<Phid>> = HashMap::new();
+    for edge in phab_db::edges::load_edges(database, &sources, &[edge_type], None).await? {
+        let list = lists.entry(edge.src).or_default();
+        if !list.contains(&edge.dst) {
+            list.push(edge.dst);
+        }
+    }
+    Ok(lists)
+}
+
+/// What the attachments of a page show.
+#[derive(Default)]
+struct AttachmentData {
+    reviewers: HashMap<Phid, Vec<ReviewerRow>>,
+    subscribers: HashMap<Phid, Vec<Phid>>,
+    projects: HashMap<Phid, Vec<Phid>>,
+}
+
+impl AttachmentData {
+    async fn load(
+        database: &Database,
+        revisions: &[Revision],
+        requested: &[&str],
+    ) -> Result<Self, MethodError> {
+        let mut data = Self::default();
+        if requested.contains(&"reviewers") || requested.contains(&"reviewers-extra") {
+            data.reviewers = load_reviewers(database, revisions).await?;
+        }
+        if requested.contains(&"subscribers") {
+            data.subscribers =
+                load_edge_lists(database, revisions, phab_db::edges::OBJECT_HAS_SUBSCRIBER).await?;
+        }
+        if requested.contains(&"projects") {
+            data.projects =
+                load_edge_lists(database, revisions, phab_db::edges::OBJECT_HAS_PROJECT).await?;
+        }
+        Ok(data)
+    }
+
+    /// `getAttachmentForObject()` of each attachment asked for.
+    fn for_revision(
+        &self,
+        revision: &Revision,
+        requested: &[&str],
+        viewer: Option<&Phid>,
+    ) -> Value {
+        let reviewers = self
+            .reviewers
+            .get(&revision.phid)
+            .map_or(&[][..], Vec::as_slice);
+        let mut attachments = Map::new();
+        for key in requested {
+            let value = match *key {
+                "reviewers" => {
+                    let list: Vec<Value> = reviewers
+                        .iter()
+                        .map(|reviewer| {
+                            json!({
+                                "reviewerPHID": reviewer.reviewer,
+                                "status": reviewer.status,
+                                "isBlocking": reviewer.status == "blocking",
+                                "actorPHID": reviewer.actor,
+                            })
+                        })
+                        .collect();
+                    json!({ "reviewers": list })
+                }
+                "reviewers-extra" => {
+                    let list: Vec<Value> = reviewers
+                        .iter()
+                        .map(|reviewer| {
+                            json!({
+                                "reviewerPHID": reviewer.reviewer,
+                                "voidedPHID": reviewer.voided,
+                                "diffPHID": reviewer.last_action_diff,
+                            })
+                        })
+                        .collect();
+                    json!({ "reviewers-extra": list })
+                }
+                "subscribers" => {
+                    let subscribers = self
+                        .subscribers
+                        .get(&revision.phid)
+                        .map_or(&[][..], Vec::as_slice);
+                    // isAutomaticallySubscribed(): the author and the
+                    // reviewers who didn't resign are.
+                    let viewer_is_subscribed = viewer.is_some_and(|viewer| {
+                        subscribers.contains(viewer)
+                            || revision.subject().implicit_subscribers.contains(viewer)
+                    });
+                    let shown: Vec<&str> = subscribers.iter().take(10).map(Phid::as_str).collect();
+                    json!({
+                        "subscriberPHIDs": shown,
+                        "subscriberCount": subscribers.len(),
+                        "viewerIsSubscribed": viewer_is_subscribed,
+                    })
+                }
+                _ => {
+                    let projects: Vec<&str> = self
+                        .projects
+                        .get(&revision.phid)
+                        .map_or(&[][..], Vec::as_slice)
+                        .iter()
+                        .map(Phid::as_str)
+                        .collect();
+                    json!({ "projectPHIDs": projects })
+                }
+            };
+            attachments.insert((*key).to_owned(), value);
+        }
+        Value::Object(attachments)
+    }
 }
 
 /// `DifferentialRevisionQuery` with the ported constraints, newest first.
@@ -571,6 +757,103 @@ fn property(properties: &Value, key: &str) -> Option<Value> {
     properties.get(key).cloned()
 }
 
+/// What the results of a page show beyond their rows.
+struct PageData<'a> {
+    request: &'a ApiRequest<'a>,
+    requested: &'a [&'static str],
+    extra: HashMap<i64, Extra>,
+    diffs: HashMap<Phid, String>,
+    custom: HashMap<(Phid, &'static str), String>,
+    graphs: HashMap<Phid, Map<String, Value>>,
+    attachments: AttachmentData,
+    base_uri: String,
+    close_on_accept: bool,
+}
+
+impl<'a> PageData<'a> {
+    async fn load(
+        request: &'a ApiRequest<'a>,
+        revisions: &[Revision],
+        requested: &'a [&'static str],
+    ) -> Result<Self, MethodError> {
+        let context = request.context;
+        let database = &context.database;
+        let seeds: Vec<Phid> = revisions
+            .iter()
+            .map(|revision| revision.phid.clone())
+            .collect();
+        Ok(Self {
+            request,
+            requested,
+            extra: load_extra(database, revisions).await?,
+            diffs: load_diff_ids(database, revisions).await?,
+            custom: load_custom_fields(database, revisions).await?,
+            graphs: load_stack_graphs(database, &seeds).await?,
+            attachments: AttachmentData::load(database, revisions, requested).await?,
+            base_uri: context
+                .config
+                .nonempty_string("phabricator.base-uri")
+                .unwrap_or_default()
+                .trim_end_matches('/')
+                .to_owned(),
+            close_on_accept: context.config.truthy("differential.close-on-accept"),
+        })
+    }
+
+    /// One result: its fields (`getFieldValuesForConduit()` and the
+    /// extensions') and attachments.
+    fn result(&self, revision: &Revision) -> Result<Value, MethodError> {
+        let extra = self
+            .extra
+            .get(&revision.id)
+            .ok_or_else(|| MethodError::internal("revision row vanished"))?;
+        let status = status_info(&revision.status, self.close_on_accept).ok_or(
+            MethodError::Unsupported("a revision with an unknown status"),
+        )?;
+        // loadActiveDiff()->getID() fails without a diff.
+        let diff_id = revision
+            .active_diff_phid
+            .as_ref()
+            .and_then(|phid| self.diffs.get(phid))
+            .ok_or(MethodError::Unsupported("a revision without its diff"))?;
+        let should_broadcast = property(&extra.properties, "draft.broadcast")
+            .is_none_or(|value| phab_core::php::is_truthy(&value));
+        let hold_as_draft = property(&extra.properties, "draft.hold")
+            .is_some_and(|value| phab_core::php::is_truthy(&value));
+        let custom = |key| self.custom.get(&(revision.phid.clone(), key));
+        let fields = json!({
+            "stackGraph": self.graphs.get(&revision.phid).cloned().unwrap_or_default(),
+            "title": revision.title,
+            "uri": format!("{}/D{}", self.base_uri, revision.id),
+            "authorPHID": revision.author_phid.as_ref().map(Phid::as_str),
+            "status": status,
+            "repositoryPHID": revision.repository_phid.as_ref().map(Phid::as_str),
+            "diffPHID": revision.active_diff_phid.as_ref().map(Phid::as_str),
+            "diffID": diff_id,
+            "summary": extra.summary,
+            "testPlan": extra.test_plan,
+            "isDraft": !should_broadcast,
+            "holdAsDraft": hold_as_draft,
+            "dateCreated": extra.date_created,
+            "dateModified": revision.date_modified,
+            "policy": {"view": revision.view_policy, "edit": revision.edit_policy},
+            "bugzilla.bug-id": custom(BUG_FIELD),
+            "uplift.request": uplift_request(custom(UPLIFT_FIELD)),
+        });
+        Ok(json!({
+            "id": revision.id,
+            "type": "DREV",
+            "phid": revision.phid.as_str(),
+            "fields": fields,
+            "attachments": self.attachments.for_revision(
+                revision,
+                self.requested,
+                self.request.viewer.phid.as_ref(),
+            ),
+        }))
+    }
+}
+
 /// `differential.revision.search`.
 pub struct RevisionSearch;
 
@@ -598,6 +881,7 @@ impl Method for RevisionSearch {
     fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
         Box::pin(async move {
             check_unported(request)?;
+            let requested = requested_attachments(request.value("attachments"))?;
             let constraints = Constraints::parse(request.value("constraints"))?;
             let paging = Paging::parse(
                 request.value("limit"),
@@ -613,73 +897,12 @@ impl Method for RevisionSearch {
             };
             let found = pager::execute(&query, start, direction, paging.size.value + 1).await?;
             let page = paging.pager().slice(found);
-
-            let context = request.context;
-            let database = &context.database;
-            let extra = load_extra(database, &page.items).await?;
-            let diffs = load_diff_ids(database, &page.items).await?;
-            let custom = load_custom_fields(database, &page.items).await?;
-            let seeds: Vec<Phid> = page
+            let page_data = PageData::load(request, &page.items, &requested).await?;
+            let data = page
                 .items
                 .iter()
-                .map(|revision| revision.phid.clone())
-                .collect();
-            let mut graphs = load_stack_graphs(database, &seeds).await?;
-            let base_uri = context
-                .config
-                .nonempty_string("phabricator.base-uri")
-                .unwrap_or_default()
-                .trim_end_matches('/')
-                .to_owned();
-            let close_on_accept = context.config.truthy("differential.close-on-accept");
-
-            let mut data = Vec::new();
-            for revision in &page.items {
-                let extra = extra
-                    .get(&revision.id)
-                    .ok_or_else(|| MethodError::internal("revision row vanished"))?;
-                let status = status_info(&revision.status, close_on_accept).ok_or(
-                    MethodError::Unsupported("a revision with an unknown status"),
-                )?;
-                // loadActiveDiff()->getID() fails without a diff.
-                let diff_id = revision
-                    .active_diff_phid
-                    .as_ref()
-                    .and_then(|phid| diffs.get(phid))
-                    .ok_or(MethodError::Unsupported("a revision without its diff"))?;
-                let should_broadcast = property(&extra.properties, "draft.broadcast")
-                    .is_none_or(|value| phab_core::php::is_truthy(&value));
-                let hold_as_draft = property(&extra.properties, "draft.hold")
-                    .is_some_and(|value| phab_core::php::is_truthy(&value));
-                let bug = custom.get(&(revision.phid.clone(), BUG_FIELD));
-                let uplift = custom.get(&(revision.phid.clone(), UPLIFT_FIELD));
-                let fields = json!({
-                    "stackGraph": graphs.remove(&revision.phid).unwrap_or_default(),
-                    "title": revision.title,
-                    "uri": format!("{base_uri}/D{}", revision.id),
-                    "authorPHID": revision.author_phid.as_ref().map(Phid::as_str),
-                    "status": status,
-                    "repositoryPHID": revision.repository_phid.as_ref().map(Phid::as_str),
-                    "diffPHID": revision.active_diff_phid.as_ref().map(Phid::as_str),
-                    "diffID": diff_id,
-                    "summary": extra.summary,
-                    "testPlan": extra.test_plan,
-                    "isDraft": !should_broadcast,
-                    "holdAsDraft": hold_as_draft,
-                    "dateCreated": extra.date_created,
-                    "dateModified": revision.date_modified,
-                    "policy": {"view": revision.view_policy, "edit": revision.edit_policy},
-                    "bugzilla.bug-id": bug,
-                    "uplift.request": uplift_request(uplift),
-                });
-                data.push(json!({
-                    "id": revision.id,
-                    "type": "DREV",
-                    "phid": revision.phid.as_str(),
-                    "fields": fields,
-                    "attachments": {},
-                }));
-            }
+                .map(|revision| page_data.result(revision))
+                .collect::<Result<Vec<_>, _>>()?;
             let cursor =
                 |revision: Option<Revision>| revision.map(|revision| revision.id.to_string());
             Ok(json!({
@@ -772,6 +995,17 @@ mod tests {
                 "{unported}"
             );
         }
+    }
+
+    #[test]
+    fn attachments_are_the_keys_asked_for() {
+        assert_eq!(requested_attachments(None), Ok(vec![]));
+        assert_eq!(requested_attachments(Some(&json!([]))), Ok(vec![]));
+        assert_eq!(
+            requested_attachments(Some(&json!({"projects": false, "nope": 1, "reviewers": 1}))),
+            Ok(vec!["projects", "reviewers"])
+        );
+        assert!(requested_attachments(Some(&json!("reviewers"))).is_err());
     }
 
     #[test]

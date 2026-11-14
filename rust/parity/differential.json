@@ -32,5 +32,13 @@
   {"name": "revisions with constraints {\"ids\": {\"a\": 2}}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": {"a": 2}}}},
   {"name": "revisions with constraints {\"ids\": null}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": null}}},
   {"name": "revisions with constraints {\"ids\": []}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": []}}},
-  {"name": "revisions after a missing cursor", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": 99}}
+  {"name": "revisions after a missing cursor", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": 99}},
+  {"name": "revisions with their reviewers", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers": true}}},
+  {"name": "revisions with the extra reviewer data", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers-extra": true}}},
+  {"name": "revisions with their subscribers", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"subscribers": true}}},
+  {"name": "revisions with their projects", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"projects": true}}},
+  {"name": "revisions with every attachment", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"projects": 1, "subscribers": 1, "reviewers-extra": 1, "reviewers": 1}}},
+  {"name": "revisions with attachments set to false", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers": false, "projects": 0}}},
+  {"name": "revisions with attachments, paged", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers": true, "subscribers": true}, "limit": 2, "after": 6}},
+  {"name": "revisions with attachments and ids", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers": true}, "constraints": {"ids": [3]}}}
 ]
