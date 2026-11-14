@@ -73,12 +73,15 @@ impl User {
 
     /// `PhabricatorUser::isUserActivated()` for a logged-in user.
     pub fn is_activated(&self, config: &Config) -> bool {
-        if self.is_disabled || !self.is_approved {
-            return false;
-        }
+        !self.is_disabled && self.is_approved && !self.must_verify_email(config)
+    }
+
+    /// Whether the user must verify their email address before using
+    /// anything (`PhabricatorUserEmail::isEmailVerificationRequired()`).
+    pub fn must_verify_email(&self, config: &Config) -> bool {
         let verification_required =
             config.truthy("auth.require-email-verification") || config.truthy("auth.email-domains");
-        !verification_required || self.is_email_verified
+        verification_required && !self.is_email_verified
     }
 
     /// `PhabricatorUser::canEstablishAPISessions()`, outside of cluster
@@ -117,6 +120,23 @@ pub async fn load_users_by_phid(database: &Database, phids: &[Phid]) -> Result<V
         .fetch_all(database.pool())
         .await?;
     rows.iter().map(User::from_row).collect()
+}
+
+/// `PhabricatorAuthMessage::loadMessageText()` without the default text:
+/// the message an administrator wrote for `key`, if any.
+pub async fn load_message_text(database: &Database, key: &str) -> Result<Option<String>, DbError> {
+    let sql = format!(
+        "SELECT messageText FROM {} WHERE messageKey = ?",
+        database.table("auth", "auth_message"),
+    );
+    let row = phab_db::sqlx::query(&sql)
+        .bind(key)
+        .fetch_optional(database.pool())
+        .await?;
+    Ok(row
+        .map(|row| rows::text(&row, "messageText"))
+        .transpose()?
+        .filter(|text| !text.is_empty()))
 }
 
 /// `PhabricatorUser::updateMultiFactorEnrollment()`, without the write:

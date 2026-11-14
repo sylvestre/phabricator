@@ -1,6 +1,9 @@
 {% extends "layout.html" %}
 {% block content %}
 <section class="error">
+  {%- if let Some(instructions) = self.instructions() %}
+  <div class="remarkup auth-custom-message">{{ instructions|safe }}</div>
+  {%- endif %}
   <h1>{{ heading }}</h1>
   <p>{{ message }}</p>
   {% if let Some((uri, label)) = action %}

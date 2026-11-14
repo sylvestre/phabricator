@@ -268,6 +268,11 @@ pub const CONTRACT: &[TableContract] = &[
     },
     TableContract {
         database: "auth",
+        table: "auth_message",
+        columns: &["messageKey", "messageText"],
+    },
+    TableContract {
+        database: "auth",
         table: "auth_factorconfig",
         columns: &["userPHID", "factorProviderPHID"],
     },

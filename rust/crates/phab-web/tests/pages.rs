@@ -245,7 +245,6 @@ async fn other_viewers_go_to_php() {
         (Some("phsid="), "logged out"),
         (Some("phsid=unknown-token"), "logged out"),
         (Some("phsid=A/anonymous"), "logged out"),
-        (Some("phsid=gone-token"), "the account is not activated"),
         (
             Some("phsid=mfa-token"),
             "multi-factor authentication is pending",
@@ -254,6 +253,51 @@ async fn other_viewers_go_to_php() {
         let response = get(&test_db, Config::default(), "/", cookie).await;
         assert_eq!(fallback_reason(&response), reason, "{cookie:?}");
     }
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn accounts_which_cannot_be_used_yet_say_why() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    let response = get(&test_db, Config::default(), "/", Some("phsid=gone-token")).await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let page = text(response).await;
+    assert!(page.contains("<h1>Account Disabled</h1>"), "{page}");
+    assert!(page.contains(r#"<a href="/logout/">Okay</a>"#), "{page}");
+
+    // Waiting for approval, with the instructions an administrator wrote.
+    test_db
+        .execute(
+            "UPDATE `{ns}_user`.user SET isApproved = 0 WHERE phid = 'PHID-USER-alice'; \
+             INSERT INTO `{ns}_auth`.auth_message (phid, messageKey, messageText, dateCreated, \
+               dateModified) VALUES ('PHID-AMSG-1', 'auth.wait-for-approval', \
+               'Ask in **#phabricator**.', 1, 1)",
+        )
+        .await;
+    let response = get(&test_db, Config::default(), "/", Some("phsid=alice-token")).await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let page = text(response).await;
+    assert!(page.contains("<h1>Wait for Approval</h1>"), "{page}");
+    assert!(
+        page.contains("Ask in <strong>#phabricator</strong>."),
+        "{page}"
+    );
+
+    // Verifying an email address still needs PHP, which sends the email.
+    test_db
+        .execute(
+            "UPDATE `{ns}_user`.user SET isApproved = 1, isEmailVerified = 0 \
+             WHERE phid = 'PHID-USER-alice'",
+        )
+        .await;
+    let verify = config_with(&[("auth.require-email-verification", json!(true))]);
+    let response = get(&test_db, verify, "/", Some("phsid=alice-token")).await;
+    assert_eq!(
+        fallback_reason(&response),
+        "the email address is not verified"
+    );
     test_db.drop_databases().await;
 }
 

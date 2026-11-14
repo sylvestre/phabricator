@@ -41,8 +41,13 @@ pub enum PageError {
 
 /// What the viewer must do before using any page, as the controllers
 /// `PhabricatorController::willBeginExecution()` delegates to say.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Roadblock {
+    /// `PhabricatorDisabledUserController`.
+    Disabled,
+    /// `PhabricatorAuthNeedsApprovalController`, with the instructions an
+    /// administrator wrote, if any.
+    NeedsApproval(Option<phab_remarkup::Markup>),
     /// `PhabricatorAuthNeedsMultiFactorController`: the install requires
     /// multi-factor authentication and the viewer has no factor.
     NeedsMultiFactor,
@@ -71,11 +76,22 @@ struct ErrorPage {
     message: String,
     /// Where to go from here, and the link's label.
     action: Option<(&'static str, &'static str)>,
+    /// Remarkup an administrator wrote, shown above the message.
+    instructions_html: Option<phab_remarkup::Markup>,
+}
+
+impl ErrorPage {
+    fn instructions(&self) -> Option<&str> {
+        self.instructions_html
+            .as_ref()
+            .map(|markup| std::str::from_utf8(markup.as_bytes()).unwrap_or_default())
+    }
 }
 
 impl IntoResponse for PageError {
     fn into_response(self) -> Response {
         let mut action = Some(("/", "Return home"));
+        let mut instructions_html = None;
         let (status, heading, message) = match self {
             Self::Fallback(reason) => return fallback_response(reason),
             Self::NotFound => (
@@ -95,6 +111,25 @@ impl IntoResponse for PageError {
                     "Add Multi-Factor Auth",
                     "Before you can use Phabricator, you need to add multi-factor \
                      authentication to your account."
+                        .to_owned(),
+                )
+            }
+            Self::Roadblock(Roadblock::Disabled) => {
+                action = Some(("/logout/", "Okay"));
+                (
+                    StatusCode::FORBIDDEN,
+                    "Account Disabled",
+                    "Your account has been disabled.".to_owned(),
+                )
+            }
+            Self::Roadblock(Roadblock::NeedsApproval(instructions)) => {
+                action = None;
+                instructions_html = instructions;
+                (
+                    StatusCode::FORBIDDEN,
+                    "Wait for Approval",
+                    "Your account has been created, but needs to be approved by an \
+                     administrator. You'll receive an email once your account is approved."
                         .to_owned(),
                 )
             }
@@ -148,6 +183,7 @@ impl IntoResponse for PageError {
             heading,
             message,
             action,
+            instructions_html,
         };
         response::render(status, &page)
     }

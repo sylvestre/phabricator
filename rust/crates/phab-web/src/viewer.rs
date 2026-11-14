@@ -18,11 +18,14 @@ use crate::error::{PageError, Roadblock};
 use crate::php::SessionToken;
 use crate::state::WebState;
 
+/// `PhabricatorAuthWaitForApprovalMessageType::MESSAGEKEY`.
+const WAIT_FOR_APPROVAL: &str = "auth.wait-for-approval";
+
 /// The viewer of a page: a logged-in, activated user with a full session,
 /// enrolled in multi-factor authentication if the install requires it.
-/// Logged-out viewers and unfinished logins still go to PHP, which shows
-/// them the login, approval or verification pages; Rust has none of these
-/// yet (W7).
+/// Logged-out viewers, unfinished logins and unverified email addresses
+/// still go to PHP, which shows them the login or verification pages;
+/// Rust has none of these yet (W7, W12).
 #[derive(Debug, Clone)]
 pub struct WebUser {
     /// The user.
@@ -136,13 +139,14 @@ impl<S: WebState> FromRequestParts<Arc<S>> for WebUser {
             Outcome::Done(None) => return Err(PageError::Fallback("logged out")),
             Outcome::Unsupported(reason) => return Err(PageError::Fallback(reason)),
         };
+        // In the order of `PhabricatorController::willBeginExecution()`.
+        if found.user.is_disabled {
+            return Err(PageError::Roadblock(Roadblock::Disabled));
+        }
         if found.session.is_partial {
             return Err(PageError::Fallback(
                 "multi-factor authentication is pending",
             ));
-        }
-        if !found.user.is_activated(config) {
-            return Err(PageError::Fallback("the account is not activated"));
         }
         // `PhabricatorController::shouldRequireMultiFactorEnrollment()`.
         if config.truthy("security.require-multi-factor-auth")
@@ -151,6 +155,27 @@ impl<S: WebState> FromRequestParts<Arc<S>> for WebUser {
                 .await?
         {
             return Err(PageError::Roadblock(Roadblock::NeedsMultiFactor));
+        }
+        // Sending another verification email needs PHP's mail (W12).
+        if found.user.must_verify_email(config) {
+            return Err(PageError::Fallback("the email address is not verified"));
+        }
+        if !found.user.is_approved {
+            let text =
+                phab_auth::user::load_message_text(state.database(), WAIT_FOR_APPROVAL).await?;
+            let instructions = match text {
+                Some(text) => Some(
+                    crate::remarkup::render(
+                        state.as_ref(),
+                        &found.user.viewer(),
+                        &text,
+                        phab_remarkup::Mode::Html,
+                    )
+                    .await?,
+                ),
+                None => None,
+            };
+            return Err(PageError::Roadblock(Roadblock::NeedsApproval(instructions)));
         }
         let csrf_key = match csrf::load_key(state.database()).await? {
             Outcome::Done(key) => key,
