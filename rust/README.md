@@ -120,5 +120,8 @@ The service reads the same configuration as PHP: `PHAB_CONFIG_DIR`
 `0.0.0.0:8080`), `SENTRY_DSN` enables error reporting, `RUST_LOG` the log
 level, `PHAB_DIFF_COMMAND` the `diff` used to realign changesets (the
 image uses `busybox diff`, like PHP's) and `PHAB_PHP_URL` where PHP answers,
-for shadow mode and the forms of the Rust pages. `GET /status` reports the
-database state and the ported methods.
+for shadow mode and the forms of the Rust pages. `PHAB_SEARCHFOX_TREES`
+maps repositories, by short name or callsign, to Searchfox trees
+(`mozilla-central=mozilla-central`): their files link to Searchfox, which
+Mozilla uses instead of Diffusion. `GET /status` reports the database state
+and the ported methods.
