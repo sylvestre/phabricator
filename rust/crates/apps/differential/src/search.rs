@@ -1,9 +1,11 @@
 //! `differential.revision.search`: `DifferentialRevisionSearchEngine`
 //! through `PhabricatorApplicationSearchEngine::buildConduitResponse()`.
 //!
-//! Ported: the `ids` and `phids` constraints, the default order (`newest`),
-//! paging, every field and every attachment. Other constraints, orders and
-//! saved queries are left to PHP (`MethodError::Unsupported`).
+//! Ported: the `ids`, `phids`, `authorPHIDs`, `repositoryPHIDs`, `statuses`
+//! and date constraints (with plain values, not usernames nor functions
+//! like `viewer()`), the default order (`newest`), paging, every field and
+//! every attachment. The other constraints and orders, and saved queries,
+//! are left to PHP (`MethodError::Unsupported`).
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -57,6 +59,11 @@ const UPLIFT_FIELD: &str = "differential:uplift-request";
 struct Constraints {
     ids: Option<Vec<i64>>,
     phids: Option<Vec<String>>,
+    authors: Option<Vec<String>>,
+    repositories: Option<Vec<String>>,
+    statuses: Option<Vec<String>>,
+    created: (Option<i64>, Option<i64>),
+    modified: (Option<i64>, Option<i64>),
 }
 
 impl Constraints {
@@ -110,6 +117,35 @@ impl Constraints {
                         .ok_or(MethodError::Unsupported("phids which are not strings"))?;
                     constraints.phids = Some(phids);
                 }
+                // ConduitUserListParameterType allows an empty list.
+                "authorPHIDs" => {
+                    let authors = match value {
+                        Value::Array(list) if list.is_empty() => continue,
+                        _ => plain_phids(nonempty_list(&key, value)?, "PHID-USER-")?,
+                    };
+                    constraints.authors = Some(authors);
+                }
+                "repositoryPHIDs" => {
+                    constraints.repositories =
+                        Some(plain_phids(nonempty_list(&key, value)?, "PHID-REPO-")?);
+                }
+                "statuses" => {
+                    let statuses = nonempty_list(&key, value)?
+                        .iter()
+                        .map(|status| {
+                            status
+                                .as_str()
+                                .filter(|status| !status.contains('('))
+                                .map(str::to_owned)
+                        })
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or(MethodError::Unsupported("status functions"))?;
+                    constraints.statuses = Some(statuses);
+                }
+                "createdStart" => constraints.created.0 = Some(epoch(&key, value)?),
+                "createdEnd" => constraints.created.1 = Some(epoch(&key, value)?),
+                "modifiedStart" => constraints.modified.0 = Some(epoch(&key, value)?),
+                "modifiedEnd" => constraints.modified.1 = Some(epoch(&key, value)?),
                 _ => {
                     return Err(MethodError::Unsupported(
                         "a revision search constraint not ported",
@@ -144,6 +180,43 @@ fn nonempty_list<'v>(key: &str, value: &'v Value) -> Result<&'v Vec<Value>, Meth
         }
         Value::Object(_) => error("a list, but value is an object"),
         _ => error("a list, but value is not a list"),
+    }
+}
+
+/// PHIDs of one type, as given; anything else (usernames, functions like
+/// `viewer()`) is resolved by PHP.
+fn plain_phids(list: &[Value], prefix: &str) -> Result<Vec<String>, MethodError> {
+    list.iter()
+        .map(|phid| {
+            phid.as_str()
+                .filter(|phid| phid.starts_with(prefix))
+                .map(str::to_owned)
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(MethodError::Unsupported(
+            "constraint values which are not PHIDs",
+        ))
+}
+
+/// `ConduitEpochParameterType`: a positive integer.
+fn epoch(key: &str, value: &Value) -> Result<i64, MethodError> {
+    match value {
+        Value::Number(number) if !number.is_f64() => {
+            let epoch = number
+                .as_i64()
+                .ok_or(MethodError::Unsupported("huge epochs"))?;
+            if epoch <= 0 {
+                return Err(pager::core_error(format!(
+                    "Error while reading \"{key}\": Epoch timestamp must be larger than 0, \
+                     got {epoch}."
+                )));
+            }
+            Ok(epoch)
+        }
+        Value::String(_) | Value::Number(_) => Err(pager::core_error(format!(
+            "Error while reading \"{key}\": Expected integer, got something else."
+        ))),
+        _ => Err(MethodError::Unsupported("unusual epochs")),
     }
 }
 
@@ -408,6 +481,38 @@ impl PolicyAwareQuery for Revisions<'_> {
         }
         if let Some(phids) = &constraints.phids {
             in_list("phid", phids.iter().map(|phid| json!(phid)).collect());
+        }
+        if let Some(authors) = &constraints.authors {
+            in_list(
+                "authorPHID",
+                authors.iter().map(|phid| json!(phid)).collect(),
+            );
+        }
+        if let Some(repositories) = &constraints.repositories {
+            in_list(
+                "repositoryPHID",
+                repositories.iter().map(|phid| json!(phid)).collect(),
+            );
+        }
+        if let Some(statuses) = &constraints.statuses {
+            in_list(
+                "status",
+                statuses.iter().map(|status| json!(status)).collect(),
+            );
+        }
+        // withCreatedEpochBetween() and withUpdatedEpochBetween().
+        for (column, (start, end)) in [
+            ("dateCreated", constraints.created),
+            ("dateModified", constraints.modified),
+        ] {
+            if let Some(start) = start {
+                conditions.push(format!("{column} >= ?"));
+                binds.push(json!(start));
+            }
+            if let Some(end) = end {
+                conditions.push(format!("{column} <= ?"));
+                binds.push(json!(end));
+            }
         }
         // "newest": by decreasing id.
         let (comparison, order) = match direction {
@@ -935,7 +1040,8 @@ mod tests {
             Constraints::parse(Some(&json!({"ids": [3, 1], "phids": ["x"]}))),
             Ok(Constraints {
                 ids: Some(vec![3, 1]),
-                phids: Some(vec!["x".to_owned()])
+                phids: Some(vec!["x".to_owned()]),
+                ..Constraints::default()
             })
         );
         let error = |message: &str| Err(pager::core_error(message.to_owned()));
@@ -982,7 +1088,9 @@ mod tests {
             );
         }
         for unported in [
-            json!({"statuses": ["accepted"]}),
+            json!({"statuses": ["open()"]}),
+            json!({"authorPHIDs": ["alice"]}),
+            json!({"responsiblePHIDs": ["PHID-USER-1"]}),
             json!({"ids": {"0": 1}}),
             json!({"phids": [1]}),
             json!("x"),
@@ -993,6 +1101,49 @@ mod tests {
                     Err(MethodError::Unsupported(_))
                 ),
                 "{unported}"
+            );
+        }
+    }
+
+    #[test]
+    fn column_constraints_follow_php() {
+        let error = |message: &str| Err(pager::core_error(message.to_owned()));
+        assert_eq!(
+            Constraints::parse(Some(&json!({
+                "authorPHIDs": [],
+                "statuses": ["accepted"],
+                "repositoryPHIDs": ["PHID-REPO-1"],
+                "createdStart": 5,
+                "modifiedEnd": 9,
+            }))),
+            Ok(Constraints {
+                statuses: Some(vec!["accepted".to_owned()]),
+                repositories: Some(vec!["PHID-REPO-1".to_owned()]),
+                created: (Some(5), None),
+                modified: (None, Some(9)),
+                ..Constraints::default()
+            })
+        );
+        for (constraints, message) in [
+            (
+                json!({"createdStart": 0}),
+                "Error while reading \"createdStart\": Epoch timestamp must be larger than 0, \
+                 got 0.",
+            ),
+            (
+                json!({"modifiedEnd": "1"}),
+                "Error while reading \"modifiedEnd\": Expected integer, got something else.",
+            ),
+            (
+                json!({"statuses": []}),
+                "Error while reading \"statuses\": Expected a nonempty list, but value is an \
+                 empty list.",
+            ),
+        ] {
+            assert_eq!(
+                Constraints::parse(Some(&constraints)),
+                error(message),
+                "{constraints}"
             );
         }
     }

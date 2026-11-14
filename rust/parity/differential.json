@@ -40,5 +40,21 @@
   {"name": "revisions with every attachment", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"projects": 1, "subscribers": 1, "reviewers-extra": 1, "reviewers": 1}}},
   {"name": "revisions with attachments set to false", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers": false, "projects": 0}}},
   {"name": "revisions with attachments, paged", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers": true, "subscribers": true}, "limit": 2, "after": 6}},
-  {"name": "revisions with attachments and ids", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers": true}, "constraints": {"ids": [3]}}}
+  {"name": "revisions with attachments and ids", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"reviewers": true}, "constraints": {"ids": [3]}}},
+  {"name": "revisions with constraints {\"statuses\": [\"accepted\"]}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"statuses": ["accepted"]}}},
+  {"name": "revisions with constraints {\"statuses\": [\"bogus\"]}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"statuses": ["bogus"]}}},
+  {"name": "revisions with constraints {\"statuses\": [\"needs-review\", \"abandoned\"]}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"statuses": ["needs-review", "abandoned"]}}},
+  {"name": "revisions with constraints {\"statuses\": []}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"statuses": []}}},
+  {"name": "revisions with constraints {\"statuses\": \"accepted\"}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"statuses": "accepted"}}},
+  {"name": "revisions with constraints {\"authorPHIDs\": [\"PHID-USER-smtgbo5evsea6efnaz7m\"]}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"authorPHIDs": ["PHID-USER-smtgbo5evsea6efnaz7m"]}}},
+  {"name": "revisions with constraints {\"authorPHIDs\": [\"PHID-USER-nope\"]}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"authorPHIDs": ["PHID-USER-nope"]}}},
+  {"name": "revisions with constraints {\"authorPHIDs\": []}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"authorPHIDs": []}}},
+  {"name": "revisions with constraints {\"createdStart\": 0}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"createdStart": 0}}},
+  {"name": "revisions with constraints {\"createdStart\": \"1\"}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"createdStart": "1"}}},
+  {"name": "revisions with constraints {\"createdStart\": 1794601612}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"createdStart": 1794601612}}},
+  {"name": "revisions with constraints {\"modifiedEnd\": 1794601613}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"modifiedEnd": 1794601613}}},
+  {"name": "revisions with constraints {\"modifiedStart\": 1794601613, \"modifiedEnd\": 1794601613}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"modifiedStart": 1794601613, "modifiedEnd": 1794601613}}},
+  {"name": "revisions with constraints {\"repositoryPHIDs\": [\"PHID-REPO-x\"]}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": ["PHID-REPO-x"]}}},
+  {"name": "revisions with constraints {\"statuses\": [\"needs-review\"], \"authorPHIDs\": [\"PHID-USER-5fhrwkaff4cbtd44svtw\"]}", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"statuses": ["needs-review"], "authorPHIDs": ["PHID-USER-5fhrwkaff4cbtd44svtw"]}}},
+  {"name": "revisions needing review, paged", "method": "differential.revision.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"statuses": ["needs-review"]}, "limit": 1, "after": 7}}
 ]
