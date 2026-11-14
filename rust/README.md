@@ -114,6 +114,13 @@ projects and revisions in every review state, printing a `phsid` cookie per
 user. With the cookie set, open `http://phabricator.test/rust-ui/on`
 through the proxy on `localhost:1090`.
 
+To use the stack from other machines, `rust/docker-compose.tailscale.yml`
+puts it on a tailnet (its header says how to log the node in), and
+`./bin/auth recover <user> --force-full-session`, run in the PHP container,
+prints a one-time login link: BMO login isn't set up on the stack.
+`rust/scripts/browser-check.mjs` checks the revision page's scripts in
+headless Firefox.
+
 The service reads the same configuration as PHP: `PHAB_CONFIG_DIR`
 (default `/app/phabricator/conf/local`) for `local.json`, then the
 `config_entry` table. `PHAB_LISTEN` sets the address (default
