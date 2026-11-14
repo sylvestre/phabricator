@@ -1,0 +1,41 @@
+# Puts the development stack on a tailnet, so other machines of the tailnet
+# reach both interfaces (the Rust one with the phab_ui=rust cookie) at
+# http://phab-rust.<tailnet>.ts.net/. If Tailscale named the machine
+# otherwise (phab-rust-1), set TS_NAME to that name:
+#
+#   TS_TAILNET=tail153c3.ts.net docker compose -f docker-compose.yml \
+#     -f rust/docker-compose.rust.yml -f rust/docker-compose.tailscale.yml up -d
+#
+# The first time, log the node in and set up the proxy; both are kept in
+# the node's state volume:
+#
+#   docker compose ... exec tailscale tailscale up --hostname=phab-rust
+#   docker compose ... exec tailscale tailscale serve --bg --http=80 http://phabricator.test:80
+#
+# Phabricator's base URI becomes the tailnet name, and phabricator.test
+# stays allowed (phabricator.allowed-uris) for local use through tinyproxy.
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    hostname: phab-rust
+    # tailscaled itself rather than the image's containerboot, which
+    # restarts with a new identity when a login takes over a minute. No
+    # /dev/net/tun or capabilities: serve proxies from tailscaled.
+    entrypoint:
+      - tailscaled
+      - --tun=userspace-networking
+      - --statedir=/var/lib/tailscale
+      - --socket=/var/run/tailscale/tailscaled.sock
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    depends_on:
+      - phabricator.test
+    restart: unless-stopped
+
+  phabricator:
+    environment:
+      - PHABRICATOR_URI=http://${TS_NAME:-phab-rust}.${TS_TAILNET:?set TS_TAILNET to the tailnet domain}/
+      - PHABRICATOR_CDN_URI=http://${TS_NAME:-phab-rust}.${TS_TAILNET}/
+
+volumes:
+  tailscale-state:
