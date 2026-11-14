@@ -1629,6 +1629,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "wait-timeout",
 ]
 
 [[package]]

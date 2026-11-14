@@ -8,20 +8,27 @@
 //! command must be the one PHP runs: the PHP image is Alpine, where `diff`
 //! comes from `BusyBox`.
 
-use std::io::Write;
-use std::process::Command;
+use std::io::{Read, Seek, Write};
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use thiserror::Error;
+use wait_timeout::ChildExt;
 
 use crate::changeset::Changeset;
 use crate::parser::{HunkParser, ParseError};
 use crate::unified::{self, UnifiedError};
+
+/// How long `diff` may run before it is killed. PHP has no limit, but a
+/// page must not wait on a pathological pair of files.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The command which compares two files, `diff` by default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffCommand {
     program: String,
     arguments: Vec<String>,
+    timeout: Duration,
 }
 
 impl Default for DiffCommand {
@@ -39,7 +46,14 @@ impl DiffCommand {
                 .iter()
                 .map(|&argument| argument.to_owned())
                 .collect(),
+            timeout: DEFAULT_TIMEOUT,
         }
+    }
+
+    /// The same command, killed after `timeout`.
+    #[must_use]
+    pub fn with_timeout(self, timeout: Duration) -> Self {
+        Self { timeout, ..self }
     }
 
     /// A command from a space-separated string such as `busybox diff`;
@@ -50,6 +64,7 @@ impl DiffCommand {
         Some(Self {
             program: program.to_owned(),
             arguments: words.map(str::to_owned).collect(),
+            timeout: DEFAULT_TIMEOUT,
         })
     }
 }
@@ -63,6 +78,9 @@ pub enum RealignError {
     /// `diff` exited with an error (status 2 or a signal).
     #[error("diff failed with {0}")]
     Diff(std::process::ExitStatus),
+    /// `diff` ran longer than the command's timeout and was killed.
+    #[error("diff ran longer than {0:?}")]
+    Timeout(Duration),
     /// The output of `diff` could not be read.
     #[error(transparent)]
     Unified(#[from] UnifiedError),
@@ -93,13 +111,25 @@ pub fn normalized_raw_diff(
     old_file.flush()?;
     new_file.flush()?;
 
-    let output = Command::new(&command.program)
+    // The output goes to a file rather than a pipe, so a large diff can't
+    // block the child while it is waited for.
+    let mut output = tempfile::tempfile()?;
+    let mut child = Command::new(&command.program)
         .args(&command.arguments)
         .args(["-U65535", "-L", LABEL, "-L", LABEL])
         .arg(old_file.path())
         .arg(new_file.path())
-        .output()?;
-    match output.status.code() {
+        .stdin(Stdio::null())
+        .stdout(output.try_clone()?)
+        .stderr(Stdio::null())
+        .spawn()?;
+    let Some(status) = child.wait_timeout(command.timeout)? else {
+        // The child may have exited in between; either way it is reaped.
+        let _ = child.kill();
+        child.wait()?;
+        return Err(RealignError::Timeout(command.timeout));
+    };
+    match status.code() {
         // The files are the same: a changeless diff of the whole file.
         Some(0) => {
             let lines: Vec<String> = old.split('\n').map(|line| format!(" {line}")).collect();
@@ -109,15 +139,20 @@ pub fn normalized_raw_diff(
                 lines.join("\n")
             ))
         }
-        Some(1) => Ok(String::from_utf8_lossy(&output.stdout).into_owned()),
-        _ => Err(RealignError::Diff(output.status)),
+        Some(1) => {
+            let mut stdout = Vec::new();
+            output.rewind()?;
+            output.read_to_end(&mut stdout)?;
+            Ok(String::from_utf8_lossy(&stdout).into_owned())
+        }
+        _ => Err(RealignError::Diff(status)),
     }
 }
 
 /// `realignDiff()`: replaces the line types of `parser`, built from
 /// `changeset`'s hunks, with those of the whitespace-insensitive diff.
 /// Changesets without the whole files, or with identical sides, are left
-/// alone. Runs a process: call it from a blocking task.
+/// alone. Runs a process and waits for it: call it from a blocking task.
 pub fn realign(
     changeset: &Changeset,
     parser: &mut HunkParser,
@@ -159,6 +194,28 @@ mod tests {
             Some(DiffCommand::new("busybox", &["diff"]))
         );
         assert_eq!(DiffCommand::parse("  "), None);
+    }
+
+    #[test]
+    fn slow_commands_are_killed() {
+        let command = DiffCommand::new("sh", &["-c", "sleep 5", "sh"])
+            .with_timeout(Duration::from_millis(100));
+        let started = std::time::Instant::now();
+        let error = normalized_raw_diff("a\n", "b\n", &command).unwrap_err();
+        assert!(matches!(error, RealignError::Timeout(_)), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn large_outputs_are_read_whole() {
+        let file = |prefix: &str| -> String {
+            (0..20_000)
+                .flat_map(|line| [prefix.to_owned(), line.to_string(), "\n".to_owned()])
+                .collect()
+        };
+        let (old, new) = (file("old "), file("new "));
+        let diff = normalized_raw_diff(&old, &new, &DiffCommand::default()).unwrap();
+        assert_eq!(diff.lines().count(), 3 + 40_000);
     }
 
     #[test]

@@ -12,6 +12,7 @@ flate2.workspace = true
 phab-db.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+wait-timeout.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

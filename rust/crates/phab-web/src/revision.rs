@@ -441,20 +441,26 @@ async fn changesets<S: WebState>(
         diff_command: diff_command(),
         ..phab_diff::view::ViewOptions::default()
     };
-    let rendered = changesets
-        .iter()
-        .map(|changeset| {
-            let inlines = inlines.remove(&changeset.id).unwrap_or_default();
-            match phab_diff::view::build(changeset, &options) {
-                Ok(view) => diff_html::changeset_with_inlines(&view, &inlines),
-                Err(error) => {
-                    tracing::warn!(%error, changeset = changeset.id, "changeset failed to render");
-                    "<section class=\"changeset\"><p class=\"changeset-shield\">This file could not be shown.</p></section>"
-                        .to_owned()
+    // Building a view runs `diff` and the intraline edit distance, which
+    // would hold a runtime thread for as long as they take.
+    let rendered = tokio::task::spawn_blocking(move || {
+        changesets
+            .iter()
+            .map(|changeset| {
+                let inlines = inlines.remove(&changeset.id).unwrap_or_default();
+                match phab_diff::view::build(changeset, &options) {
+                    Ok(view) => diff_html::changeset_with_inlines(&view, &inlines),
+                    Err(error) => {
+                        tracing::warn!(%error, changeset = changeset.id, "changeset failed to render");
+                        "<section class=\"changeset\"><p class=\"changeset-shield\">This file could not be shown.</p></section>"
+                            .to_owned()
+                    }
                 }
-            }
-        })
-        .collect();
+            })
+            .collect()
+    })
+    .await
+    .map_err(|error| PageError::Internal(Box::new(error)))?;
     Ok((Some(diff.id), rendered))
 }
 
