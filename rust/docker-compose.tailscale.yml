@@ -17,7 +17,8 @@
 services:
   tailscale:
     image: tailscale/tailscale:stable
-    hostname: phab-rust
+    # Not phab-rust, the Rust service: Docker's DNS would answer with both.
+    hostname: phab-rust-tailscale
     # tailscaled itself rather than the image's containerboot, which
     # restarts with a new identity when a login takes over a minute. No
     # /dev/net/tun or capabilities: serve proxies from tailscaled.
