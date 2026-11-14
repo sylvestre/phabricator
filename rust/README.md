@@ -98,6 +98,7 @@ cd rust
 cargo test                       # unit tests; database tests are skipped
 eval "$(scripts/test-mysql.sh)"  # starts MySQL 5.7 in Docker
 cargo test                       # now also runs the database tests
+cargo +nightly fmt               # rustfmt.toml needs nightly rustfmt
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
