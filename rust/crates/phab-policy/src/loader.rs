@@ -270,6 +270,7 @@ async fn load_custom_policies(
     rows.iter()
         .map(|row| {
             let policy = CustomPolicy {
+                prepared_for: None,
                 rules: rows::json(row, "rules")?,
                 default_action: rows::text(row, "defaultAction")?,
             };

@@ -14,6 +14,59 @@ pub struct CustomPolicy {
     /// `defaultAction`, used when no rule matches; anything but `allow`
     /// denies.
     pub default_action: String,
+    /// The objects the rules were prepared for, when the policy was loaded
+    /// by an earlier page of the same query ([`QueryMemory`]); `None` when
+    /// they were prepared for the objects being filtered.
+    pub prepared_for: Option<HashSet<Phid>>,
+}
+
+/// What `PhabricatorPolicyFilter` keeps from one page of a query to the
+/// next. `loadCustomPolicies()` prepares the rules of a custom policy for
+/// the objects of the page (`willApplyRules()`), then adds the policy with
+/// `+=`, which keeps the copy of the first page that loaded it. Rules
+/// which read per-object data (subscribers, reviewers, project members)
+/// therefore only match the objects of that first page: later pages see
+/// fewer objects than the policy allows. PHP's answers depend on it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct QueryMemory {
+    /// The custom policies loaded so far, with the objects their rules
+    /// were prepared for.
+    custom_policies: HashMap<Phid, HashSet<Phid>>,
+}
+
+impl QueryMemory {
+    /// Marks the custom policies an earlier page loaded in `facts`, and
+    /// remembers the ones loaded for the first time, with the objects of
+    /// `subjects` they apply to for `capability`.
+    pub fn apply(
+        &mut self,
+        facts: &mut PolicyFacts,
+        subjects: &[&PolicySubject],
+        capability: crate::Capability,
+    ) {
+        for (policy_phid, policy) in &mut facts.custom_policies {
+            if let Some(prepared) = self.custom_policies.get(policy_phid) {
+                policy.prepared_for = Some(prepared.clone());
+            }
+        }
+        for subject in subjects {
+            let (Some(policy), Some(phid)) = (subject.policy(capability), subject.phid.as_ref())
+            else {
+                continue;
+            };
+            let policy = Phid::new(policy);
+            if !facts.custom_policies.contains_key(&policy) {
+                continue;
+            }
+            let first_page = facts.custom_policies[&policy].prepared_for.is_none();
+            if first_page {
+                self.custom_policies
+                    .entry(policy)
+                    .or_default()
+                    .insert(phid.clone());
+            }
+        }
+    }
 }
 
 /// A space from `phabricator_spaces.spaces_namespace`.

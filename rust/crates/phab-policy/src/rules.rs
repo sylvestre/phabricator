@@ -66,6 +66,29 @@ impl Rule {
         }
     }
 
+    /// Whether `willApplyRules()` loads data about the objects, which
+    /// `applyRule()` then reads.
+    pub fn reads_object_data(self) -> bool {
+        matches!(
+            self,
+            Self::Subscribers | Self::DifferentialReviewers | Self::ProjectMembers
+        )
+    }
+
+    /// `applyRule()` on a rule reading object data whose `willApplyRules()`
+    /// saw other objects: that data is missing, what the object itself
+    /// says still counts.
+    pub fn apply_unprepared(self, viewer: &Viewer, subject: &PolicySubject) -> bool {
+        match self {
+            // isAutomaticallySubscribed() asks the object.
+            Self::Subscribers => viewer
+                .phid
+                .as_ref()
+                .is_some_and(|viewer_phid| subject.implicit_subscribers.contains(viewer_phid)),
+            _ => false,
+        }
+    }
+
     /// `PhabricatorPolicyRule::applyRule()`.
     pub fn apply(
         self,

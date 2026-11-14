@@ -260,7 +260,20 @@ impl Filter<'_> {
                 return false;
             }
             let value = rule.get("value").unwrap_or(&Value::Null);
-            if kind.apply(self.viewer, value, subject, self.facts) {
+            // A rule prepared for other objects knows nothing of this one.
+            let unprepared = kind.reads_object_data()
+                && policy.prepared_for.as_ref().is_some_and(|prepared| {
+                    subject
+                        .phid
+                        .as_ref()
+                        .is_none_or(|phid| !prepared.contains(phid))
+                });
+            let matches = if unprepared {
+                kind.apply_unprepared(self.viewer, subject)
+            } else {
+                kind.apply(self.viewer, value, subject, self.facts)
+            };
+            if matches {
                 action = rule.get("action").and_then(Value::as_str);
                 break;
             }

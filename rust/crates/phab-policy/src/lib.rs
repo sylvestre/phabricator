@@ -23,7 +23,7 @@ mod viewer;
 
 pub use application::ApplicationPolicies;
 pub use capability::Capability;
-pub use facts::{CustomPolicy, PolicyFacts, Space};
+pub use facts::{CustomPolicy, PolicyFacts, QueryMemory, Space};
 pub use filter::{PolicyError, filter, has_capability};
 pub use policies::{OBJECT_POLICY_PREFIX, POLICY_ADMIN, POLICY_NOONE, POLICY_PUBLIC, POLICY_USER};
 pub use subject::{AutomaticCapability, ExtendedPolicy, ObjectKind, PolicySubject};

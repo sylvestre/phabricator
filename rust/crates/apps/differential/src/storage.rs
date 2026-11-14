@@ -310,9 +310,23 @@ pub async fn visible_revisions(
     revisions: Vec<Revision>,
     now: i64,
 ) -> Result<Vec<Revision>, VisibilityError> {
+    let mut memory = phab_policy::QueryMemory::default();
+    visible_revisions_in_query(database, config, viewer, revisions, now, &mut memory).await
+}
+
+/// [`visible_revisions()`] for one page of a query which loads several,
+/// with what the policy filter kept from the earlier pages.
+pub async fn visible_revisions_in_query(
+    database: &Database,
+    config: &phab_core::Config,
+    viewer: &phab_policy::Viewer,
+    revisions: Vec<Revision>,
+    now: i64,
+    memory: &mut phab_policy::QueryMemory,
+) -> Result<Vec<Revision>, VisibilityError> {
     let subjects: Vec<PolicySubject> = revisions.iter().map(Revision::subject).collect();
     let refs: Vec<&PolicySubject> = subjects.iter().collect();
-    let facts = phab_policy::loader::load_facts(
+    let mut facts = phab_policy::loader::load_facts(
         database,
         config,
         viewer,
@@ -321,6 +335,7 @@ pub async fn visible_revisions(
         now,
     )
     .await?;
+    memory.apply(&mut facts, &refs, Capability::VIEW);
     let passed = phab_policy::filter(viewer, &refs, &[Capability::VIEW], &facts)?;
     Ok(revisions
         .into_iter()

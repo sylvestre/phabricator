@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use phab_core::{Config, Phid};
 use phab_policy::{
     ApplicationPolicies, AutomaticCapability, Capability, CustomPolicy, ExtendedPolicy, ObjectKind,
-    PolicyError, PolicyFacts, PolicySubject, Space, Viewer, filter, has_capability,
+    PolicyError, PolicyFacts, PolicySubject, QueryMemory, Space, Viewer, filter, has_capability,
 };
 use rstest::rstest;
 use serde_json::{Value, json};
@@ -347,6 +347,7 @@ fn custom(rules: Value, default_action: &str) -> PolicyFacts {
             CustomPolicy {
                 rules,
                 default_action: default_action.to_owned(),
+                prepared_for: None,
             },
         )]),
         ..PolicyFacts::default()
@@ -414,4 +415,52 @@ fn unknown_custom_policy_rejects() {
         &object("PHID-PLCY-missing"),
         &PolicyFacts::default()
     ));
+}
+
+#[test]
+fn later_pages_keep_the_rules_of_the_first() {
+    // PHID-PLCY-custom allows subscribers and reviewers; the viewer
+    // reviews both revisions, and is the author of the third.
+    let rules = json!([
+        {"action": "allow", "rule": "PhabricatorSubscriptionsSubscribersPolicyRule", "value": null},
+        {"action": "allow", "rule": "PhabricatorDifferentialReviewersPolicyRule", "value": null},
+        {"action": "allow", "rule": "PhabricatorUsersPolicyRule", "value": ["PHID-USER-other"]},
+    ]);
+    let revision = |phid: &str| {
+        let mut subject = PolicySubject::new(Some(Phid::new(phid)), ObjectKind::Revision)
+            .with_policy(Capability::VIEW, "PHID-PLCY-custom");
+        subject.subscribable = true;
+        subject
+    };
+    let viewer = Viewer::user(Phid::new("PHID-USER-viewer"), false);
+    let mut memory = QueryMemory::default();
+
+    let first = revision("PHID-DREV-1");
+    let mut facts = custom(rules.clone(), "deny");
+    facts.reviewing = [Phid::new("PHID-DREV-1")].into();
+    memory.apply(&mut facts, &[&first], Capability::VIEW);
+    assert_eq!(
+        filter(&viewer, &[&first], &[Capability::VIEW], &facts).unwrap(),
+        [true]
+    );
+
+    // The next page loads the policy again, but PHP keeps the first copy,
+    // whose rules only know PHID-DREV-1.
+    let second = revision("PHID-DREV-2");
+    let mut authored = revision("PHID-DREV-3");
+    authored.implicit_subscribers = vec![Phid::new("PHID-USER-viewer")];
+    let mut facts = custom(rules.clone(), "deny");
+    facts.reviewing = [Phid::new("PHID-DREV-2"), Phid::new("PHID-DREV-3")].into();
+    memory.apply(&mut facts, &[&second, &authored], Capability::VIEW);
+    assert_eq!(
+        filter(&viewer, &[&second, &authored], &[Capability::VIEW], &facts).unwrap(),
+        [false, true]
+    );
+
+    // Rules without object data still match on later pages.
+    let other = Viewer::user(Phid::new("PHID-USER-other"), false);
+    assert_eq!(
+        filter(&other, &[&second], &[Capability::VIEW], &facts).unwrap(),
+        [true]
+    );
 }
