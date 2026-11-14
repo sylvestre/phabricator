@@ -159,10 +159,12 @@ if (diffSection && actionForm) {
   };
 
   let unplaced = null;
+  let openEditor = null;
   const show = (draft) => {
     const box = element("div", "inline-comment inline-draft");
+    const edit = button("Edit", "inline-edit");
     const remove = button("Remove", "inline-remove");
-    box.append(element("p", "inline-author", "Not published yet"), element("div", "inline-draft-text", draft.content), remove);
+    box.append(element("p", "inline-author", "Not published yet"), element("div", "inline-draft-text", draft.content), edit, remove);
     const anchor = anchorOf(draft);
     let node = box;
     if (anchor) {
@@ -182,28 +184,55 @@ if (diffSection && actionForm) {
       node.remove();
       save();
     });
+    edit.addEventListener("click", () => {
+      // The editor replaces the comment until it is kept or cancelled.
+      node.hidden = true;
+      openEditor(node, draft, () => {
+        node.hidden = false;
+      }, () => {
+        node.remove();
+      });
+    });
   };
 
-  const openEditor = (anchor, place) => {
+  // An editor under `anchor` for a new comment at `place`, or for the
+  // kept comment `place` itself when it has content.
+  openEditor = (anchor, place, onCancel = () => {}, onKeep = () => {}) => {
     const textarea = document.createElement("textarea");
     textarea.rows = 4;
+    textarea.value = place.content ?? "";
     textarea.setAttribute("aria-label", "Inline comment");
     const keep = button("Keep", "inline-keep");
     const cancel = button("Cancel", "inline-cancel");
     const box = element("div", "inline-comment inline-editor");
     box.append(textarea, keep, cancel);
-    const tr = row(box);
-    placeAfter(anchor, tr);
+    // Under a row of the diff, or in the list of unplaced comments; an
+    // edited comment's editor takes its place.
+    const node = anchor.tagName === "TR" ? row(box) : box;
+    if (anchor.tagName === "TR" && place.content === undefined) {
+      placeAfter(anchor, node);
+    } else {
+      anchor.after(node);
+    }
     textarea.focus();
-    cancel.addEventListener("click", () => tr.remove());
+    cancel.addEventListener("click", () => {
+      node.remove();
+      onCancel();
+    });
     keep.addEventListener("click", () => {
       if (textarea.value.trim() === "") {
         return;
       }
       const draft = { ...place, content: textarea.value };
-      drafts.push(draft);
+      const index = drafts.indexOf(place);
+      if (index >= 0) {
+        drafts[index] = draft;
+      } else {
+        drafts.push(draft);
+      }
       save();
-      tr.remove();
+      node.remove();
+      onKeep();
       show(draft);
     });
   };

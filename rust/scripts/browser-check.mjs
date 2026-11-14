@@ -119,6 +119,7 @@ try {
   })()`);
   await waitFor(`document.querySelector(".inline-editor textarea")`, "the editor");
   const stamp = `Inline from the browser check ${Date.now()}`;
+  const published = `${stamp} (edited)`;
   await evaluate(`(() => {
     document.querySelector(".inline-editor textarea").value = ${JSON.stringify(stamp)};
     document.querySelector(".inline-keep").click();
@@ -126,6 +127,16 @@ try {
   console.log("draft shown:", await evaluate(`document.querySelector(".inline-draft-text")?.textContent`));
   console.log("count:", await evaluate(`document.querySelector(".inline-count").textContent`));
   console.log("field:", await evaluate(`document.querySelector('input[name="inlines"]').value`));
+
+  // Edit it.
+  await evaluate(`document.querySelector(".inline-edit").click()`);
+  await waitFor(`document.querySelector(".inline-editor textarea")?.value === ${JSON.stringify(stamp)}`, "the edit");
+  await evaluate(`(() => {
+    document.querySelector(".inline-editor textarea").value += " (edited)";
+    document.querySelector(".inline-keep").click();
+  })()`);
+  console.log("drafts after edit:", await evaluate(`document.querySelectorAll(".inline-draft").length`),
+    await evaluate(`JSON.parse(document.querySelector('input[name="inlines"]').value).map((d) => d.content).join(" | ")`));
 
   // Reload: the draft is kept.
   await send("browsingContext.reload", { context, wait: "complete" });
@@ -157,7 +168,7 @@ try {
   console.log("drafts left:", await evaluate(`document.querySelectorAll(".inline-draft").length`),
     await evaluate(`localStorage.length`));
   console.log("published:", await evaluate(
-    `[...document.querySelectorAll(".inline-comment[data-phid] .remarkup")].some((n) => n.textContent.includes(${JSON.stringify(stamp)}))`));
+    `[...document.querySelectorAll(".inline-comment[data-phid] .remarkup")].some((n) => n.textContent.includes(${JSON.stringify(published)}))`));
   console.log("reply buttons:", await evaluate(`document.querySelectorAll("button.inline-reply").length`));
   console.log("on line:", line);
   console.log("script errors:", errors.join(" | ") || "none");
