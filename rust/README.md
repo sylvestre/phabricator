@@ -25,9 +25,25 @@ pages to Rust only when the cookie is set. Every page links back to the old
 interface. Viewers Rust can't serve yet (logged out, multi-factor prompt
 pending, account not activated) get a `421` and see the PHP page.
 
+Pages ported so far:
+
+| Route | Page |
+|---|---|
+| `/`, `/differential/` | Review queue, with Mozilla's buckets (`?bucket=`) |
+| `/D<id>` | Revision: header, reviewers, bug, stack, secure revision warnings, summary, test plan, timeline, active diff with its inline comments |
+| `/p/<user>/` | Profile, with the user's recent activity |
+| `/tag/<slug>/`, `/project/view/<id>/`, `/project/profile/<id>/` | Project |
+| `/feed/` | Feed |
+
+Stories, transactions and parts of a page that aren't ported are left out
+with a link to the old interface.
+
 Pages share the session cookie with PHP, and their CSRF tokens are the ones
 PHP makes and accepts (`phab_auth::csrf`), so forms and Conduit calls posted
-to PHP from a Rust page work.
+to PHP from a Rust page work. Changes to objects still go through PHP: the
+revision page's form posts to `/D<id>/action`, which sends the
+comment and the action to PHP's `differential.revision.edit` as the user
+(`phab_web::php`, `PHAB_PHP_URL`).
 
 PHP keeps owning the schema: `bin/storage upgrade` is the only migration
 tool. The tables and columns the Rust code uses are listed in
@@ -69,6 +85,7 @@ each ported component needs before it serves traffic.
 | `crates/phab-diff` | Differential diffs, changesets and hunks: storage, line alignment, intraline changes |
 | `crates/apps/conduit` | `conduit.ping` |
 | `crates/apps/people` | `user.whoami`, `bugzilla.account.search`, `bmoexternalaccount.search` |
+| `crates/apps/differential` | Revisions, their details, transactions and comments, feed titles, review queue buckets |
 | `crates/apps/feed` | `feed.query_id`, and the feed stories with their titles and handles |
 | `crates/apps/project` | Projects: loading by PHID or hashtag, and their policy |
 | `bins/phab-server` | The axum HTTP service |
