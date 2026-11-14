@@ -31,6 +31,8 @@ pub enum PageError {
     PolicyDenied,
     /// The request is wrong; the message says how.
     BadRequest(&'static str),
+    /// What the user entered can't be saved; the message says why.
+    Invalid(String),
     /// The viewer must do something before using any page.
     Roadblock(Roadblock),
     /// PHP refused a write; its message is meant for the user.
@@ -143,6 +145,7 @@ impl IntoResponse for PageError {
                         .to_owned(),
                 )
             }
+            Self::Invalid(message) => (StatusCode::BAD_REQUEST, "Unable to Save", message),
             Self::BadRequest(message) => {
                 (StatusCode::BAD_REQUEST, "Bad Request", message.to_owned())
             }

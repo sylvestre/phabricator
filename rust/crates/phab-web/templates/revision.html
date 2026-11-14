@@ -72,6 +72,12 @@
         {%- for (key, label) in actions %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
       </select>
     </label>
+    <label>Add reviewers
+      <input type="text" name="reviewers" placeholder="alice, #team, bob! (blocking)" autocomplete="off" data-typeahead>
+    </label>
+    <label>Add subscribers
+      <input type="text" name="subscribers" placeholder="alice, #team" autocomplete="off" data-typeahead>
+    </label>
     <textarea name="comment" rows="6" aria-label="Comment" data-preview="comment-preview"></textarea>
     <div class="remarkup comment-preview" id="comment-preview" aria-live="polite" hidden></div>
     <button type="submit">Submit</button>

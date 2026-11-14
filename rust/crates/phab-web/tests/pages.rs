@@ -179,6 +179,15 @@ async fn fake_php(answer: &'static str) -> (phab_web::php::PhpConduit, Received)
     )
 }
 
+/// The CSRF token of a page, as the browser would post it.
+fn csrf_token(page: &str) -> String {
+    page.split("name=\"csrf-token\" content=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap()
+        .to_owned()
+}
+
 fn form_value(body: &str, name: &str) -> String {
     form_urlencoded::parse(body.as_bytes())
         .find(|(key, _)| key == name)
@@ -859,12 +868,7 @@ async fn actions_go_to_php_as_the_user() {
     let alice = Some("phsid=alice-token");
     // A token from a page, as the browser would post it.
     let page = text(get(&test_db, Config::default(), "/differential/", alice).await).await;
-    let token = page
-        .split("name=\"csrf-token\" content=\"")
-        .nth(1)
-        .and_then(|rest| rest.split('"').next())
-        .unwrap()
-        .to_owned();
+    let token = csrf_token(&page);
     let post = |body: String, php| {
         let request = Request::post("/D3/action")
             .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
@@ -953,6 +957,76 @@ async fn actions_go_to_php_as_the_user() {
 }
 
 #[tokio::test]
+async fn reviewers_and_subscribers_are_added_by_name() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    let alice = Some("phsid=alice-token");
+    let page = text(get(&test_db, Config::default(), "/differential/", alice).await).await;
+    let token = csrf_token(&page);
+    let post = |body: String, php| {
+        let request = Request::post("/D3/action")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+        send(
+            &test_db,
+            Config::default(),
+            php,
+            request,
+            alice,
+            Body::from(body),
+        )
+    };
+    let encode = |pairs: &[(&str, &str)]| {
+        form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(pairs)
+            .finish()
+    };
+
+    // Reviewers and subscribers by name, as PHIDs; `!` is blocking.
+    let (php, received) =
+        fake_php(r#"{"result":{"object":{"id":3}},"error_code":null,"error_info":null}"#).await;
+    let response = post(
+        encode(&[
+            ("__csrf__", &token),
+            ("reviewers", "MFA!"),
+            ("subscribers", "@alice"),
+        ]),
+        Some(php),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let calls = received.lock().unwrap().clone();
+    let params: serde_json::Value =
+        serde_json::from_str(&form_value(&calls[0].3, "params")).unwrap();
+    assert_eq!(
+        params["transactions"],
+        json!([
+            {"type": "reviewers.add", "value": ["blocking(PHID-USER-mfa)"]},
+            {"type": "subscribers.add", "value": ["PHID-USER-alice"]},
+        ])
+    );
+
+    // Unknown and disabled users are refused, saying who.
+    for (name, message) in [
+        ("nobody", "No user or project is named nobody."),
+        ("gone", "No user or project is named gone."),
+        ("#nope", "No user or project is named #nope."),
+    ] {
+        let (php, received) = fake_php("{}").await;
+        let response = post(
+            encode(&[("__csrf__", &token), ("reviewers", name)]),
+            Some(php),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{name}");
+        assert!(text(response).await.contains(message), "{name}");
+        assert!(received.lock().unwrap().is_empty());
+    }
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
 async fn stylesheet_is_served() {
     let Some(test_db) = setup(true).await else {
         return;
@@ -977,12 +1051,7 @@ async fn comments_are_previewed() {
     let alice = Some("phsid=alice-token");
     let page = text(get(&test_db, Config::default(), "/differential/", alice).await).await;
     assert!(page.contains("/phab.js\" defer></script>"), "{page}");
-    let token = page
-        .split("name=\"csrf-token\" content=\"")
-        .nth(1)
-        .and_then(|rest| rest.split('"').next())
-        .unwrap()
-        .to_owned();
+    let token = csrf_token(&page);
     let preview = |body: String| {
         send(
             &test_db,
