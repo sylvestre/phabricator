@@ -20,6 +20,10 @@
   <dd>{% if let Some(uri) = author.uri %}<a href="{{ uri }}">{{ author.name }}</a>{% else %}{{ author.name }}{% endif %}</dd>
   <dt>Created</dt><dd><time>{{ created }}</time></dd>
   <dt>Updated</dt><dd><time>{{ modified }}</time></dd>
+  {%- if let Some((name, uri)) = repository %}
+  <dt>Repository</dt>
+  <dd>{% if let Some(uri) = uri %}<a href="{{ uri }}">{{ name }}</a>{% else %}{{ name }}{% endif %}</dd>
+  {%- endif %}
   <dt>Reviewers</dt>
   <dd>
     {%- if reviewers.is_empty() %}<span class="muted">None</span>{% else %}

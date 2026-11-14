@@ -238,6 +238,10 @@ pub const CONTRACT: &[TableContract] = &[
         database: "repository",
         table: "repository",
         columns: &[
+            "id",
+            "name",
+            "callsign",
+            "repositorySlug",
             "phid",
             "viewPolicy",
             "editPolicy",

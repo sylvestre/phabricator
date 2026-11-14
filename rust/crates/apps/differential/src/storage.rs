@@ -342,26 +342,11 @@ impl SubjectResolver for Repositories<'_> {
             .filter(|phid| phid.phid_type() == phab_core::PhidType::REPOSITORY)
             .cloned()
             .collect();
-        let rows = select_by_phid(
-            self.database,
-            "phid, viewPolicy, editPolicy, pushPolicy, spacePHID",
-            &self.database.table("repository", "repository"),
-            "phid",
-            &repositories,
-        )
-        .await?;
-        let mut subjects = HashMap::new();
-        for row in rows {
-            let phid = Phid::new(rows::text(&row, "phid")?);
-            let mut subject = PolicySubject::new(Some(phid.clone()), ObjectKind::Other)
-                .with_policy(Capability::VIEW, rows::text(&row, "viewPolicy")?)
-                .with_policy(Capability::EDIT, rows::text(&row, "editPolicy")?)
-                .with_policy(PUSH, rows::text(&row, "pushPolicy")?);
-            subject.capabilities.push(PUSH);
-            subject.space = Some(rows::opt_text(&row, "spacePHID")?.map(Phid::new));
-            subjects.insert(phid, subject);
-        }
-        Ok(subjects)
+        Ok(crate::repository::load(self.database, &repositories)
+            .await?
+            .into_iter()
+            .map(|repository| (repository.phid.clone(), repository.subject().clone()))
+            .collect())
     }
 }
 

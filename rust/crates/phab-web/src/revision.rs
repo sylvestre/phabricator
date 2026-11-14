@@ -7,6 +7,7 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::http::Uri;
 use phab_app_differential::details;
+use phab_app_differential::repository::{self, Repository};
 use phab_app_differential::storage::{self, Revision};
 use phab_app_project as project;
 use phab_core::{Config, Phid, PhidType};
@@ -16,6 +17,7 @@ use phab_remarkup::{Markup, Mode};
 
 use crate::error::PageError;
 use crate::response::Page;
+use crate::searchfox::Tree;
 use crate::shell::Shell;
 use crate::state::WebState;
 use crate::viewer::WebUser;
@@ -59,6 +61,8 @@ pub(crate) struct RevisionPage {
     parents: Vec<Link>,
     children: Vec<Link>,
     lando_uri: Option<String>,
+    /// The repository's name, and its Searchfox tree if it has one.
+    repository: Option<(String, Option<String>)>,
     summary: Option<Markup>,
     test_plan: Option<Markup>,
     diff_id: Option<i64>,
@@ -434,11 +438,29 @@ async fn inlines<S: WebState>(
     Ok(by_changeset)
 }
 
+/// The revision's repository, if the viewer can see it.
+async fn repository<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    revision: &Revision,
+) -> Result<Option<Repository>, PageError> {
+    let Some(phid) = &revision.repository_phid else {
+        return Ok(None);
+    };
+    let found = repository::load(state.database(), std::slice::from_ref(phid)).await?;
+    let mut visible =
+        repository::visible(state.database(), state.config(), viewer, found, state.now())
+            .await
+            .map_err(|error| PageError::Internal(Box::new(error)))?;
+    Ok(visible.pop())
+}
+
 /// The changesets of the active diff, rendered with their inline comments.
 async fn changesets<S: WebState>(
     state: &S,
     viewer: &Viewer,
     diff_phid: &Phid,
+    searchfox: Option<Tree>,
 ) -> Result<(Option<i64>, Vec<String>), PageError> {
     let database = state.database();
     let internal = |error: phab_diff::storage::StorageError| PageError::Internal(Box::new(error));
@@ -466,7 +488,9 @@ async fn changesets<S: WebState>(
             .map(|changeset| {
                 let inlines = inlines.remove(&changeset.id).unwrap_or_default();
                 match phab_diff::view::build(changeset, &options) {
-                    Ok(view) => diff_html::changeset_with_inlines(&view, &inlines),
+                    Ok(view) => {
+                        diff_html::changeset_with_inlines(&view, &inlines, searchfox.as_ref())
+                    }
                     Err(error) => {
                         tracing::warn!(%error, changeset = changeset.id, "changeset failed to render");
                         "<section class=\"changeset\"><p class=\"changeset-shield\">This file could not be shown.</p></section>"
@@ -595,8 +619,12 @@ pub(crate) async fn show<S: WebState>(
     let (author, reviewers) = people(state.as_ref(), &as_viewer, &revision).await?;
     let summary = remarkup_field(state.as_ref(), &as_viewer, &details.summary).await?;
     let test_plan = remarkup_field(state.as_ref(), &as_viewer, &details.test_plan).await?;
+    let repository = repository(state.as_ref(), &as_viewer, &revision).await?;
+    let searchfox = repository
+        .as_ref()
+        .and_then(|repository| state.searchfox_trees().tree_for(repository));
     let (diff_id, changesets) = match &details.active_diff_phid {
-        Some(diff) => changesets(state.as_ref(), &as_viewer, diff).await?,
+        Some(diff) => changesets(state.as_ref(), &as_viewer, diff, searchfox.clone()).await?,
         None => (None, Vec::new()),
     };
 
@@ -624,6 +652,8 @@ pub(crate) async fn show<S: WebState>(
         parents: revision_links(state.as_ref(), &as_viewer, &parent_phids).await?,
         children: revision_links(state.as_ref(), &as_viewer, &child_phids).await?,
         lando_uri: lando_uri(state.config(), database, &revision).await?,
+        repository: repository
+            .map(|repository| (repository.name, searchfox.as_ref().map(Tree::uri))),
         summary,
         test_plan,
         diff_id,

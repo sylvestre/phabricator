@@ -4,6 +4,7 @@
 pub mod buckets;
 pub mod details;
 pub mod feed;
+pub mod repository;
 pub mod storage;
 pub mod title;
 

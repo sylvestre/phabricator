@@ -8,6 +8,7 @@ use axum::response::Response;
 use phab_core::{Config, hash};
 use phab_db::Database;
 use phab_db::testing::TestDatabase;
+use phab_web::searchfox::Trees;
 use phab_web::{FALLBACK_HEADER, WebState};
 use serde_json::json;
 use tower::ServiceExt;
@@ -41,6 +42,11 @@ impl WebState for State {
 
     fn php(&self) -> Option<&phab_web::php::PhpConduit> {
         self.php.as_ref()
+    }
+
+    fn searchfox_trees(&self) -> &Trees {
+        static TREES: std::sync::OnceLock<Trees> = std::sync::OnceLock::new();
+        TREES.get_or_init(|| Trees::parse("mozilla-central=mozilla-central"))
     }
 }
 
@@ -649,6 +655,17 @@ async fn revisions_show_their_header_text_and_diff() {
         return;
     };
     insert_revision_fixtures(&test_db).await;
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_repository`.repository (id, phid, name, callsign, \
+               versionControlSystem, details, dateCreated, dateModified, viewPolicy, editPolicy, \
+               pushPolicy, repositorySlug) VALUES \
+             (1, 'PHID-REPO-mc', 'mozilla-central', 'MOZILLACENTRAL', 'hg', '{}', 1, 1, \
+               'users', 'users', 'users', 'mozilla-central'); \
+             UPDATE `{ns}_differential`.differential_revision \
+               SET repositoryPHID = 'PHID-REPO-mc' WHERE id = 3",
+        )
+        .await;
 
     let response = get(
         &test_db,
@@ -680,6 +697,21 @@ async fn revisions_show_their_header_text_and_diff() {
         page.contains(
             "<span class=\"hl-type\">int</span> y <span class=\"hl-operator\">=</span> \
              <span class=\"bright\"><span class=\"hl-number\">2</span></span>;"
+        ),
+        "{page}"
+    );
+    // The repository has a Searchfox tree: it and the file link there.
+    assert!(
+        page.contains(
+            "<dt>Repository</dt>\n  <dd><a \
+             href=\"https://searchfox.org/mozilla-central/source/\">mozilla-central</a></dd>"
+        ),
+        "{page}"
+    );
+    assert!(
+        page.contains(
+            "<a class=\"changeset-searchfox\" \
+             href=\"https://searchfox.org/mozilla-central/source/src/a.c\">View in Searchfox</a>"
         ),
         "{page}"
     );

@@ -13,6 +13,8 @@ services:
       # Methods answered by PHP and only compared by Rust (comma separated).
       - PHAB_SHADOW_METHODS=${PHAB_SHADOW_METHODS:-user.whoami,feed.query_id,bugzilla.account.search,bmoexternalaccount.search}
       - PHAB_PHP_URL=http://phabricator.test
+      # Repositories (short name or callsign) whose files link to Searchfox.
+      - PHAB_SEARCHFOX_TREES=${PHAB_SEARCHFOX_TREES:-mozilla-central=mozilla-central}
     volumes:
       # Shares conf/local/local.json, written by the PHP container's
       # entrypoint, so both stacks read the same configuration.

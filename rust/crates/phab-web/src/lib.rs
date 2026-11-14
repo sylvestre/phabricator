@@ -22,6 +22,7 @@ pub mod remarkup;
 mod response;
 mod revision;
 mod router;
+pub mod searchfox;
 mod shell;
 mod state;
 mod time;

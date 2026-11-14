@@ -12,6 +12,7 @@ use phab_diff::view::{Body, Cell, ChangesetView, Row, Shield};
 use syntect::parsing::SyntaxReference;
 
 use crate::highlight::{self, Token};
+use crate::searchfox::Tree;
 
 /// `htmlspecialchars()`.
 pub fn escape(text: &str) -> String {
@@ -303,9 +304,23 @@ fn inlines_at<'a>(
     found
 }
 
+/// The path of the file before the change, which Searchfox has: none for
+/// an added file.
+fn path_before(view: &ChangesetView) -> Option<&str> {
+    match view.change_type {
+        ChangeType::Add => None,
+        ChangeType::MoveHere | ChangeType::CopyHere => view.old_file.as_deref(),
+        _ => Some(&view.display_filename),
+    }
+}
+
 /// One changeset with its inline comments; the ones on lines not shown
-/// come at the end.
-pub fn changeset_with_inlines(view: &ChangesetView, inlines: &[Inline]) -> String {
+/// come at the end. With a Searchfox tree, the header links to the file.
+pub fn changeset_with_inlines(
+    view: &ChangesetView,
+    inlines: &[Inline],
+    searchfox: Option<&Tree>,
+) -> String {
     let mut html = String::new();
     let _ = write!(
         html,
@@ -315,6 +330,13 @@ pub fn changeset_with_inlines(view: &ChangesetView, inlines: &[Inline]) -> Strin
     let label = change_label(view);
     if !label.is_empty() {
         let _ = write!(html, " <span class=\"muted\">{label}</span>");
+    }
+    if let Some((tree, path)) = searchfox.zip(path_before(view)) {
+        let _ = write!(
+            html,
+            " <a class=\"changeset-searchfox\" href=\"{}\">View in Searchfox</a>",
+            escape(&tree.file_uri(path))
+        );
     }
     html.push_str("</h3>\n");
     match &view.body {
