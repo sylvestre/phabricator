@@ -19,7 +19,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-rstest.workspace = true
 phab-db = { workspace = true, features = ["test-support"] }
 tokio.workspace = true
 

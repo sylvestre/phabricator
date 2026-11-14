@@ -13,6 +13,7 @@ mod envelope;
 pub mod form;
 pub mod json;
 mod method;
+pub mod pager;
 pub mod request;
 
 pub use context::{Context, HttpRequest, Mode};
