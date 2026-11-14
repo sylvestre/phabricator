@@ -161,6 +161,28 @@ pub async fn is_enrolled_in_multi_factor(
         .is_some())
 }
 
+/// Up to `limit` users whose username starts with `prefix` (without case,
+/// like MySQL's collation), excluding disabled users and mailing lists, as
+/// `PhabricatorPeopleDatasource` offers them; by username.
+pub async fn search_by_username_prefix(
+    database: &Database,
+    prefix: &str,
+    limit: u32,
+) -> Result<Vec<User>, DbError> {
+    let sql = format!(
+        "SELECT {} FROM {} u WHERE u.userName LIKE ? AND u.isDisabled = 0 \
+         AND u.isMailingList = 0 ORDER BY u.userName LIMIT ?",
+        select_columns("u"),
+        database.table("user", "user"),
+    );
+    let rows = phab_db::sqlx::query(&sql)
+        .bind(format!("{}%", phab_db::like_escape(prefix)))
+        .bind(limit)
+        .fetch_all(database.pool())
+        .await?;
+    rows.iter().map(User::from_row).collect()
+}
+
 /// Loads the users with these usernames, compared without case like
 /// MySQL's collation does; unknown names are skipped.
 pub async fn load_users_by_username(

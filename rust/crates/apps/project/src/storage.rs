@@ -199,6 +199,31 @@ pub async fn load_member_projects(
     load_by_phid(database, &phids).await
 }
 
+/// Up to `limit` projects with a hashtag starting with `prefix`, with the
+/// first such hashtag of each; archived projects are left out, as the
+/// project datasource does by default. Not filtered by policy.
+pub async fn search_by_slug_prefix(
+    database: &Database,
+    prefix: &str,
+    limit: u32,
+) -> Result<Vec<(String, Project)>, DbError> {
+    let sql = format!(
+        "SELECT MIN(s.slug) AS slug, {COLUMNS} FROM {} s JOIN {} p ON p.phid = s.projectPHID \
+         WHERE s.slug LIKE ? AND p.status != ? GROUP BY p.id ORDER BY slug LIMIT ?",
+        database.table("project", "project_slug"),
+        database.table("project", "project"),
+    );
+    let rows = phab_db::sqlx::query(&sql)
+        .bind(format!("{}%", phab_db::like_escape(&prefix.to_lowercase())))
+        .bind(STATUS_ARCHIVED)
+        .bind(limit)
+        .fetch_all(database.pool())
+        .await?;
+    rows.iter()
+        .map(|row| Ok((rows::text(row, "slug")?, Project::from_row(row)?)))
+        .collect()
+}
+
 /// The projects with these hashtags, as `(slug, project)` pairs. Slugs are
 /// matched exactly: callers lowercase them first, as
 /// `PhabricatorProjectProjectPHIDType::loadNamedObjects()` does.

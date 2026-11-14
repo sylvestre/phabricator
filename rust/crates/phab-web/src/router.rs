@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::{Router, routing};
 
 use crate::state::WebState;
-use crate::{actions, assets, feed, opt_in, people, preview, projects, queue, revision};
+use crate::{actions, assets, feed, opt_in, people, preview, projects, queue, revision, typeahead};
 
 /// The pages, the static files and the interface switch. nginx decides
 /// which of them reach the service (`rust/nginx/rust-web.conf`).
@@ -23,6 +23,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .route("/rust-ui/on", routing::get(opt_in::on))
         .route("/rust-ui/off", routing::get(opt_in::off))
         .route("/rust-ui/preview", routing::post(preview::render::<S>))
+        .route("/rust-ui/typeahead", routing::get(typeahead::suggest::<S>))
         .route(
             &format!("{}/{{hash}}/{{name}}", assets::PREFIX),
             routing::get(assets::serve),

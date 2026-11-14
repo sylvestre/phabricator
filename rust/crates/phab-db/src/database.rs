@@ -15,6 +15,19 @@ pub struct Database {
     namespace: String,
 }
 
+/// `text` for a `LIKE` pattern, matching itself: `%`, `_` and `\` are
+/// escaped (`qsprintf()`'s `%>`).
+pub fn like_escape(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        if matches!(character, '%' | '_' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
 /// `?, ?, ?` for an `IN (...)` list of `count` values.
 pub fn placeholders(count: usize) -> String {
     vec!["?"; count].join(", ")
@@ -114,5 +127,16 @@ impl Database {
     pub async fn ping(&self) -> Result<(), DbError> {
         sqlx::query("SELECT 1").execute(&self.pool).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn like_patterns_match_themselves() {
+        assert_eq!(like_escape("a_b%c\\d"), "a\\_b\\%c\\\\d");
+        assert_eq!(like_escape("alice"), "alice");
     }
 }

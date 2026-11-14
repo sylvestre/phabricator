@@ -17,6 +17,6 @@ pub mod schema;
 #[cfg(feature = "test-support")]
 pub mod testing;
 
-pub use database::{Database, bind_all, placeholders};
+pub use database::{Database, bind_all, like_escape, placeholders};
 pub use error::DbError;
 pub use sqlx;

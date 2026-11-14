@@ -1026,6 +1026,58 @@ async fn reviewers_and_subscribers_are_added_by_name() {
     test_db.drop_databases().await;
 }
 
+async fn suggest(test_db: &TestDatabase, query: &str) -> serde_json::Value {
+    let response = get(
+        test_db,
+        Config::default(),
+        &format!("/rust-ui/typeahead?q={query}"),
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    serde_json::from_str(&text(response).await).unwrap()
+}
+
+#[tokio::test]
+async fn names_are_suggested_as_they_are_typed() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_project`.project (id, name, phid, authorPHID, dateCreated, \
+               dateModified, status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, \
+               hasWorkboard, hasMilestones, hasSubprojects, projectPath, projectDepth, \
+               projectPathKey, properties, subtype, primarySlug) VALUES \
+             (1, 'Mfa Team', 'PHID-PROJ-team', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', \
+               'blue', 'k', 0, 0, 0, 'a', 0, 'k001', '{}', 'default', 'mfa-team'), \
+             (2, 'Mfa Secret', 'PHID-PROJ-secret', 'x', 1, 1, '0', 'no-one', 'users', 'users', \
+               'fa-x', 'blue', 'k', 0, 0, 0, 'b', 0, 'k002', '{}', 'default', 'mfa-secret'), \
+             (3, 'Mfa Old', 'PHID-PROJ-old', 'x', 1, 1, '100', 'users', 'users', 'users', \
+               'fa-x', 'blue', 'k', 0, 0, 0, 'c', 0, 'k003', '{}', 'default', 'mfa-old'); \
+             INSERT INTO `{ns}_project`.project_slug (projectPHID, slug, dateCreated, \
+               dateModified) VALUES ('PHID-PROJ-team', 'mfa-team', 1, 1), \
+               ('PHID-PROJ-team', 'mfa_team', 1, 1), ('PHID-PROJ-secret', 'mfa-secret', 1, 1), \
+               ('PHID-PROJ-old', 'mfa-old', 1, 1)",
+        )
+        .await;
+    // Users by prefix, without case; the disabled one is left out.
+    assert_eq!(
+        suggest(&test_db, "%40M").await,
+        json!([{"value": "mfa", "label": "mfa (Mfa)"}])
+    );
+    assert_eq!(suggest(&test_db, "g").await, json!([]));
+    // `_` is not a wildcard.
+    assert_eq!(suggest(&test_db, "a_").await, json!([]));
+    // Projects: visible, not archived, once each.
+    assert_eq!(
+        suggest(&test_db, "%23MFA").await,
+        json!([{"value": "#mfa-team", "label": "Mfa Team"}])
+    );
+    assert_eq!(suggest(&test_db, "%23").await, json!([]));
+    test_db.drop_databases().await;
+}
+
 #[tokio::test]
 async fn stylesheet_is_served() {
     let Some(test_db) = setup(true).await else {
