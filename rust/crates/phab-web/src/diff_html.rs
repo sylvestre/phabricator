@@ -1,12 +1,17 @@
 //! Diffs as HTML: a unified view of what `phab_diff::view` built. The text
-//! is escaped; intraline changes are highlighted.
+//! is escaped; intraline changes and syntax are highlighted.
 
+use std::collections::HashMap;
 use std::fmt::Write;
+use std::ops::Range;
 
 use phab_diff::ChangeType;
 use phab_diff::intraline::SegmentKind;
 use phab_diff::parser::LineType;
 use phab_diff::view::{Body, Cell, ChangesetView, Row, Shield};
+use syntect::parsing::SyntaxReference;
+
+use crate::highlight::{self, Token};
 
 /// `htmlspecialchars()`.
 pub fn escape(text: &str) -> String {
@@ -57,31 +62,112 @@ fn shield_message(shield: Shield) -> String {
     }
 }
 
-/// The text of a cell, without its line ending, with changed runs marked.
-fn cell_text(cell: &Cell) -> String {
+/// The syntax tokens of each line of the two sides, by line number.
+#[derive(Default)]
+struct Highlighted {
+    old: HashMap<i64, Vec<Token>>,
+    new: HashMap<i64, Vec<Token>>,
+}
+
+impl Highlighted {
+    /// Highlights the lines the rows show, each side as one corpus.
+    fn new(syntax: Option<&SyntaxReference>, rows: &[Row]) -> Self {
+        let Some(syntax) = syntax else {
+            return Self::default();
+        };
+        let mut old: Vec<&Cell> = Vec::new();
+        let mut new: Vec<&Cell> = Vec::new();
+        for row in rows {
+            if let Row::Line {
+                old: old_cell,
+                new: new_cell,
+                ..
+            } = row
+            {
+                old.extend(old_cell.as_ref().filter(|cell| is_text(cell)));
+                new.extend(new_cell.as_ref().filter(|cell| is_text(cell)));
+            }
+        }
+        let side = |cells: Vec<&Cell>| -> HashMap<i64, Vec<Token>> {
+            let lines: Vec<&str> = cells.iter().map(|cell| cell.text.as_str()).collect();
+            highlight::highlight_lines(syntax, &lines)
+                .map(|tokens| cells.iter().map(|cell| cell.line).zip(tokens).collect())
+                .unwrap_or_default()
+        };
+        Self {
+            old: side(old),
+            new: side(new),
+        }
+    }
+
+    fn tokens(&self, cell: &Cell, is_new: bool) -> &[Token] {
+        let side = if is_new { &self.new } else { &self.old };
+        side.get(&cell.line).map_or(&[], Vec::as_slice)
+    }
+}
+
+/// Whether the cell holds a line of the file, not the "no newline" marker.
+fn is_text(cell: &Cell) -> bool {
+    cell.kind != Some(LineType::NoNewline)
+}
+
+/// The end of a run of `text` at `end`, moved forward to a character
+/// boundary: segments count bytes and may end inside a character.
+fn char_end(text: &str, end: usize) -> usize {
+    let mut end = end.min(text.len());
+    while !text.is_char_boundary(end) {
+        end += 1;
+    }
+    end
+}
+
+/// `text[range]` with its syntax tokens, escaped.
+fn tokens_html(html: &mut String, text: &str, range: Range<usize>, tokens: &[Token]) {
+    let mut offset = range.start;
+    for token in tokens {
+        let start = char_end(text, token.range.start.max(offset));
+        let end = char_end(text, token.range.end.min(range.end));
+        if start >= end {
+            continue;
+        }
+        html.push_str(&escape(&text[offset..start]));
+        let _ = write!(
+            html,
+            "<span class=\"{}\">{}</span>",
+            token.class,
+            escape(&text[start..end])
+        );
+        offset = end;
+    }
+    if offset < range.end {
+        html.push_str(&escape(&text[offset..range.end]));
+    }
+}
+
+/// The text of a cell, without its line ending, with its syntax and its
+/// changed runs marked.
+fn cell_text(cell: &Cell, tokens: &[Token]) -> String {
     let text = cell.text.strip_suffix('\n').unwrap_or(&cell.text);
     let text = text.strip_suffix('\r').unwrap_or(text);
-    if cell.segments.is_empty() {
-        return escape(text);
-    }
     let mut html = String::new();
     let mut offset = 0;
     for segment in &cell.segments {
-        let end = (offset + segment.length).min(text.len());
-        // Segments count bytes; never cut inside a character.
-        let piece = text.get(offset..end).unwrap_or_default();
-        match segment.kind {
-            SegmentKind::Same => html.push_str(&escape(piece)),
-            SegmentKind::Changed => {
-                let _ = write!(html, "<span class=\"bright\">{}</span>", escape(piece));
-            }
-            SegmentKind::DepthIn | SegmentKind::DepthOut => {
-                let _ = write!(html, "<span class=\"depth\">{}</span>", escape(piece));
-            }
+        let end = char_end(text, offset + segment.length);
+        let class = match segment.kind {
+            SegmentKind::Same => None,
+            SegmentKind::Changed => Some("bright"),
+            SegmentKind::DepthIn | SegmentKind::DepthOut => Some("depth"),
+        };
+        if let Some(class) = class {
+            let _ = write!(html, "<span class=\"{class}\">");
+        }
+        tokens_html(&mut html, text, offset..end, tokens);
+        if class.is_some() {
+            html.push_str("</span>");
         }
         offset = end;
     }
-    html.push_str(&escape(text.get(offset..).unwrap_or_default()));
+    tokens_html(&mut html, text, offset..text.len(), tokens);
     html
 }
 
@@ -102,14 +188,20 @@ fn line_row(
     );
 }
 
-fn rows_html(html: &mut String, rows: &[Row], inlines: &[Inline]) {
+fn rows_html(
+    html: &mut String,
+    rows: &[Row],
+    inlines: &[Inline],
+    syntax: Option<&SyntaxReference>,
+) {
+    let highlighted = Highlighted::new(syntax, rows);
     let mut shown = vec![false; inlines.len()];
     html.push_str("<table class=\"diff\">\n");
     for row in rows {
         match row {
             Row::Line { old, new, .. } => {
                 let here = inlines_at(inlines, &mut shown, old.as_ref(), new.as_ref());
-                line_html(html, old.as_ref(), new.as_ref());
+                line_html(html, old.as_ref(), new.as_ref(), &highlighted);
                 for inline in here {
                     inline_html(html, inline);
                 }
@@ -137,17 +229,20 @@ fn rows_html(html: &mut String, rows: &[Row], inlines: &[Inline]) {
 
 /// The rows of one displayed line: context, or the removed then the added
 /// side.
-fn line_html(html: &mut String, old: Option<&Cell>, new: Option<&Cell>) {
+fn line_html(html: &mut String, old: Option<&Cell>, new: Option<&Cell>, highlighted: &Highlighted) {
     let changed = |cell: Option<&Cell>| cell.is_some_and(|cell| cell.kind.is_some());
     if !changed(old) && !changed(new) {
-        if let Some(cell) = new.or(old) {
+        let shown = new
+            .map(|cell| (cell, true))
+            .or(old.map(|cell| (cell, false)));
+        if let Some((cell, is_new)) = shown {
             line_row(
                 html,
                 "diff-context",
                 old.map(|cell| cell.line),
                 new.map(|cell| cell.line),
                 ' ',
-                &cell_text(cell),
+                &cell_text(cell, highlighted.tokens(cell, is_new)),
             );
         }
         return;
@@ -157,14 +252,16 @@ fn line_html(html: &mut String, old: Option<&Cell>, new: Option<&Cell>) {
             Some(LineType::NoNewline) => ("diff-no-newline", '\\'),
             _ => ("diff-removed", '-'),
         };
-        line_row(html, class, Some(cell.line), None, marker, &cell_text(cell));
+        let text = cell_text(cell, highlighted.tokens(cell, false));
+        line_row(html, class, Some(cell.line), None, marker, &text);
     }
     if let Some(cell) = new.filter(|cell| cell.kind.is_some()) {
         let (class, marker) = match cell.kind {
             Some(LineType::NoNewline) => ("diff-no-newline", '\\'),
             _ => ("diff-added", '+'),
         };
-        line_row(html, class, None, Some(cell.line), marker, &cell_text(cell));
+        let text = cell_text(cell, highlighted.tokens(cell, true));
+        line_row(html, class, None, Some(cell.line), marker, &text);
     }
 }
 
@@ -233,7 +330,12 @@ pub fn changeset_with_inlines(view: &ChangesetView, inlines: &[Inline]) -> Strin
         }
         Body::NoText => html
             .push_str("<p class=\"changeset-shield\">This file has no text content to show.</p>\n"),
-        Body::Rows(rows) => rows_html(&mut html, rows, inlines),
+        Body::Rows(rows) => rows_html(
+            &mut html,
+            rows,
+            inlines,
+            highlight::syntax_for(&view.display_filename),
+        ),
     }
     if !matches!(view.body, Body::Rows(_)) && !inlines.is_empty() {
         html.push_str("<table class=\"diff\">\n");
@@ -294,7 +396,7 @@ mod tests {
             Row::Gap { top: 2, length: 5 },
         ];
         let mut html = String::new();
-        rows_html(&mut html, &rows, &[]);
+        rows_html(&mut html, &rows, &[], None);
         assert!(
             html.contains("<td class=\"code\"><span class=\"marker\"> </span>same &lt;a&gt;</td>"),
             "{html}"
@@ -312,5 +414,43 @@ mod tests {
             "{html}"
         );
         assert!(html.contains("5 lines not shown"), "{html}");
+
+        // The same rows in a C file: the syntax inside the changed runs.
+        let mut html = String::new();
+        rows_html(&mut html, &rows, &[], highlight::syntax_for("a.c"));
+        assert!(
+            html.contains(
+                "let x <span class=\"hl-operator\">=</span> \
+                 <span class=\"bright\"><span class=\"hl-number\">2</span></span>;"
+            ),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn runs_never_cut_characters() {
+        // The changed run ends in the middle of "é" (two bytes).
+        let changed = cell(
+            1,
+            Some(LineType::Added),
+            "x = \"é\";\n",
+            vec![
+                Segment::new(SegmentKind::Same, 4),
+                Segment::new(SegmentKind::Changed, 2),
+            ],
+        );
+        assert_eq!(
+            cell_text(&changed, &[]),
+            "x = <span class=\"bright\">&quot;é</span>&quot;;"
+        );
+        let tokens = [Token {
+            range: 4..8,
+            class: "hl-string",
+        }];
+        assert_eq!(
+            cell_text(&changed, &tokens),
+            "x = <span class=\"bright\"><span class=\"hl-string\">&quot;é</span></span>\
+             <span class=\"hl-string\">&quot;</span>;"
+        );
     }
 }

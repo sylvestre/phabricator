@@ -677,7 +677,10 @@ async fn revisions_show_their_header_text_and_diff() {
     assert!(page.contains("Fixes <strong>it</strong>."), "{page}");
     assert!(page.contains("src/a.c"), "{page}");
     assert!(
-        page.contains("int y = <span class=\"bright\">2</span>;"),
+        page.contains(
+            "<span class=\"hl-type\">int</span> y <span class=\"hl-operator\">=</span> \
+             <span class=\"bright\"><span class=\"hl-number\">2</span></span>;"
+        ),
         "{page}"
     );
     // D3 is secure, and D6, open and public, depends on it.

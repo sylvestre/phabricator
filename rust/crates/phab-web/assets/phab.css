@@ -165,11 +165,32 @@ a { color: var(--accent); }
 .diff-removed .bright { background: #ff818266; }
 .diff-gap td { color: var(--muted); text-align: center; background: var(--bg); }
 
+/* Syntax: the classes of highlight.rs, GitHub's light and dark colours. */
+.hl-comment { color: #6e7781; font-style: italic; }
+.hl-string { color: #0a3069; }
+.hl-number, .hl-constant { color: #0550ae; }
+.hl-keyword { color: #cf222e; }
+.hl-operator { color: #cf222e; }
+.hl-type { color: #953800; }
+.hl-function { color: #8250df; }
+.hl-tag { color: #116329; }
+.hl-attribute, .hl-variable { color: #0550ae; }
+.hl-inserted { color: #116329; }
+.hl-deleted { color: #82071e; }
+
 @media (prefers-color-scheme: dark) {
   .diff-added { background: #12261e; }
   .diff-removed { background: #25171c; }
   .diff-added .bright { background: #1f6f3a; }
   .diff-removed .bright { background: #8e1519; }
+  .hl-comment { color: #8b949e; }
+  .hl-string { color: #a5d6ff; }
+  .hl-number, .hl-constant, .hl-attribute, .hl-variable { color: #79c0ff; }
+  .hl-keyword, .hl-operator { color: #ff7b72; }
+  .hl-type { color: #ffa657; }
+  .hl-function { color: #d2a8ff; }
+  .hl-tag, .hl-inserted { color: #7ee787; }
+  .hl-deleted { color: #ffa198; }
 }
 
 .bucket-switch { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; }
