@@ -47,6 +47,37 @@ async fn status_reports_the_database() {
 }
 
 #[tokio::test]
+async fn status_keeps_database_errors_to_the_log() {
+    // Nothing listens on port 1: every connection is refused.
+    let pool = sqlx::mysql::MySqlPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_secs(1))
+        .connect_lazy("mysql://root:secret@127.0.0.1:1")
+        .unwrap();
+    let state = Arc::new(AppState {
+        context: Context {
+            database: phab_db::Database::from_pool(pool, "phabricator"),
+            config: Config::default(),
+            hostname: "web1".to_owned(),
+        },
+        registry: Registry::default(),
+        remarkup: phab_web::remarkup::new_engine(&Config::default()),
+        php: None,
+        shadow: None,
+    });
+    let response = phab_server::router(state)
+        .oneshot(Request::get("/status").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["status"], "error");
+    assert_eq!(value["database"], "unreachable");
+}
+
+#[tokio::test]
 async fn unknown_methods_go_back_to_php() {
     let Some((test_db, app)) = app().await else {
         return;

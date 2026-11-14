@@ -68,7 +68,7 @@ impl Shadow {
         Self {
             methods: methods.into_iter().collect(),
             php_url: php_url.into(),
-            client: reqwest::Client::new(),
+            client: phab_web::php::client(),
             counts: Mutex::new(HashMap::new()),
         }
     }

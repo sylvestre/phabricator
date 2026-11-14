@@ -4,11 +4,26 @@
 //! exactly as a form of the old interface would.
 
 use std::fmt;
+use std::time::Duration;
 
 use serde_json::Value;
 
 /// The header asking nginx for PHP (`phab_parity::SKIP_RUST_HEADER`).
 const SKIP_RUST_HEADER: &str = "x-phab-skip-rust";
+
+/// How long a call to PHP may take: below nginx's 60 second
+/// `proxy_read_timeout`, so the page can still say what happened.
+const TIMEOUT: Duration = Duration::from_secs(45);
+
+/// An HTTP client for PHP, which gives up on a server that doesn't accept
+/// the connection or doesn't answer.
+pub fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(TIMEOUT)
+        .build()
+        .expect("a client without custom TLS roots always builds")
+}
 
 /// A session token, never printed.
 #[derive(Clone, PartialEq, Eq)]
@@ -51,7 +66,7 @@ impl PhpConduit {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_owned(),
-            client: reqwest::Client::new(),
+            client: client(),
         }
     }
 

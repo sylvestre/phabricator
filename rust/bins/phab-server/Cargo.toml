@@ -31,6 +31,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 phab-db = { workspace = true, features = ["test-support"] }
+sqlx.workspace = true
 tower.workspace = true
 
 [lints]

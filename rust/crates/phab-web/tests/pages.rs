@@ -678,6 +678,19 @@ async fn actions_go_to_php_as_the_user() {
             .await
             .contains("You can not accept this revision.")
     );
+
+    // PHP down: Rust's own error page, with a status nginx doesn't replay.
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = closed.local_addr().unwrap();
+    drop(closed);
+    let php = phab_web::php::PhpConduit::new(format!("http://{address}"));
+    let response = post(
+        encode(&[("__csrf__", &token), ("action", "accept")]),
+        Some(php),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(text(response).await.contains("could not be reached"));
     test_db.drop_databases().await;
 }
 

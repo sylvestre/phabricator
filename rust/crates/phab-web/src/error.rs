@@ -77,10 +77,22 @@ impl IntoResponse for PageError {
             Self::Conduit(crate::php::ConduitError::Method { info, .. }) => {
                 (StatusCode::BAD_REQUEST, "Unable to Save", info)
             }
+            // 503 and not 502 or 504, which nginx would replay against PHP
+            // and show PHP's 404 instead of this page.
+            Self::Conduit(crate::php::ConduitError::Transport(error)) if error.is_timeout() => {
+                tracing::error!(%error, "write through PHP timed out");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Unable to Save",
+                    "Phabricator took too long to answer, and the change may have been \
+                     saved: reload the revision before trying again."
+                        .to_owned(),
+                )
+            }
             Self::Conduit(error) => {
                 tracing::error!(%error, "write through PHP failed");
                 (
-                    StatusCode::BAD_GATEWAY,
+                    StatusCode::SERVICE_UNAVAILABLE,
                     "Unable to Save",
                     "Phabricator could not be reached; try again.".to_owned(),
                 )

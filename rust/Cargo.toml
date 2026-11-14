@@ -43,9 +43,9 @@ sha1 = "0.10"
 sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "mysql"] }
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["decompression-gzip", "limit", "trace"] }
+tower-http = { version = "0.6", features = ["catch-panic", "decompression-gzip", "limit", "timeout", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 wait-timeout = "0.2"

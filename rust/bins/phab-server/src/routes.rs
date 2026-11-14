@@ -1,7 +1,7 @@
 //! The HTTP routes: `/status`, the Conduit endpoint and the web pages.
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
 use axum::extract::{Path as UrlPath, RawQuery, State};
@@ -12,8 +12,10 @@ use phab_auth::session::SESSION_COOKIE;
 use phab_conduit::call::Dispatched;
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, call};
 use serde_json::json;
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::decompression::RequestDecompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::timeout::TimeoutLayer;
 
 use crate::shadow;
 
@@ -21,6 +23,11 @@ pub use phab_web::fallback_response;
 
 /// Matches `max_allowed_packet` of the MySQL server.
 const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+/// How long a request may take: below nginx's 60 second
+/// `proxy_read_timeout`, and above the PHP client's 45 seconds, so a write
+/// that times out still gets its own error page.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(55);
 
 /// What the handlers share.
 pub struct AppState {
@@ -75,6 +82,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .merge(phab_web::router::<AppState>())
         .layer(RequestDecompressionLayer::new())
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
+        // 503 rather than 504, which nginx would replay against PHP.
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            REQUEST_TIMEOUT,
+        ))
+        // A panic fails its own request with a 500, not the connection.
+        .layer(CatchPanicLayer::new())
         .with_state(state)
 }
 
@@ -85,9 +99,13 @@ async fn status(State(state): State<Arc<AppState>>) -> Response {
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     };
+    // The error names the server and the account: it goes to the log only.
+    if let Err(error) = &database {
+        tracing::error!(%error, "status: database ping failed");
+    }
     let body = json!({
         "status": if database.is_ok() { "ok" } else { "error" },
-        "database": database.map_or_else(|error| error.to_string(), |()| "ok".to_owned()),
+        "database": if database.is_ok() { "ok" } else { "unreachable" },
         "methods": state.registry.names(),
         "shadow": state.shadow.as_ref().map(shadow::Shadow::counts),
     });

@@ -27,6 +27,33 @@ fn methods() -> Registry {
     registry
 }
 
+/// Resolves on SIGTERM (a container stopping) or Ctrl-C. The server then
+/// stops accepting connections and finishes the requests it has.
+async fn shutdown_signal() {
+    let interrupt = async {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            tracing::error!(%error, "cannot listen for Ctrl-C");
+            std::future::pending::<()>().await;
+        }
+    };
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut terminate) => {
+                terminate.recv().await;
+            }
+            Err(error) => {
+                tracing::error!(%error, "cannot listen for SIGTERM");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    tokio::select! {
+        () = interrupt => {}
+        () = terminate => {}
+    }
+    tracing::info!("shutting down");
+}
+
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     // Reads SENTRY_DSN; reporting is disabled without it.
@@ -73,7 +100,10 @@ async fn main() -> std::process::ExitCode {
         }
     };
     tracing::info!(%listen, methods = ?state.registry.names(), "listening");
-    if let Err(error) = axum::serve(listener, phab_server::router(state)).await {
+    if let Err(error) = axum::serve(listener, phab_server::router(state))
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+    {
         tracing::error!(%error, "server stopped");
         return std::process::ExitCode::FAILURE;
     }
