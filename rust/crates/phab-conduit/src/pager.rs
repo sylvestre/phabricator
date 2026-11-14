@@ -162,6 +162,11 @@ pub trait PolicyAwareQuery {
     /// The row's ID, which cursors name.
     fn id(row: &Self::Row) -> u64;
 
+    /// Whether a cursor naming a row the viewer can't see raises PHP's
+    /// policy exception (the policy filter rejects it) rather than the
+    /// "does not identify a valid object" one (the query drops it first).
+    const CURSOR_RAISES_POLICY_EXCEPTIONS: bool = false;
+
     /// Up to `limit` rows after the row with ID `after`, going in
     /// `direction` (`ids` instead: the rows with these IDs).
     fn load(
@@ -177,6 +182,16 @@ pub trait PolicyAwareQuery {
         &self,
         rows: Vec<Self::Row>,
     ) -> impl Future<Output = Result<Vec<Self::Row>, MethodError>> + Send;
+
+    /// [`Self::filter()`] for the row a cursor names, which PHP loads with
+    /// a query of its own: a query whose filter keeps state between pages
+    /// must not keep it from this one.
+    fn filter_cursor(
+        &self,
+        rows: Vec<Self::Row>,
+    ) -> impl Future<Output = Result<Vec<Self::Row>, MethodError>> + Send {
+        self.filter(rows)
+    }
 }
 
 /// `ERR-CONDUIT-CORE` with `message`, as an uncaught exception gives.
@@ -217,7 +232,13 @@ pub async fn execute<Q: PolicyAwareQuery + Sync>(
         let rows = query
             .load(Some(&[id]), None, Direction::Forward, None)
             .await?;
-        if query.filter(rows).await?.is_empty() {
+        let exists = !rows.is_empty();
+        if query.filter_cursor(rows).await?.is_empty() {
+            // PHP raises the policy exception, whose message explains the
+            // object's policy.
+            if exists && Q::CURSOR_RAISES_POLICY_EXCEPTIONS {
+                return Err(MethodError::Unsupported("a cursor the viewer can't see"));
+            }
             return Err(core_error(format!(
                 "Cursor \"{}\" does not identify a valid object in query \"{}\".",
                 cursor.text,
