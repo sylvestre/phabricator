@@ -173,6 +173,7 @@ pub const CONTRACT: &[TableContract] = &[
             "status",
             "summary",
             "testPlan",
+            "properties",
             "dateCreated",
             "dateModified",
             "activeDiffPHID",

@@ -1536,6 +1536,7 @@ dependencies = [
 name = "phab-app-differential"
 version = "0.1.0"
 dependencies = [
+ "phab-conduit",
  "phab-core",
  "phab-db",
  "phab-policy",
@@ -1713,6 +1714,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "phab-app-conduit",
+ "phab-app-differential",
  "phab-app-feed",
  "phab-app-people",
  "phab-auth",
