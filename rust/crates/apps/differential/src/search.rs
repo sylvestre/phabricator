@@ -25,7 +25,6 @@ pub const APPLICATION: Application = Application {
 };
 
 const QUERY_CLASS: &str = "DifferentialRevisionQuery";
-const DEFAULT_LIMIT: usize = 100;
 
 /// The constraint keys of the engine's search fields, as PHP lists them.
 const VALID_CONSTRAINTS: &[&str] = &[
@@ -988,11 +987,10 @@ impl Method for RevisionSearch {
             check_unported(request)?;
             let requested = requested_attachments(request.value("attachments"))?;
             let constraints = Constraints::parse(request.value("constraints"))?;
-            let paging = Paging::parse(
+            let paging = Paging::for_search(
                 request.value("limit"),
                 request.value("after"),
                 request.value("before"),
-                DEFAULT_LIMIT,
             )?;
             let (start, direction) = paging.start();
             let query = Revisions {

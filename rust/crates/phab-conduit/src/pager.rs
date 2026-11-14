@@ -49,6 +49,41 @@ impl PageSize {
     }
 }
 
+impl PageSize {
+    /// The `limit` of a search method
+    /// (`PhabricatorApplicationSearchEngine::setPagerLimitForConduit()`):
+    /// 100 by default, between 1 and 100.
+    pub fn for_search(limit: Option<&Value>) -> Result<Self, MethodError> {
+        let Some(limit) = limit.filter(|limit| !limit.is_null()) else {
+            return Ok(Self {
+                shown: 100.into(),
+                value: 100,
+            });
+        };
+        let (value, text) = match limit {
+            Value::Number(number) if !number.is_f64() => (number.as_i64(), number.to_string()),
+            Value::String(text) if is_integer(text) => (text.parse().ok(), text.clone()),
+            _ => (None, String::new()),
+        };
+        let value = value.ok_or(MethodError::Unsupported("an unusual limit"))?;
+        if value > 100 {
+            return Err(core_error(format!(
+                "Maximum page size for Conduit API method calls is 100, but this call \
+                 specified {text}."
+            )));
+        }
+        if value < 1 {
+            return Err(core_error(format!(
+                "Minimum page size for API searches is 1, but this call specified {text}."
+            )));
+        }
+        Ok(Self {
+            shown: limit.clone(),
+            value: usize::try_from(value).map_err(|_| MethodError::Unsupported("a huge limit"))?,
+        })
+    }
+}
+
 /// An optional `-` followed by digits, which PHP compares as an integer.
 fn is_integer(text: &str) -> bool {
     let digits = text.strip_prefix('-').unwrap_or(text);
@@ -116,6 +151,19 @@ pub struct Paging {
 }
 
 impl Paging {
+    /// Reads the parameters of a search method's request.
+    pub fn for_search(
+        limit: Option<&Value>,
+        after: Option<&Value>,
+        before: Option<&Value>,
+    ) -> Result<Self, MethodError> {
+        Ok(Self {
+            size: PageSize::for_search(limit)?,
+            after: Cursor::parse(after)?,
+            before: Cursor::parse(before)?,
+        })
+    }
+
     /// Reads the parameters of a request.
     pub fn parse(
         limit: Option<&Value>,
@@ -367,6 +415,50 @@ mod tests {
     fn leaves_unusual_limits_to_php(#[case] limit: Value) {
         assert!(matches!(
             PageSize::parse(Some(&limit), 100),
+            Err(MethodError::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn search_limits_like_php() {
+        let limit = |value: Value| PageSize::for_search(Some(&value));
+        assert_eq!(
+            PageSize::for_search(None),
+            Ok(PageSize {
+                shown: json!(100),
+                value: 100
+            })
+        );
+        assert_eq!(
+            limit(json!(null)),
+            Ok(PageSize {
+                shown: json!(100),
+                value: 100
+            })
+        );
+        assert_eq!(
+            limit(json!("7")),
+            Ok(PageSize {
+                shown: json!("7"),
+                value: 7
+            })
+        );
+        assert_eq!(
+            limit(json!(101)),
+            Err(core_error(
+                "Maximum page size for Conduit API method calls is 100, but this call specified \
+                 101."
+                    .to_owned()
+            ))
+        );
+        assert_eq!(
+            limit(json!("0")),
+            Err(core_error(
+                "Minimum page size for API searches is 1, but this call specified 0.".to_owned()
+            ))
+        );
+        assert!(matches!(
+            limit(json!(1.5)),
             Err(MethodError::Unsupported(_))
         ));
     }
