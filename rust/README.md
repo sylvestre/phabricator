@@ -118,5 +118,7 @@ The service reads the same configuration as PHP: `PHAB_CONFIG_DIR`
 (default `/app/phabricator/conf/local`) for `local.json`, then the
 `config_entry` table. `PHAB_LISTEN` sets the address (default
 `0.0.0.0:8080`), `SENTRY_DSN` enables error reporting, `RUST_LOG` the log
-level and `PHAB_DIFF_COMMAND` the `diff` used to realign changesets (the
-image uses `busybox diff`, like PHP's). `GET /status` reports the database state and the ported methods.
+level, `PHAB_DIFF_COMMAND` the `diff` used to realign changesets (the
+image uses `busybox diff`, like PHP's) and `PHAB_PHP_URL` where PHP answers,
+for shadow mode and the forms of the Rust pages. `GET /status` reports the
+database state and the ported methods.
