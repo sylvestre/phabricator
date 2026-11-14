@@ -133,16 +133,22 @@ pub(crate) async fn entries<S: WebState>(
         .await
         .map_err(|error| PageError::Internal(Box::new(error)))?;
 
+    let texts: Vec<&str> = shown
+        .iter()
+        .filter_map(|(_, _, _, comment)| comment.as_ref())
+        .map(|comment| comment.content.as_str())
+        .filter(|content| !content.is_empty())
+        .collect();
+    let mut rendered = remarkup::render_all(state, viewer, &texts, Mode::Html)
+        .await?
+        .into_iter();
+
     let mut entries = Vec::new();
     for (_, date, title, comment) in shown {
-        let comment_html = match comment.filter(|comment| !comment.content.is_empty()) {
-            Some(comment) => {
-                let rendered =
-                    remarkup::render(state, viewer, &comment.content, Mode::Html).await?;
-                Some(String::from_utf8_lossy(rendered.as_bytes()).into_owned())
-            }
-            None => None,
-        };
+        let comment_html = comment
+            .filter(|comment| !comment.content.is_empty())
+            .and_then(|_| rendered.next())
+            .map(|markup| String::from_utf8_lossy(markup.as_bytes()).into_owned());
         entries.push(Entry {
             title_html: title.map_or_else(
                 || {

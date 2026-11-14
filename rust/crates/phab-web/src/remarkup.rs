@@ -50,10 +50,29 @@ pub async fn render<S: WebState>(
     text: &str,
     mode: Mode,
 ) -> Result<Markup, PageError> {
+    let mut rendered = render_all(state, viewer, &[text], mode).await?;
+    Ok(rendered.pop().expect("one text gives one rendering"))
+}
+
+/// Renders each of `texts` for `viewer`, resolving the references of all
+/// of them together: a page of comments costs the same few queries as one
+/// comment (`PhabricatorMarkupEngine::process()` with several objects).
+pub async fn render_all<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    texts: &[&str],
+    mode: Mode,
+) -> Result<Vec<Markup>, PageError> {
     let engine = state.remarkup();
-    let prepared = engine.prepare(text.as_bytes(), mode);
+    let prepared: Vec<Prepared<'_>> = texts
+        .iter()
+        .map(|text| engine.prepare(text.as_bytes(), mode))
+        .collect();
     let resolved = resolve(state, viewer, &prepared).await?;
-    Ok(engine.finish(prepared, resolved).output)
+    Ok(prepared
+        .into_iter()
+        .map(|prepared| engine.finish(prepared, resolved.clone()).output)
+        .collect())
 }
 
 /// Resolves `#hashtag` references: hashtags match without case, like
@@ -61,13 +80,13 @@ pub async fn render<S: WebState>(
 async fn resolve_projects<S: WebState>(
     state: &S,
     viewer: &Viewer,
-    prepared: &Prepared<'_>,
+    references: &[(&'static str, Vec<u8>)],
     resolved: &mut Resolved,
 ) -> Result<(), PageError> {
-    let written: Vec<(Vec<u8>, String)> = prepared
-        .object_references()
-        .into_iter()
-        .filter(|(prefix, _)| *prefix == "#")
+    let written: Vec<(Vec<u8>, String)> = references
+        .iter()
+        .filter(|&(prefix, _)| *prefix == "#")
+        .cloned()
         .filter_map(|(_, id)| {
             let slug = String::from_utf8(id.clone()).ok()?.to_lowercase();
             Some((id, slug))
@@ -121,14 +140,20 @@ async fn resolve_projects<S: WebState>(
 async fn resolve<S: WebState>(
     state: &S,
     viewer: &Viewer,
-    prepared: &Prepared<'_>,
+    prepared: &[Prepared<'_>],
 ) -> Result<Resolved, PageError> {
     let mut resolved = Resolved::default();
+    let mut references: Vec<(&'static str, Vec<u8>)> = prepared
+        .iter()
+        .flat_map(Prepared::object_references)
+        .collect();
+    references.sort();
+    references.dedup();
 
-    let ids: Vec<(Vec<u8>, i64)> = prepared
-        .object_references()
-        .into_iter()
-        .filter(|(prefix, _)| *prefix == "D")
+    let ids: Vec<(Vec<u8>, i64)> = references
+        .iter()
+        .filter(|&(prefix, _)| *prefix == "D")
+        .cloned()
         .filter_map(|(_, id)| {
             let number = std::str::from_utf8(&id).ok()?.parse().ok()?;
             Some((id, number))
@@ -168,14 +193,16 @@ async fn resolve<S: WebState>(
         }
     }
 
-    resolve_projects(state, viewer, prepared, &mut resolved).await?;
+    resolve_projects(state, viewer, &references, &mut resolved).await?;
 
     // Users are visible to everyone who can log in.
-    let usernames: Vec<String> = prepared
-        .mentioned_usernames()
-        .into_iter()
+    let mut usernames: Vec<String> = prepared
+        .iter()
+        .flat_map(Prepared::mentioned_usernames)
         .filter_map(|name| String::from_utf8(name).ok())
         .collect();
+    usernames.sort();
+    usernames.dedup();
     let names: Vec<&str> = usernames.iter().map(String::as_str).collect();
     for user in phab_auth::user::load_users_by_username(state.database(), &names).await? {
         resolved.users.insert(

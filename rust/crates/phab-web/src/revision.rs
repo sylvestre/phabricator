@@ -385,9 +385,14 @@ async fn inlines<S: WebState>(
         .map(|comment| comment.author_phid.clone())
         .collect();
     let users = phab_auth::user::load_users_by_phid(database, &authors).await?;
+    let texts: Vec<&str> = comments
+        .iter()
+        .map(|comment| comment.content.as_str())
+        .collect();
+    let bodies = remarkup::render_all(state, viewer, &texts, Mode::Html).await?;
     let mut by_changeset: std::collections::HashMap<i64, Vec<diff_html::Inline>> =
         std::collections::HashMap::new();
-    for comment in comments {
+    for (comment, body) in comments.iter().zip(bodies) {
         let author = users
             .iter()
             .find(|user| user.phid == comment.author_phid)
@@ -400,7 +405,6 @@ async fn inlines<S: WebState>(
                     )
                 },
             );
-        let body = remarkup::render(state, viewer, &comment.content, Mode::Html).await?;
         by_changeset
             .entry(comment.changeset_id)
             .or_default()

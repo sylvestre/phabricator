@@ -119,5 +119,30 @@ async fn references_resolve_under_policy() {
             .contains(r#"title="D2: Secret""#)
     );
 
+    // Several texts resolve together, each keeping its own references.
+    let rendered = phab_web::remarkup::render_all(
+        &state,
+        &as_alice,
+        &["See D1.", "", "Ask @bob about #team.", "D2"],
+        Mode::Html,
+    )
+    .await
+    .unwrap();
+    let rendered: Vec<String> = rendered
+        .into_iter()
+        .map(|markup| String::from_utf8(markup.into_bytes()).unwrap())
+        .collect();
+    assert_eq!(rendered.len(), 4);
+    assert!(rendered[0].contains(r#"<a href="/D1""#), "{}", rendered[0]);
+    assert!(!rendered[0].contains("@Bob"), "{}", rendered[0]);
+    assert_eq!(rendered[1], "");
+    assert!(
+        rendered[2].contains(r#"data-phid="PHID-USER-bob">@Bob</a>"#),
+        "{}",
+        rendered[2]
+    );
+    assert!(!rendered[2].contains("/D1"), "{}", rendered[2]);
+    assert_eq!(rendered[3], "<p>D2</p>");
+
     test_db.drop_databases().await;
 }
