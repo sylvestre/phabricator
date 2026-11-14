@@ -156,6 +156,58 @@ impl Constraints {
     }
 }
 
+impl Constraints {
+    /// The `WHERE` conditions of the constraints (`buildWhereClauseParts()`),
+    /// and the values they bind.
+    fn add_conditions(&self, conditions: &mut Vec<String>, binds: &mut Vec<Value>) {
+        let mut in_list = |column: &str, values: Vec<Value>| {
+            conditions.push(format!(
+                "{column} IN ({})",
+                phab_db::placeholders(values.len())
+            ));
+            binds.extend(values);
+        };
+        if let Some(ids) = &self.ids {
+            in_list("id", ids.iter().map(|id| json!(id)).collect());
+        }
+        if let Some(phids) = &self.phids {
+            in_list("phid", phids.iter().map(|phid| json!(phid)).collect());
+        }
+        if let Some(authors) = &self.authors {
+            in_list(
+                "authorPHID",
+                authors.iter().map(|phid| json!(phid)).collect(),
+            );
+        }
+        if let Some(repositories) = &self.repositories {
+            in_list(
+                "repositoryPHID",
+                repositories.iter().map(|phid| json!(phid)).collect(),
+            );
+        }
+        if let Some(statuses) = &self.statuses {
+            in_list(
+                "status",
+                statuses.iter().map(|status| json!(status)).collect(),
+            );
+        }
+        // withCreatedEpochBetween() and withUpdatedEpochBetween().
+        for (column, (start, end)) in [
+            ("dateCreated", self.created),
+            ("dateModified", self.modified),
+        ] {
+            if let Some(start) = start {
+                conditions.push(format!("{column} >= ?"));
+                binds.push(json!(start));
+            }
+            if let Some(end) = end {
+                conditions.push(format!("{column} <= ?"));
+                binds.push(json!(end));
+            }
+        }
+    }
+}
+
 /// The value of a list constraint (`ConduitListParameterType`), with
 /// PHP's errors for what is not a nonempty list.
 fn nonempty_list<'v>(key: &str, value: &'v Value) -> Result<&'v Vec<Value>, MethodError> {
@@ -226,12 +278,54 @@ fn check_unported(request: &ApiRequest<'_>) -> Result<(), MethodError> {
         Some(Value::String(key)) if key.is_empty() => {}
         Some(_) => return Err(MethodError::Unsupported("saved revision queries")),
     }
-    match request.value("order") {
-        None | Some(Value::Null) => {}
-        Some(Value::String(order)) if order == "newest" => {}
-        Some(_) => return Err(MethodError::Unsupported("revision search orders")),
-    }
     Ok(())
+}
+
+/// The builtin orders of `DifferentialRevisionQuery`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Order {
+    /// By decreasing id.
+    Newest,
+    /// By increasing id.
+    Oldest,
+    /// By decreasing `dateModified`, then id.
+    Updated,
+    /// By increasing `dateModified`, then id.
+    Outdated,
+}
+
+impl Order {
+    /// The `order` parameter, by key or alias. Order vectors and the
+    /// fulltext `relevance` are left to PHP.
+    fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
+        let key = match value {
+            None | Some(Value::Null) => return Ok(Self::Newest),
+            Some(Value::String(key)) => key.as_str(),
+            Some(_) => return Err(MethodError::Unsupported("order vectors")),
+        };
+        match key {
+            "newest" | "created" | "order-created" => Ok(Self::Newest),
+            "oldest" => Ok(Self::Oldest),
+            "updated" | "order-modified" => Ok(Self::Updated),
+            "outdated" => Ok(Self::Outdated),
+            "relevance" => Err(MethodError::Unsupported("the relevance order")),
+            other => Err(pager::core_error(format!(
+                "Query \"{QUERY_CLASS}\" does not support a builtin order \"{other}\". \
+                 Supported orders are: newest, created, order-created, oldest, relevance, \
+                 updated, order-modified, outdated."
+            ))),
+        }
+    }
+
+    /// Whether the order goes by `dateModified` first.
+    fn by_date(self) -> bool {
+        matches!(self, Self::Updated | Self::Outdated)
+    }
+
+    /// Whether going forward means decreasing values.
+    fn descending(self) -> bool {
+        matches!(self, Self::Newest | Self::Updated)
+    }
 }
 
 /// The attachments asked for, in the order of the request:
@@ -427,13 +521,31 @@ impl AttachmentData {
     }
 }
 
-/// `DifferentialRevisionQuery` with the ported constraints, newest first.
+/// `DifferentialRevisionQuery` with the ported constraints and orders.
 struct Revisions<'a> {
     request: &'a ApiRequest<'a>,
     constraints: Constraints,
+    order: Order,
     /// What the policy filter keeps between pages; the cursor's own query
     /// has a filter of its own.
     memory: std::sync::Mutex<phab_policy::QueryMemory>,
+}
+
+impl Revisions<'_> {
+    /// The `dateModified` of a revision the query paged past.
+    async fn date_modified(&self, id: u64) -> Result<i64, MethodError> {
+        let database = &self.request.context.database;
+        let sql = format!(
+            "SELECT dateModified FROM {} WHERE id = ?",
+            database.table("differential", "differential_revision")
+        );
+        let row = phab_db::sqlx::query(&sql)
+            .bind(id)
+            .fetch_optional(database.pool())
+            .await?
+            .ok_or_else(|| MethodError::internal("the cursor's revision vanished"))?;
+        Ok(rows::int(&row, "dateModified")?)
+    }
 }
 
 impl PolicyAwareQuery for Revisions<'_> {
@@ -465,62 +577,30 @@ impl PolicyAwareQuery for Revisions<'_> {
         } else {
             self.constraints.clone()
         };
-        let mut in_list = |column: &str, values: Vec<Value>| {
-            conditions.push(format!(
-                "{column} IN ({})",
-                phab_db::placeholders(values.len())
-            ));
-            binds.extend(values);
-        };
         if let Some(ids) = ids {
-            in_list("id", ids.iter().map(|id| json!(id)).collect());
+            conditions.push(format!("id IN ({})", phab_db::placeholders(ids.len())));
+            binds.extend(ids.iter().map(|id| json!(id)));
         }
-        if let Some(ids) = &constraints.ids {
-            in_list("id", ids.iter().map(|id| json!(id)).collect());
-        }
-        if let Some(phids) = &constraints.phids {
-            in_list("phid", phids.iter().map(|phid| json!(phid)).collect());
-        }
-        if let Some(authors) = &constraints.authors {
-            in_list(
-                "authorPHID",
-                authors.iter().map(|phid| json!(phid)).collect(),
-            );
-        }
-        if let Some(repositories) = &constraints.repositories {
-            in_list(
-                "repositoryPHID",
-                repositories.iter().map(|phid| json!(phid)).collect(),
-            );
-        }
-        if let Some(statuses) = &constraints.statuses {
-            in_list(
-                "status",
-                statuses.iter().map(|status| json!(status)).collect(),
-            );
-        }
-        // withCreatedEpochBetween() and withUpdatedEpochBetween().
-        for (column, (start, end)) in [
-            ("dateCreated", constraints.created),
-            ("dateModified", constraints.modified),
-        ] {
-            if let Some(start) = start {
-                conditions.push(format!("{column} >= ?"));
-                binds.push(json!(start));
-            }
-            if let Some(end) = end {
-                conditions.push(format!("{column} <= ?"));
-                binds.push(json!(end));
-            }
-        }
-        // "newest": by decreasing id.
-        let (comparison, order) = match direction {
-            Direction::Forward => ("<", "DESC"),
-            Direction::Backward => (">", "ASC"),
+        constraints.add_conditions(&mut conditions, &mut binds);
+        // Paging backwards reverses the order and the comparisons.
+        let descending = self.order.descending() == (direction == Direction::Forward);
+        let (comparison, order) = if descending {
+            ("<", "DESC")
+        } else {
+            (">", "ASC")
         };
         if let Some(after) = after {
-            conditions.push(format!("id {comparison} ?"));
-            binds.push(json!(after));
+            if self.order.by_date() {
+                // The paging map of the row after which the page starts.
+                let date = self.date_modified(after).await?;
+                conditions.push(format!(
+                    "(dateModified {comparison} ? OR (dateModified = ? AND id {comparison} ?))"
+                ));
+                binds.extend([json!(date), json!(date), json!(after)]);
+            } else {
+                conditions.push(format!("id {comparison} ?"));
+                binds.push(json!(after));
+            }
         }
         let mut sql = format!(
             "SELECT id FROM {}",
@@ -530,7 +610,11 @@ impl PolicyAwareQuery for Revisions<'_> {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
         }
-        let _ = write!(sql, " ORDER BY id {order}");
+        if self.order.by_date() {
+            let _ = write!(sql, " ORDER BY dateModified {order}, id {order}");
+        } else {
+            let _ = write!(sql, " ORDER BY id {order}");
+        }
         if let Some(limit) = limit {
             let _ = write!(sql, " LIMIT {limit}");
         }
@@ -984,9 +1068,11 @@ impl Method for RevisionSearch {
 
     fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
         Box::pin(async move {
+            // In the order buildConduitResponse() reads them.
             check_unported(request)?;
-            let requested = requested_attachments(request.value("attachments"))?;
             let constraints = Constraints::parse(request.value("constraints"))?;
+            let requested = requested_attachments(request.value("attachments"))?;
+            let order = Order::parse(request.value("order"))?;
             let paging = Paging::for_search(
                 request.value("limit"),
                 request.value("after"),
@@ -996,6 +1082,7 @@ impl Method for RevisionSearch {
             let query = Revisions {
                 request,
                 constraints,
+                order,
                 memory: std::sync::Mutex::default(),
             };
             let found = pager::execute(&query, start, direction, paging.size.value + 1).await?;
@@ -1144,6 +1231,34 @@ mod tests {
                 "{constraints}"
             );
         }
+    }
+
+    #[test]
+    fn orders_follow_php() {
+        assert_eq!(Order::parse(None), Ok(Order::Newest));
+        assert_eq!(Order::parse(Some(&json!("created"))), Ok(Order::Newest));
+        assert_eq!(
+            Order::parse(Some(&json!("order-modified"))),
+            Ok(Order::Updated)
+        );
+        assert_eq!(Order::parse(Some(&json!("outdated"))), Ok(Order::Outdated));
+        assert_eq!(
+            Order::parse(Some(&json!(""))),
+            Err(pager::core_error(
+                "Query \"DifferentialRevisionQuery\" does not support a builtin order \"\". \
+                 Supported orders are: newest, created, order-created, oldest, relevance, \
+                 updated, order-modified, outdated."
+                    .to_owned()
+            ))
+        );
+        assert!(matches!(
+            Order::parse(Some(&json!(["id"]))),
+            Err(MethodError::Unsupported(_))
+        ));
+        assert!(matches!(
+            Order::parse(Some(&json!("relevance"))),
+            Err(MethodError::Unsupported(_))
+        ));
     }
 
     #[test]
