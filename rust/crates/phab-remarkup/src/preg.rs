@@ -7,10 +7,22 @@
 //!
 //! A match failing on PCRE2's limits counts as no match. PHP returns `null`
 //! there instead, which Remarkup callers mostly treat like an empty result.
+//! The limits are PHP's defaults (`pcre.backtrack_limit` and
+//! `pcre.recursion_limit`), so a pathological text gives up where PHP does
+//! instead of running ten times longer on PCRE2's own defaults.
 
 use std::sync::OnceLock;
 
 use pcre2::bytes::{CaptureLocations, Regex, RegexBuilder};
+
+/// `pcre.backtrack_limit` and `pcre.recursion_limit` as start-of-pattern
+/// options, the only way the `pcre2` crate lets a pattern lower them; they
+/// apply to JIT matching too.
+const PHP_LIMITS: &str = "(*LIMIT_MATCH=1000000)(*LIMIT_DEPTH=100000)";
+
+fn with_php_limits(source: &str) -> String {
+    format!("{PHP_LIMITS}{source}")
+}
 
 /// A pattern, compiled the first time it is used, so it can be a `static`.
 pub struct Pattern {
@@ -46,7 +58,7 @@ impl Pattern {
 pub fn compile(source: &str) -> Regex {
     RegexBuilder::new()
         .jit_if_available(true)
-        .build(source)
+        .build(&with_php_limits(source))
         .unwrap_or_else(|error| panic!("invalid pattern {source:?}: {error}"))
 }
 
@@ -61,7 +73,7 @@ pub fn compile_unicode(source: &str) -> Regex {
         .utf(true)
         .ucp(true)
         .jit_if_available(true)
-        .build(source)
+        .build(&with_php_limits(source))
         .unwrap_or_else(|error| panic!("invalid pattern {source:?}: {error}"))
 }
 
@@ -106,7 +118,9 @@ pub fn compile_php(regex: &[u8]) -> Option<Regex> {
             _ => return None,
         }
     }
-    builder.build(&format!("{prefix}{pattern}")).ok()
+    builder
+        .build(&with_php_limits(&format!("{prefix}{pattern}")))
+        .ok()
 }
 
 /// The groups of one match, as PHP's `$matches` sees them.
@@ -325,6 +339,26 @@ mod tests {
         assert_eq!(groups.get(1), b"");
         assert!(groups.is_set(2));
         assert!(!groups.is_set(3));
+    }
+
+    #[test]
+    fn matching_stops_at_php_limits() {
+        // The first branch backtracks about 2^n times before the second
+        // matches: within PCRE2's default limit of 10 million, beyond
+        // PHP's 1 million, where preg_match() fails.
+        let pattern = r"^(?:(a+)+x|a+)$";
+        let subject = |n: usize| vec![b'a'; n];
+        assert!(is_match(&Pattern::new(pattern), &subject(10)));
+        assert!(!is_match(&Pattern::new(pattern), &subject(22)));
+        let unlimited = RegexBuilder::new()
+            .jit_if_available(true)
+            .build(pattern)
+            .unwrap();
+        assert!(unlimited.is_match(&subject(22)).unwrap());
+        // PHP patterns get the limits too.
+        let php = compile_php(b"/^(Q|V)\\d$/iU").unwrap();
+        assert!(php.is_match(b"q1").unwrap());
+        assert!(php.as_str().starts_with(PHP_LIMITS));
     }
 
     #[rstest]
