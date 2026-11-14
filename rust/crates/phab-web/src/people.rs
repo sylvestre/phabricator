@@ -9,7 +9,7 @@ use phab_app_differential::storage::{self, Revision};
 use phab_app_people::profile;
 use phab_app_project as project;
 use phab_core::Phid;
-use phab_policy::Viewer;
+use phab_policy::{Viewer, application};
 use phab_remarkup::{Markup, Mode};
 
 use crate::error::PageError;
@@ -110,6 +110,9 @@ pub(crate) async fn show<S: WebState>(
     Path(username): Path<String>,
     uri: Uri,
 ) -> Result<Page<Profile>, PageError> {
+    viewer
+        .require_application(&*state, application::PEOPLE)
+        .await?;
     let database = state.database();
     let user = phab_auth::user::load_users_by_username(database, &[username.as_str()])
         .await?

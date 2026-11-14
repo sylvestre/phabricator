@@ -13,7 +13,7 @@ use phab_app_differential::storage as differential;
 use phab_app_project::{Project, policy, storage};
 use phab_core::{Phid, PhidType};
 use phab_db::edges;
-use phab_policy::Viewer;
+use phab_policy::{Viewer, application};
 use phab_remarkup::{Markup, Mode};
 
 use crate::error::PageError;
@@ -210,6 +210,9 @@ pub(crate) async fn by_slug<S: WebState>(
     Path(slug): Path<String>,
     uri: Uri,
 ) -> Result<Response, PageError> {
+    viewer
+        .require_application(&*state, application::PROJECT)
+        .await?;
     let lowered = slug.to_lowercase();
     let (_, project) = storage::load_by_slug(state.database(), std::slice::from_ref(&lowered))
         .await?
@@ -247,6 +250,9 @@ pub(crate) async fn by_id<S: WebState>(
     Path(id): Path<i64>,
     uri: Uri,
 ) -> Result<Page<ProjectPage>, PageError> {
+    viewer
+        .require_application(&*state, application::PROJECT)
+        .await?;
     let project = storage::load_by_id(state.database(), id)
         .await?
         .ok_or(PageError::NotFound)?;

@@ -7,6 +7,7 @@ use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use phab_policy::application;
 use serde_json::{Value, json};
 
 use crate::error::PageError;
@@ -62,6 +63,9 @@ pub(crate) async fn submit<S: WebState>(
     Path(monogram): Path<String>,
     Form(form): Form<ActionForm>,
 ) -> Result<Response, PageError> {
+    viewer
+        .require_application(&*state, application::DIFFERENTIAL)
+        .await?;
     let id = revision::parse_monogram(&monogram).ok_or(PageError::NotFound)?;
     if !viewer.is_valid_csrf_token(&form.csrf, state.now())? {
         return Err(PageError::BadRequest(

@@ -10,14 +10,19 @@ use axum::http::{HeaderMap, header};
 use phab_auth::csrf::{CsrfKey, CsrfSecret};
 use phab_auth::session::{self, SESSION_COOKIE, Session, SessionType};
 use phab_auth::{Outcome, User, Writes, csrf};
+use phab_core::PhidType;
+use phab_policy::loader::{self, NoExtendedObjects};
+use phab_policy::{ApplicationPolicies, Capability};
 
-use crate::error::PageError;
+use crate::error::{PageError, Roadblock};
 use crate::php::SessionToken;
 use crate::state::WebState;
 
-/// The viewer of a page: a logged-in, activated user with a full session.
-/// Everyone else goes to PHP, which shows them the login, approval or
-/// multi-factor pages; Rust has none of these yet (W7).
+/// The viewer of a page: a logged-in, activated user with a full session,
+/// enrolled in multi-factor authentication if the install requires it.
+/// Logged-out viewers and unfinished logins still go to PHP, which shows
+/// them the login, approval or verification pages; Rust has none of these
+/// yet (W7).
 #[derive(Debug, Clone)]
 pub struct WebUser {
     /// The user.
@@ -35,6 +40,49 @@ impl WebUser {
     /// The session cookie, to call PHP as the user.
     pub fn session_token(&self) -> &SessionToken {
         &self.session_token
+    }
+
+    /// The checks of `PhabricatorController::willBeginExecution()` which
+    /// depend on the page's application: it must be installed, and the
+    /// viewer must see it and, when Spaces exist, at least one of them.
+    pub async fn require_application<S: WebState>(
+        &self,
+        state: &S,
+        class: &'static str,
+    ) -> Result<(), PageError> {
+        let config = state.config();
+        let applications = ApplicationPolicies::from_config(config);
+        // PHP has no routes for an uninstalled application.
+        if !applications.is_installed(class) {
+            return Err(PageError::NotFound);
+        }
+        let viewer = self.user.viewer();
+        let subject = applications.subject(class, config.allow_public());
+        let facts = loader::load_facts(
+            state.database(),
+            config,
+            &viewer,
+            &[&subject],
+            &NoExtendedObjects,
+            state.now(),
+        )
+        .await
+        .map_err(|error| PageError::Internal(Box::new(error)))?;
+        let internal = |error: phab_policy::PolicyError| PageError::Internal(Box::new(error));
+
+        // `PhabricatorSpacesNoAccessController`.
+        if !facts.spaces.is_empty() {
+            let spaces: Vec<_> = facts.spaces.values().map(|space| &space.subject).collect();
+            let visible = phab_policy::filter(&viewer, &spaces, &[Capability::VIEW], &facts)
+                .map_err(internal)?;
+            if !visible.contains(&true) {
+                return Err(PageError::Roadblock(Roadblock::NoSpaces));
+            }
+        }
+        if !phab_policy::filter::can_see_application(&viewer, class, &facts).map_err(internal)? {
+            return Err(PageError::PolicyDenied);
+        }
+        Ok(())
     }
 
     /// `PhabricatorUser::validateCSRFToken()`.
@@ -95,6 +143,14 @@ impl<S: WebState> FromRequestParts<Arc<S>> for WebUser {
         }
         if !found.user.is_activated(config) {
             return Err(PageError::Fallback("the account is not activated"));
+        }
+        // `PhabricatorController::shouldRequireMultiFactorEnrollment()`.
+        if config.truthy("security.require-multi-factor-auth")
+            && found.user.phid.phid_type() == PhidType::USER
+            && !phab_auth::user::is_enrolled_in_multi_factor(state.database(), &found.user.phid)
+                .await?
+        {
+            return Err(PageError::Roadblock(Roadblock::NeedsMultiFactor));
         }
         let csrf_key = match csrf::load_key(state.database()).await? {
             Outcome::Done(key) => key,

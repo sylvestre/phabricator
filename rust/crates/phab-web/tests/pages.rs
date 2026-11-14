@@ -251,6 +251,163 @@ async fn other_viewers_go_to_php() {
     test_db.drop_databases().await;
 }
 
+fn config_with(entries: &[(&str, serde_json::Value)]) -> Config {
+    let mut config = Config::default();
+    config.push_layer(
+        "test",
+        entries
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), value.clone()))
+            .collect(),
+    );
+    config
+}
+
+#[tokio::test]
+async fn pages_need_their_application() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_project`.project (id, name, phid, authorPHID, dateCreated, \
+               dateModified, status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, \
+               hasWorkboard, hasMilestones, hasSubprojects, projectPath, projectDepth, \
+               projectPathKey, properties, subtype, primarySlug, parentProjectPHID, \
+               milestoneNumber) VALUES \
+             (1, 'Build', 'PHID-PROJ-build', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-cog', \
+               'blue', 'k', 0, 0, 0, 'a', 0, 'k001', '{}', 'default', 'build', NULL, NULL); \
+             INSERT INTO `{ns}_project`.project_slug (projectPHID, slug, dateCreated, \
+               dateModified) VALUES ('PHID-PROJ-build', 'build', 1, 1); \
+             INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, \
+               summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+               viewPolicy, editPolicy, properties, activeDiffPHID) VALUES \
+             (1, 'One', 'PHID-DREV-one', 'published', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', \
+               'users', 'users', '{}', '')",
+        )
+        .await;
+    let alice = Some("phsid=alice-token");
+    let paths = [
+        "/",
+        "/differential/",
+        "/D1",
+        "/tag/build/",
+        "/project/view/1/",
+    ];
+    for path in paths {
+        let response = get(&test_db, Config::default(), path, alice).await;
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+    }
+    let uninstalled = config_with(&[(
+        "phabricator.uninstalled-applications",
+        json!({
+            "PhabricatorHomeApplication": true,
+            "PhabricatorDifferentialApplication": true,
+            "PhabricatorProjectApplication": true,
+        }),
+    )]);
+    for path in paths {
+        let response = get(&test_db, uninstalled.clone(), path, alice).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    let response = send(
+        &test_db,
+        uninstalled,
+        None,
+        Request::post("/D1/action")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+        alice,
+        Body::from("__csrf__=x&action=comment"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // Installed, but only administrators may use it.
+    let admins_only = config_with(&[(
+        "phabricator.application-settings",
+        json!({"PHID-APPS-PhabricatorDifferentialApplication": {"policy": {"view": "admin"}}}),
+    )]);
+    let response = get(&test_db, admins_only.clone(), "/differential/", alice).await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    // People and Feed can't be uninstalled or restricted.
+    let response = get(&test_db, admins_only, "/p/alice/", alice).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn multi_factor_enrollment_is_required_when_configured() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    let alice = Some("phsid=alice-token");
+    let required = config_with(&[("security.require-multi-factor-auth", json!(true))]);
+    let response = get(&test_db, required.clone(), "/feed/", alice).await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let page = text(response).await;
+    assert!(page.contains("<h1>Add Multi-Factor Auth</h1>"), "{page}");
+    assert!(page.contains(r#"href="/auth/enroll/""#), "{page}");
+
+    // A factor of a disabled provider doesn't count.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_auth`.auth_factorprovider (phid, providerFactorKey, status, \
+               properties, dateCreated, dateModified, name) VALUES \
+             ('PHID-FPRV-off', 'totp', 'disabled', '{}', 1, 1, ''), \
+             ('PHID-FPRV-on', 'totp', 'active', '{}', 1, 1, ''); \
+             INSERT INTO `{ns}_auth`.auth_factorconfig (phid, userPHID, factorName, \
+               factorSecret, properties, dateCreated, dateModified, factorProviderPHID) VALUES \
+             ('PHID-AFTR-1', 'PHID-USER-alice', '', '', '{}', 1, 1, 'PHID-FPRV-off')",
+        )
+        .await;
+    let response = get(&test_db, required.clone(), "/feed/", alice).await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_auth`.auth_factorconfig (phid, userPHID, factorName, \
+               factorSecret, properties, dateCreated, dateModified, factorProviderPHID) VALUES \
+             ('PHID-AFTR-2', 'PHID-USER-alice', '', '', '{}', 1, 1, 'PHID-FPRV-on')",
+        )
+        .await;
+    let response = get(&test_db, required, "/feed/", alice).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn viewers_need_a_space_when_there_are_spaces() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    let alice = Some("phsid=alice-token");
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_spaces`.spaces_namespace (phid, namespaceName, viewPolicy, \
+               editPolicy, isDefaultNamespace, dateCreated, dateModified, description, \
+               isArchived) VALUES \
+             ('PHID-SPCE-staff', 'Staff', 'no-one', 'no-one', 1, 1, 1, '', 0)",
+        )
+        .await;
+    let response = get(&test_db, Config::default(), "/feed/", alice).await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let page = text(response).await;
+    assert!(page.contains("<h1>No Access to Spaces</h1>"), "{page}");
+    // Going home would only lead here again.
+    assert!(!page.contains("Return home"), "{page}");
+
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_spaces`.spaces_namespace (phid, namespaceName, viewPolicy, \
+               editPolicy, isDefaultNamespace, dateCreated, dateModified, description, \
+               isArchived) VALUES \
+             ('PHID-SPCE-all', 'Everyone', 'users', 'users', NULL, 1, 1, '', 0)",
+        )
+        .await;
+    let response = get(&test_db, Config::default(), "/feed/", alice).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    test_db.drop_databases().await;
+}
+
 #[tokio::test]
 async fn missing_csrf_key_goes_to_php() {
     let Some(test_db) = setup(false).await else {

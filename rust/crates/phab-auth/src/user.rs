@@ -119,6 +119,28 @@ pub async fn load_users_by_phid(database: &Database, phids: &[Phid]) -> Result<V
     rows.iter().map(User::from_row).collect()
 }
 
+/// `PhabricatorUser::updateMultiFactorEnrollment()`, without the write:
+/// whether the user has a factor whose provider is active or deprecated.
+/// PHP caches the answer in `isEnrolledInMultiFactor`; this reads the
+/// factors, so it is never stale.
+pub async fn is_enrolled_in_multi_factor(
+    database: &Database,
+    user: &Phid,
+) -> Result<bool, DbError> {
+    let sql = format!(
+        "SELECT 1 FROM {} config JOIN {} provider \
+         ON provider.phid = config.factorProviderPHID \
+         WHERE config.userPHID = ? AND provider.status IN ('active', 'deprecated') LIMIT 1",
+        database.table("auth", "auth_factorconfig"),
+        database.table("auth", "auth_factorprovider"),
+    );
+    Ok(phab_db::sqlx::query(&sql)
+        .bind(user.as_str())
+        .fetch_optional(database.pool())
+        .await?
+        .is_some())
+}
+
 /// Loads the users with these usernames, compared without case like
 /// MySQL's collation does; unknown names are skipped.
 pub async fn load_users_by_username(

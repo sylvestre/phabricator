@@ -35,6 +35,17 @@ const PERMANENT_APPLICATIONS: &[&str] = &[
 
 const PROTOTYPE_APPLICATIONS: &[&str] = &["PhabricatorCalendarApplication"];
 
+/// `PhabricatorDifferentialApplication`.
+pub const DIFFERENTIAL: &str = "PhabricatorDifferentialApplication";
+/// `PhabricatorFeedApplication`.
+pub const FEED: &str = "PhabricatorFeedApplication";
+/// `PhabricatorHomeApplication`.
+pub const HOME: &str = "PhabricatorHomeApplication";
+/// `PhabricatorPeopleApplication`.
+pub const PEOPLE: &str = "PhabricatorPeopleApplication";
+/// `PhabricatorProjectApplication`.
+pub const PROJECT: &str = "PhabricatorProjectApplication";
+
 /// `PhabricatorPHIDType::getPHIDTypeApplicationClass()` for the PHID types
 /// the Rust services handle.
 pub fn application_for_phid_type(phid_type: PhidType) -> Option<&'static str> {

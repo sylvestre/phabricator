@@ -31,10 +31,24 @@ pub enum PageError {
     PolicyDenied,
     /// The request is wrong; the message says how.
     BadRequest(&'static str),
+    /// The viewer must do something before using any page.
+    Roadblock(Roadblock),
     /// PHP refused a write; its message is meant for the user.
     Conduit(crate::php::ConduitError),
     /// Something failed; the details are logged, not shown.
     Internal(Box<dyn std::error::Error + Send + Sync>),
+}
+
+/// What the viewer must do before using any page, as the controllers
+/// `PhabricatorController::willBeginExecution()` delegates to say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Roadblock {
+    /// `PhabricatorAuthNeedsMultiFactorController`: the install requires
+    /// multi-factor authentication and the viewer has no factor.
+    NeedsMultiFactor,
+    /// `PhabricatorSpacesNoAccessController`: Spaces exist, and the viewer
+    /// can see none of them.
+    NoSpaces,
 }
 
 impl From<phab_auth::AuthError> for PageError {
@@ -55,10 +69,13 @@ struct ErrorPage {
     shell: Shell,
     heading: &'static str,
     message: String,
+    /// Where to go from here, and the link's label.
+    action: Option<(&'static str, &'static str)>,
 }
 
 impl IntoResponse for PageError {
     fn into_response(self) -> Response {
+        let mut action = Some(("/", "Return home"));
         let (status, heading, message) = match self {
             Self::Fallback(reason) => return fallback_response(reason),
             Self::NotFound => (
@@ -71,6 +88,26 @@ impl IntoResponse for PageError {
                 "Access Denied",
                 "You do not have permission to view this object.".to_owned(),
             ),
+            Self::Roadblock(Roadblock::NeedsMultiFactor) => {
+                action = Some(("/auth/enroll/", "Add Multi-Factor Auth"));
+                (
+                    StatusCode::FORBIDDEN,
+                    "Add Multi-Factor Auth",
+                    "Before you can use Phabricator, you need to add multi-factor \
+                     authentication to your account."
+                        .to_owned(),
+                )
+            }
+            Self::Roadblock(Roadblock::NoSpaces) => {
+                action = None;
+                (
+                    StatusCode::FORBIDDEN,
+                    "No Access to Spaces",
+                    "This install uses spaces to organize objects, but your account does \
+                 not have access to any spaces. Ask someone to add you to a space."
+                        .to_owned(),
+                )
+            }
             Self::BadRequest(message) => {
                 (StatusCode::BAD_REQUEST, "Bad Request", message.to_owned())
             }
@@ -110,6 +147,7 @@ impl IntoResponse for PageError {
             shell: Shell::bare(heading),
             heading,
             message,
+            action,
         };
         response::render(status, &page)
     }

@@ -11,7 +11,7 @@ use phab_app_differential::storage::{self, Revision};
 use phab_app_project as project;
 use phab_core::{Config, Phid, PhidType};
 use phab_db::edges;
-use phab_policy::Viewer;
+use phab_policy::{Viewer, application};
 use phab_remarkup::{Markup, Mode};
 
 use crate::error::PageError;
@@ -540,6 +540,9 @@ pub(crate) async fn show<S: WebState>(
     Path(monogram): Path<String>,
     uri: Uri,
 ) -> Result<Page<RevisionPage>, PageError> {
+    viewer
+        .require_application(&*state, application::DIFFERENTIAL)
+        .await?;
     let id = parse_monogram(&monogram).ok_or(PageError::NotFound)?;
     let database = state.database();
     let as_viewer = viewer.user.viewer();

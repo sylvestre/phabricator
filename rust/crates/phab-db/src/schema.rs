@@ -264,6 +264,16 @@ pub const CONTRACT: &[TableContract] = &[
     },
     TableContract {
         database: "auth",
+        table: "auth_factorconfig",
+        columns: &["userPHID", "factorProviderPHID"],
+    },
+    TableContract {
+        database: "auth",
+        table: "auth_factorprovider",
+        columns: &["phid", "status"],
+    },
+    TableContract {
+        database: "auth",
         table: "auth_providerconfig",
         columns: &["phid", "providerClass"],
     },

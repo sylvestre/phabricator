@@ -12,6 +12,7 @@ use phab_app_differential::buckets::{self, Bucket};
 use phab_app_differential::storage::{self, Revision};
 use phab_app_project as project;
 use phab_core::Phid;
+use phab_policy::application;
 
 use crate::error::PageError;
 use crate::response::Page;
@@ -118,6 +119,16 @@ pub(crate) async fn show<S: WebState>(
     Query(params): Query<Params>,
     uri: Uri,
 ) -> Result<Page<QueuePage>, PageError> {
+    viewer
+        .require_application(
+            &*state,
+            if uri.path() == "/" {
+                application::HOME
+            } else {
+                application::DIFFERENTIAL
+            },
+        )
+        .await?;
     let bucket = params
         .bucket
         .as_deref()

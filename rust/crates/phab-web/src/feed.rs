@@ -12,7 +12,7 @@ use phab_app_feed::handles::Handle;
 use phab_app_feed::listing::{self, Cursor, Listing, Query};
 use phab_app_feed::story::StoryError;
 use phab_core::Phid;
-use phab_policy::Viewer;
+use phab_policy::{Viewer, application};
 
 use crate::error::PageError;
 use crate::response::Page;
@@ -175,6 +175,9 @@ pub(crate) async fn show<S: WebState>(
     RawQuery(query): RawQuery,
     uri: Uri,
 ) -> Result<Page<Feed>, PageError> {
+    viewer
+        .require_application(&*state, application::FEED)
+        .await?;
     let parameters = parameters(query.as_deref());
     let listing = load(
         state.as_ref(),
