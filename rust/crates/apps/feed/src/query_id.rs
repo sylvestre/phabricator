@@ -243,7 +243,8 @@ async fn execute(
         after = Some(id);
     }
 
-    let overheat_limit = need * 10;
+    // PHP's integer overflows to a float there, which is no limit either.
+    let overheat_limit = need.saturating_mul(10);
     let mut total_seen = 0;
     let mut results = Vec::new();
     'pages: loop {

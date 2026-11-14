@@ -414,6 +414,14 @@ async fn overheats_like_php() {
         ids(&context, "limit=3").await,
         (vec![], json!({"limit": "3", "after": null, "before": null}))
     );
+    // A huge limit has no overheat limit, as PHP's overflows to a float.
+    assert_eq!(
+        ids(&context, "limit=9223372036854775807").await,
+        (
+            vec![],
+            json!({"limit": "9223372036854775807", "after": null, "before": null})
+        )
+    );
 
     test_db.drop_databases().await;
 }
