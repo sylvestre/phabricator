@@ -680,6 +680,28 @@ async fn revisions_show_their_header_text_and_diff() {
         page.contains("int y = <span class=\"bright\">2</span>;"),
         "{page}"
     );
+    // D3 is secure, and D6, open and public, depends on it.
+    assert!(page.contains("This is a secure revision."), "{page}");
+    assert!(
+        page.contains("A public revision is depending on this secure revision."),
+        "{page}"
+    );
+    // Inline comments: the published one Alice may see, not the one she
+    // may not, nor a draft.
+    assert!(page.contains("Why <strong>2</strong>?"), "{page}");
+    assert!(!page.contains("Hidden inline"), "{page}");
+    assert!(!page.contains("Draft inline"), "{page}");
+
+    // D6 is public, so no warning there.
+    let response = get(
+        &test_db,
+        Config::default(),
+        "/D6",
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(!text(response).await.contains("secure revision"));
 
     for (path, status) in [
         ("/D5", StatusCode::FORBIDDEN),

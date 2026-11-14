@@ -322,12 +322,25 @@ async fn warnings<S: WebState>(
         storage::visible_revisions(database, state.config(), viewer, reachable, state.now())
             .await
             .map_err(|error| PageError::Internal(Box::new(error)))?;
-    let mut public = 0;
-    for child in reachable.iter().filter(|child| !child.is_closed()) {
-        if !is_private(database, &child.phid, &secure).await? {
-            public += 1;
-        }
-    }
+    let open: Vec<Phid> = reachable
+        .iter()
+        .filter(|child| !child.is_closed())
+        .map(|child| child.phid.clone())
+        .collect();
+    let private: std::collections::HashSet<Phid> = edges::load_edges(
+        database,
+        &open,
+        &[edges::OBJECT_HAS_PROJECT],
+        Some(std::slice::from_ref(&secure)),
+    )
+    .await?
+    .into_iter()
+    .map(|edge| edge.src)
+    .collect();
+    let public = open
+        .iter()
+        .filter(|&child| !private.contains(child))
+        .count();
     if public > 0 {
         let plural = if public > 1 { "s" } else { "" };
         warnings.push(Warning {
