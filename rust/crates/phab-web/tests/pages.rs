@@ -808,6 +808,12 @@ async fn revision_pages_have_what_the_script_needs() {
         return;
     };
     insert_revision_fixtures(&test_db).await;
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.edge (src, type, dst, dateCreated, seq) VALUES \
+             ('PHID-DREV-three', 21, 'PHID-USER-alice', 1, 0)",
+        )
+        .await;
     let page = text(
         get(
             &test_db,
@@ -837,6 +843,24 @@ async fn revision_pages_have_what_the_script_needs() {
     );
     assert!(
         page.contains(r#"<input type="hidden" name="inlines" value="">"#),
+        "{page}"
+    );
+    // Subscribers, and the buttons removing them and the reviewers.
+    assert!(
+        page.contains(
+            r#"<dt>Subscribers</dt>
+  <dd>
+    <ul class="reviewers">
+      <li><a href="/p/alice/">alice</a>"#
+        ),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<input type="hidden" name="remove_subscriber" value="PHID-USER-alice">"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<input type="hidden" name="remove_reviewer" value="PHID-USER-mfa">"#),
         "{page}"
     );
     test_db.drop_databases().await;
@@ -996,8 +1020,38 @@ async fn actions_go_to_php_as_the_user() {
     test_db.drop_databases().await;
 }
 
+/// Posts the action form of D3 as Alice to a PHP which accepts the edit:
+/// the answer, and the transactions PHP got.
+async fn post_edit(
+    test_db: &TestDatabase,
+    pairs: &[(&str, &str)],
+) -> (Response, serde_json::Value) {
+    let (php, received) =
+        fake_php(r#"{"result":{"object":{"id":3}},"error_code":null,"error_info":null}"#).await;
+    let body = form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs)
+        .finish();
+    let response = send(
+        test_db,
+        Config::default(),
+        Some(php),
+        Request::post("/D3/action")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+        Some("phsid=alice-token"),
+        Body::from(body),
+    )
+    .await;
+    let calls = received.lock().unwrap().clone();
+    let transactions = calls.first().map_or(serde_json::Value::Null, |call| {
+        serde_json::from_str::<serde_json::Value>(&form_value(&call.3, "params")).unwrap()
+            ["transactions"]
+            .clone()
+    });
+    (response, transactions)
+}
+
 #[tokio::test]
-async fn reviewers_and_subscribers_are_added_by_name() {
+async fn reviewers_subscribers_and_inlines_go_to_php() {
     let Some(test_db) = setup(true).await else {
         return;
     };
@@ -1023,23 +1077,18 @@ async fn reviewers_and_subscribers_are_added_by_name() {
     };
 
     // Reviewers and subscribers by name, as PHIDs; `!` is blocking.
-    let (php, received) =
-        fake_php(r#"{"result":{"object":{"id":3}},"error_code":null,"error_info":null}"#).await;
-    let response = post(
-        encode(&[
+    let (response, transactions) = post_edit(
+        &test_db,
+        &[
             ("__csrf__", &token),
             ("reviewers", "MFA!"),
             ("subscribers", "@alice"),
-        ]),
-        Some(php),
+        ],
     )
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    let calls = received.lock().unwrap().clone();
-    let params: serde_json::Value =
-        serde_json::from_str(&form_value(&calls[0].3, "params")).unwrap();
     assert_eq!(
-        params["transactions"],
+        transactions,
         json!([
             {"type": "reviewers.add", "value": ["blocking(PHID-USER-mfa)"]},
             {"type": "subscribers.add", "value": ["PHID-USER-alice"]},
@@ -1047,17 +1096,15 @@ async fn reviewers_and_subscribers_are_added_by_name() {
     );
 
     // Inline comments written on the page are published in the same edit.
-    let (php, received) =
-        fake_php(r#"{"result":{"object":{"id":3}},"error_code":null,"error_info":null}"#).await;
     let inlines = r#"[{"path": "src/a.c", "line": 2, "isNewFile": true, "diff": 7, "content": "Why 2?"},
         {"replyToCommentPHID": "PHID-XCMT-2", "content": "Because."}]"#;
-    let response = post(
-        encode(&[
+    let (response, transactions) = post_edit(
+        &test_db,
+        &[
             ("__csrf__", &token),
             ("inlines", inlines),
             ("comment", "See inline"),
-        ]),
-        Some(php),
+        ],
     )
     .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
@@ -1065,11 +1112,8 @@ async fn reviewers_and_subscribers_are_added_by_name() {
         response.headers()[header::LOCATION],
         "/D3#inlines-published"
     );
-    let calls = received.lock().unwrap().clone();
-    let params: serde_json::Value =
-        serde_json::from_str(&form_value(&calls[0].3, "params")).unwrap();
     assert_eq!(
-        params["transactions"],
+        transactions,
         json!([
             {"type": "inline", "value": {"path": "src/a.c", "line": 2, "length": 1,
                 "isNewFile": true, "diff": 7, "content": "Why 2?"}},
@@ -1085,6 +1129,18 @@ async fn reviewers_and_subscribers_are_added_by_name() {
     .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert!(received.lock().unwrap().is_empty());
+
+    // The "×" next to a reviewer.
+    let (response, transactions) = post_edit(
+        &test_db,
+        &[("__csrf__", &token), ("remove_reviewer", "PHID-USER-mfa")],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        transactions,
+        json!([{"type": "reviewers.remove", "value": ["PHID-USER-mfa"]}])
+    );
 
     // Unknown and disabled users are refused, saying who.
     for (name, message) in [

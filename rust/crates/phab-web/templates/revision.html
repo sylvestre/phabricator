@@ -29,7 +29,19 @@
     {%- if reviewers.is_empty() %}<span class="muted">None</span>{% else %}
     <ul class="reviewers">
       {%- for reviewer in reviewers %}
-      <li>{% if let Some(uri) = reviewer.link.uri %}<a href="{{ uri }}"{% if reviewer.link.closed %} class="remarkup-mention-disabled"{% endif %}>{{ reviewer.link.name }}</a>{% else %}{{ reviewer.link.name }}{% endif %}{% if reviewer.blocking %} <span class="tag">Blocking</span>{% endif %} <span class="muted">{{ reviewer.status }}</span></li>
+      <li>{% if let Some(uri) = reviewer.link.uri %}<a href="{{ uri }}"{% if reviewer.link.closed %} class="remarkup-mention-disabled"{% endif %}>{{ reviewer.link.name }}</a>{% else %}{{ reviewer.link.name }}{% endif %}{% if reviewer.blocking %} <span class="tag">Blocking</span>{% endif %} <span class="muted">{{ reviewer.status }}</span>
+        <form class="remove" method="post" action="/{{ monogram }}/action">{% if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}<input type="hidden" name="remove_reviewer" value="{{ reviewer.phid }}"><button type="submit" title="Remove {{ reviewer.link.name }} from the reviewers" aria-label="Remove {{ reviewer.link.name }} from the reviewers">×</button></form></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+  </dd>
+  <dt>Subscribers</dt>
+  <dd>
+    {%- if subscribers.is_empty() %}<span class="muted">None</span>{% else %}
+    <ul class="reviewers">
+      {%- for (phid, link) in subscribers %}
+      <li>{% if let Some(uri) = link.uri %}<a href="{{ uri }}">{{ link.name }}</a>{% else %}{{ link.name }}{% endif %}
+        <form class="remove" method="post" action="/{{ monogram }}/action">{% if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}<input type="hidden" name="remove_subscriber" value="{{ phid }}"><button type="submit" title="Remove {{ link.name }} from the subscribers" aria-label="Remove {{ link.name }} from the subscribers">×</button></form></li>
       {%- endfor %}
     </ul>
     {%- endif %}

@@ -219,6 +219,11 @@ a { color: var(--accent); }
 .inline-comment { max-width: 760px; padding: 6px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font: 14px/1.5 system-ui, sans-serif; white-space: normal; }
 .inline-author { margin: 0 0 4px; }
 
+/* The buttons removing a reviewer or a subscriber. */
+form.remove { display: inline; }
+form.remove button { padding: 0 4px; border: none; background: none; color: var(--muted); cursor: pointer; }
+form.remove button:hover { color: var(--text); }
+
 /* Inline comments written on the page (phab.js). */
 .diff .n[data-line] { cursor: pointer; }
 .diff .n[data-line]:hover { color: var(--text); text-decoration: underline; }

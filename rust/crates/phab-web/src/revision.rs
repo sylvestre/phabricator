@@ -24,6 +24,7 @@ use crate::viewer::WebUser;
 use crate::{diff_html, remarkup, time};
 
 /// A linked name.
+#[derive(Clone)]
 pub(crate) struct Link {
     name: String,
     uri: Option<String>,
@@ -32,6 +33,7 @@ pub(crate) struct Link {
 
 /// A reviewer and what they did.
 pub(crate) struct ReviewerItem {
+    phid: String,
     link: Link,
     status: &'static str,
     blocking: bool,
@@ -57,6 +59,8 @@ pub(crate) struct RevisionPage {
     created: String,
     modified: String,
     reviewers: Vec<ReviewerItem>,
+    /// The subscribers, with their PHIDs to remove them.
+    subscribers: Vec<(String, Link)>,
     bug: Option<(i64, String)>,
     parents: Vec<Link>,
     children: Vec<Link>,
@@ -537,16 +541,26 @@ async fn people<S: WebState>(
     state: &S,
     viewer: &Viewer,
     revision: &Revision,
-) -> Result<(Link, Vec<ReviewerItem>), PageError> {
+) -> Result<(Link, Vec<ReviewerItem>, Vec<(String, Link)>), PageError> {
+    let subscriber_phids = edges::load_destination_phids(
+        state.database(),
+        std::slice::from_ref(&revision.phid),
+        &[edges::OBJECT_HAS_SUBSCRIBER],
+        None,
+    )
+    .await?;
     let mut phids: Vec<Phid> = revision
         .reviewers
         .iter()
         .map(|reviewer| reviewer.phid.clone())
+        .chain(subscriber_phids.iter().cloned())
         .collect();
+    phids.sort();
+    phids.dedup();
     if let Some(author) = &revision.author_phid {
         phids.push(author.clone());
     }
-    let mut links = links(state, viewer, &phids).await?;
+    let links = links(state, viewer, &phids).await?;
     let author = revision
         .author_phid
         .as_ref()
@@ -557,21 +571,31 @@ async fn people<S: WebState>(
                 uri: None,
                 closed: false,
             },
-            |index| links.remove(index).1,
+            |index| links[index].1.clone(),
         );
+    let link = |phid: &Phid| {
+        links
+            .iter()
+            .find(|(linked, _)| linked == phid)
+            .map(|(_, link)| link.clone())
+    };
     let reviewers = revision
         .reviewers
         .iter()
         .filter_map(|reviewer| {
-            let index = links.iter().position(|(phid, _)| *phid == reviewer.phid)?;
             Some(ReviewerItem {
-                link: links.remove(index).1,
+                phid: reviewer.phid.to_string(),
+                link: link(&reviewer.phid)?,
                 status: reviewer_status(&reviewer.status),
                 blocking: reviewer.status == "blocking",
             })
         })
         .collect();
-    Ok((author, reviewers))
+    let subscribers = subscriber_phids
+        .iter()
+        .filter_map(|phid| Some((phid.to_string(), link(phid)?)))
+        .collect();
+    Ok((author, reviewers, subscribers))
 }
 
 /// `GET /D{id}`: the route is `/{monogram}`, as path parameters can't
@@ -617,7 +641,7 @@ pub(crate) async fn show<S: WebState>(
         });
     let (parent_phids, child_phids) = details::load_stack_edges(database, &revision.phid).await?;
 
-    let (author, reviewers) = people(state.as_ref(), &as_viewer, &revision).await?;
+    let (author, reviewers, subscribers) = people(state.as_ref(), &as_viewer, &revision).await?;
     let summary = remarkup_field(state.as_ref(), &as_viewer, &details.summary).await?;
     let test_plan = remarkup_field(state.as_ref(), &as_viewer, &details.test_plan).await?;
     let repository = repository(state.as_ref(), &as_viewer, &revision).await?;
@@ -649,6 +673,7 @@ pub(crate) async fn show<S: WebState>(
         created: time::format_utc(details.date_created),
         modified: time::format_utc(details.date_modified),
         reviewers,
+        subscribers,
         bug,
         parents: revision_links(state.as_ref(), &as_viewer, &parent_phids).await?,
         children: revision_links(state.as_ref(), &as_viewer, &child_phids).await?,

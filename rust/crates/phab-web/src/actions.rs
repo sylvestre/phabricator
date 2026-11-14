@@ -47,6 +47,12 @@ pub(crate) struct ActionForm {
     /// Users and `#projects` to add as subscribers.
     #[serde(default)]
     subscribers: String,
+    /// A reviewer to remove, by PHID (the "×" next to them).
+    #[serde(default)]
+    remove_reviewer: String,
+    /// A subscriber to remove, by PHID.
+    #[serde(default)]
+    remove_subscriber: String,
     /// The inline comments written on the page, as a JSON list
     /// ([`InlineDraft`]); `phab.js` keeps them until the form is sent.
     #[serde(default)]
@@ -270,6 +276,23 @@ fn transactions(
         let value: Vec<&str> = subscribers.iter().map(|(phid, _)| phid.as_str()).collect();
         transactions.push(json!({"type": "subscribers.add", "value": value}));
     }
+    for (kind, phid) in [
+        ("reviewers.remove", &form.remove_reviewer),
+        ("subscribers.remove", &form.remove_subscriber),
+    ] {
+        if phid.is_empty() {
+            continue;
+        }
+        // Reviewers and subscribers are users and projects.
+        let valid = (phid.starts_with("PHID-USER-") || phid.starts_with("PHID-PROJ-"))
+            && phid
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-');
+        if !valid {
+            return None;
+        }
+        transactions.push(json!({"type": kind, "value": [phid]}));
+    }
     transactions.extend(inlines);
     if !form.comment.trim().is_empty() {
         transactions.push(json!({"type": "comment", "value": form.comment}));
@@ -303,7 +326,7 @@ pub(crate) async fn submit<S: WebState>(
         format!("/D{id}#inlines-published")
     };
     let transactions = transactions(&form, &reviewers, &subscribers, inlines)
-        .ok_or(PageError::BadRequest("This action does not exist."))?;
+        .ok_or(PageError::BadRequest("This change can't be made."))?;
     if !transactions.is_empty() {
         let php = state
             .php()
@@ -337,6 +360,26 @@ mod tests {
             reviewers: String::new(),
             subscribers: String::new(),
             inlines: String::new(),
+            remove_reviewer: String::new(),
+            remove_subscriber: String::new(),
+        }
+    }
+
+    #[test]
+    fn reviewers_and_subscribers_are_removed_by_phid() {
+        let mut removing = form("", "");
+        removing.remove_reviewer = "PHID-USER-abc".to_owned();
+        removing.remove_subscriber = "PHID-PROJ-def".to_owned();
+        assert_eq!(
+            transactions(&removing, &[], &[], vec![]),
+            Some(vec![
+                json!({"type": "reviewers.remove", "value": ["PHID-USER-abc"]}),
+                json!({"type": "subscribers.remove", "value": ["PHID-PROJ-def"]}),
+            ])
+        );
+        for wrong in ["PHID-DREV-abc", "alice", "PHID-USER-a\"b"] {
+            removing.remove_reviewer = wrong.to_owned();
+            assert_eq!(transactions(&removing, &[], &[], vec![]), None, "{wrong}");
         }
     }
 
