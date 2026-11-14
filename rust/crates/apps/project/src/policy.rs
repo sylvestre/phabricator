@@ -112,7 +112,9 @@ impl Graph {
             .with_policy(Capability::EDIT, owner.edit_policy.clone())
             .with_policy(Capability::JOIN, owner.join_policy.clone());
         subject.capabilities.push(Capability::JOIN);
-        subject.space = Some(project.space_phid.clone());
+        // `PhabricatorProject::getSpacePHID()`: a milestone is in its
+        // parent's space, whatever its own column says.
+        subject.space = Some(owner.space_phid.clone());
         if let Some(viewer_phid) = &viewer.phid
             && members.contains(&owner.phid)
         {

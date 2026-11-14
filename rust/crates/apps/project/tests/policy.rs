@@ -114,6 +114,44 @@ async fn visibility_follows_parents_and_members() {
 }
 
 #[tokio::test]
+async fn milestones_are_in_their_parents_space() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_spaces`.spaces_namespace (phid, namespaceName, viewPolicy, \
+               editPolicy, isDefaultNamespace, dateCreated, dateModified, description, \
+               isArchived) VALUES \
+             ('PHID-SPCE-open', 'Open', 'users', 'users', 1, 1, 1, '', 0), \
+             ('PHID-SPCE-hidden', 'Hidden', 'no-one', 'no-one', NULL, 1, 1, '', 0); \
+             UPDATE `{ns}_project`.project SET spacePHID = 'PHID-SPCE-hidden' \
+               WHERE phid = 'PHID-PROJ-teamms'",
+        )
+        .await;
+    // The milestone's own column names a space Alice can't see, but its
+    // parent "team" has none, so she still sees it.
+    assert!(
+        visible(&test_db, "PHID-USER-alice")
+            .await
+            .contains(&"teamms".to_owned())
+    );
+
+    test_db
+        .execute(
+            "UPDATE `{ns}_project`.project SET spacePHID = NULL \
+               WHERE phid = 'PHID-PROJ-teamms'; \
+             UPDATE `{ns}_project`.project SET spacePHID = 'PHID-SPCE-hidden' \
+               WHERE phid = 'PHID-PROJ-team'",
+        )
+        .await;
+    let seen = visible(&test_db, "PHID-USER-alice").await;
+    assert!(!seen.contains(&"team".to_owned()), "{seen:?}");
+    assert!(!seen.contains(&"teamms".to_owned()), "{seen:?}");
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
 async fn slugs_and_handles() {
     let Some(test_db) = setup().await else {
         return;
