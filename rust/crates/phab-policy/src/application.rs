@@ -39,6 +39,8 @@ const PROTOTYPE_APPLICATIONS: &[&str] = &["PhabricatorCalendarApplication"];
 pub const DIFFERENTIAL: &str = "PhabricatorDifferentialApplication";
 /// `PhabricatorFeedApplication`.
 pub const FEED: &str = "PhabricatorFeedApplication";
+/// `PhabricatorHeraldApplication`.
+pub const HERALD: &str = "PhabricatorHeraldApplication";
 /// `PhabricatorHomeApplication`.
 pub const HOME: &str = "PhabricatorHomeApplication";
 /// `PhabricatorPeopleApplication`.
@@ -57,6 +59,7 @@ pub fn application_for_phid_type(phid_type: PhidType) -> Option<&'static str> {
         PhidType::POLICY => "PhabricatorPolicyApplication",
         PhidType::SPACE => "PhabricatorSpacesApplication",
         PhidType::FILE => "PhabricatorFilesApplication",
+        PhidType::HERALD_RULE => HERALD,
         PhidType::TRANSACTION => "PhabricatorTransactionsApplication",
         _ => return None,
     };

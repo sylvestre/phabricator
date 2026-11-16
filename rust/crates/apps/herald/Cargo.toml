@@ -1,0 +1,17 @@
+[package]
+name = "phab-app-herald"
+description = "Herald rules and Spaces: their rows and their policy, for references to them"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+phab-core.workspace = true
+phab-db.workspace = true
+phab-policy.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

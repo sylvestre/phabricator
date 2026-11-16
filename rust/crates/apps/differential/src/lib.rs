@@ -2,6 +2,7 @@
 //! described for the policy filter.
 
 pub mod buckets;
+pub mod commit;
 pub mod details;
 pub mod feed;
 pub mod repository;

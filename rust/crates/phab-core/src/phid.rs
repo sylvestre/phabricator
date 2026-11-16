@@ -38,6 +38,8 @@ impl PhidType {
     pub const COMMIT: Self = Self(*b"CMIT");
     /// `PhabricatorFileFilePHIDType`.
     pub const FILE: Self = Self(*b"FILE");
+    /// `HeraldRulePHIDType`.
+    pub const HERALD_RULE: Self = Self(*b"HRUL");
     /// `PhabricatorApplicationTransactionTransactionPHIDType`.
     pub const TRANSACTION: Self = Self(*b"XACT");
     /// `PhabricatorPHIDConstants::PHID_TYPE_XCMT`, transaction comments.

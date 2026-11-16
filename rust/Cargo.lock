@@ -1564,6 +1564,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-files"
+version = "0.1.0"
+dependencies = [
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "phab-app-herald"
+version = "0.1.0"
+dependencies = [
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "thiserror",
+]
+
+[[package]]
 name = "phab-app-people"
 version = "0.1.0"
 dependencies = [
@@ -1747,6 +1769,8 @@ dependencies = [
  "hex",
  "phab-app-differential",
  "phab-app-feed",
+ "phab-app-files",
+ "phab-app-herald",
  "phab-app-people",
  "phab-app-project",
  "phab-auth",
