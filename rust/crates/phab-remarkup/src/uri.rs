@@ -34,6 +34,111 @@ pub fn has_domain(uri: &[u8]) -> bool {
         .is_some_and(|host| !host.is_empty())
 }
 
+/// `id(new PhutilURI($uri))->getDomain()`, when it is set.
+pub fn domain(uri: &[u8]) -> Option<Vec<u8>> {
+    parts(uri)
+        .ok()
+        .flatten()
+        .and_then(|parts| parts.host)
+        .filter(|host| !host.is_empty())
+}
+
+/// The path and the query of a URI with a domain (`getPath()` and the
+/// query string `getQueryParamsAsPairList()` parses).
+fn path_and_query(uri: &[u8]) -> (&[u8], &[u8]) {
+    let Some(separator) = uri.windows(3).position(|window| window == b"://") else {
+        return (b"", b"");
+    };
+    let rest = &uri[separator + 3..];
+    let rest = &rest[rest
+        .iter()
+        .position(|byte| matches!(byte, b'/' | b'?' | b'#'))
+        .unwrap_or(rest.len())..];
+    let rest = &rest[..rest
+        .iter()
+        .position(|byte| *byte == b'#')
+        .unwrap_or(rest.len())];
+    match rest.iter().position(|byte| *byte == b'?') {
+        Some(question) => (&rest[..question], &rest[question + 1..]),
+        None => (rest, b""),
+    }
+}
+
+/// `getPath()` of a URI with a domain.
+pub fn path(uri: &[u8]) -> Vec<u8> {
+    path_and_query(uri).0.to_vec()
+}
+
+/// `getQueryParamsAsPairList()` (`PhutilQueryStringParser`): the decoded
+/// `key=value` pairs of the query, in order.
+pub fn query_pairs(uri: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
+    path_and_query(uri)
+        .1
+        .split(|byte| *byte == b'&')
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| {
+            let (key, value) = match pair.iter().position(|byte| *byte == b'=') {
+                Some(equals) => (&pair[..equals], &pair[equals + 1..]),
+                None => (pair, &b""[..]),
+            };
+            (urldecode(key), urldecode(value))
+        })
+        .collect()
+}
+
+/// `urldecode()`: `+` is a space, `%XX` a byte.
+pub fn urldecode(text: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(text.len());
+    let mut index = 0;
+    while index < text.len() {
+        match text[index] {
+            b'+' => output.push(b' '),
+            b'%' if index + 2 < text.len()
+                && text[index + 1].is_ascii_hexdigit()
+                && text[index + 2].is_ascii_hexdigit() =>
+            {
+                let hex = std::str::from_utf8(&text[index + 1..index + 3]).expect("hex digits");
+                output.push(u8::from_str_radix(hex, 16).expect("hex digits"));
+                index += 2;
+            }
+            byte => output.push(byte),
+        }
+        index += 1;
+    }
+    output
+}
+
+/// `phutil_escape_uri()`: `rawurlencode()`, keeping `/`.
+pub fn escape_uri(text: &[u8]) -> Vec<u8> {
+    encode(text, b"-_.~/")
+}
+
+/// `rawurlencode()`.
+pub fn rawurlencode(text: &[u8]) -> Vec<u8> {
+    encode(text, b"-_.~")
+}
+
+/// `urlencode()`: like `rawurlencode()`, with spaces as `+` and `~`
+/// encoded.
+pub fn urlencode(text: &[u8]) -> Vec<u8> {
+    encode(text, b"-_. ")
+        .into_iter()
+        .map(|byte| if byte == b' ' { b'+' } else { byte })
+        .collect()
+}
+
+fn encode(text: &[u8], kept: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(text.len());
+    for &byte in text {
+        if byte.is_ascii_alphanumeric() || kept.contains(&byte) {
+            output.push(byte);
+        } else {
+            output.extend_from_slice(format!("%{byte:02X}").as_bytes());
+        }
+    }
+    output
+}
+
 /// The scheme and authority of a URI: what is left of it after
 /// `setPath()` and before the path, like `https://bugzilla.mozilla.org`.
 pub fn origin(uri: &[u8]) -> Vec<u8> {

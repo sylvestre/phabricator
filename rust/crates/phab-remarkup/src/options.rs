@@ -50,6 +50,24 @@ pub enum OptionValue {
     Value(Vec<u8>),
 }
 
+impl OptionValue {
+    /// PHP truthiness: `true`, or a string other than `""` and `"0"`.
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Self::Flag => true,
+            Self::Value(bytes) => !bytes.is_empty() && bytes != b"0",
+        }
+    }
+
+    /// `(string)` of the value: `true` is `"1"`.
+    pub fn to_php_string(&self) -> Vec<u8> {
+        match self {
+            Self::Flag => b"1".to_vec(),
+            Self::Value(bytes) => bytes.clone(),
+        }
+    }
+}
+
 /// `PhutilSimpleOptionsLexer::getNiceTokens()`.
 fn nice_tokens(input: &[u8]) -> Vec<Token> {
     let tokens = LEXER

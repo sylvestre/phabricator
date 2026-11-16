@@ -82,6 +82,38 @@ pub fn syntax_for(filename: &str) -> Option<&'static SyntaxReference> {
     (syntax.name != "Plain Text").then_some(syntax)
 }
 
+/// The grammar for a code block's language (`lang=rust`, `lang=cpp`), by
+/// name or file extension, like Pygments' lexer names.
+pub fn syntax_for_language(language: &str) -> Option<&'static SyntaxReference> {
+    let syntax = syntaxes().find_syntax_by_token(language)?;
+    (syntax.name != "Plain Text").then_some(syntax)
+}
+
+/// The HTML of a Remarkup code block in `language`: escaped text with the
+/// stylesheet's classes, or `None` for languages without a grammar and
+/// for code that isn't UTF-8 or is too large.
+pub fn highlight_code(language: &[u8], code: &[u8]) -> Option<String> {
+    let syntax = syntax_for_language(std::str::from_utf8(language).ok()?)?;
+    let code = std::str::from_utf8(code).ok()?;
+    let lines: Vec<&str> = code.split_inclusive('\n').collect();
+    let tokens = highlight_lines(syntax, &lines)?;
+    let mut html = String::with_capacity(code.len() * 2);
+    for (line, tokens) in lines.iter().zip(tokens) {
+        let mut start = 0;
+        for token in tokens {
+            html.push_str(&crate::diff_html::escape(&line[start..token.range.start]));
+            html.push_str("<span class=\"");
+            html.push_str(token.class);
+            html.push_str("\">");
+            html.push_str(&crate::diff_html::escape(&line[token.range.clone()]));
+            html.push_str("</span>");
+            start = token.range.end;
+        }
+        html.push_str(&crate::diff_html::escape(&line[start..]));
+    }
+    Some(html)
+}
+
 /// Adds a run to the tokens of a line, merged with the previous one when
 /// they touch and share a class; runs without a class are left out.
 fn push(tokens: &mut Vec<Token>, range: Range<usize>, class: Option<&'static str>) {
@@ -155,6 +187,31 @@ mod tests {
         assert_eq!(syntax_for("build/Makefile").unwrap().name, "Makefile");
         assert!(syntax_for("README").is_none());
         assert!(syntax_for("notes.txt").is_none());
+    }
+
+    #[test]
+    fn code_blocks_are_escaped_and_classed() {
+        let html = highlight_code(b"rust", b"fn x() -> &'a str { \"<b>\" }\n// end").unwrap();
+        assert!(
+            html.contains(">fn</span> <span class=\"hl-function\">x</span>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<span class=\"hl-string\">&quot;&lt;b&gt;&quot;</span>"),
+            "{html}"
+        );
+        assert!(
+            html.ends_with("<span class=\"hl-comment\">// end</span>"),
+            "{html}"
+        );
+        assert!(
+            highlight_code(b"cpp", b"int x;")
+                .unwrap()
+                .contains("hl-type")
+        );
+        assert!(highlight_code(b"python", b"x = 1").is_some());
+        assert!(highlight_code(b"text", b"x").is_none());
+        assert!(highlight_code(b"no-such-language", b"x").is_none());
     }
 
     #[test]

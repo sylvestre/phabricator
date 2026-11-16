@@ -8,6 +8,7 @@
 
 pub mod blocks;
 pub mod engine;
+mod generated;
 mod highlight;
 mod html;
 mod lexer;
@@ -22,8 +23,8 @@ pub mod rules;
 pub mod storage;
 pub(crate) mod uri;
 
-pub use engine::{Config, Context, Engine, Mode, Prepared, Rendered};
+pub use engine::{Config, Context, Engine, Highlighter, Mode, Prepared, Rendered};
 pub use markup::Markup;
-pub use objects::{MentionedUser, ObjectHandle, Resolved};
+pub use objects::{FileObject, MentionedUser, ObjectHandle, RepositoryRef, Resolved};
 pub use options::OptionValue;
 pub use rule::{BlockRule, InlineRule};

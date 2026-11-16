@@ -1,10 +1,11 @@
 //! Code block highlighting: `PhutilLanguageGuesser` and the highlighters
 //! of `PhutilDefaultSyntaxHighlighterEngine` that need no external tool.
 //!
-//! Languages PHP highlights with its lexers or Pygments are shown as plain
-//! text: the Rust interface will highlight them itself (syntect), and the
-//! code is the same either way.
+//! Languages PHP highlights with its lexers or Pygments go to the
+//! engine's [`Highlighter`] (syntect for the pages), or are shown as plain
+//! text.
 
+use crate::engine::Highlighter;
 use crate::markup::{self, Content, Markup};
 use crate::preg::{self, Pattern};
 use crate::rule;
@@ -45,11 +46,13 @@ pub fn guess_language(source: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// `PhutilDefaultSyntaxHighlighterEngine::highlightSource()`.
-pub fn highlight(language: &[u8], source: &[u8]) -> Markup {
+pub fn highlight(language: &[u8], source: &[u8], highlighter: Option<&Highlighter>) -> Markup {
     match language {
         b"console" => console(source),
         b"invisible" => invisible(source),
-        _ => Markup::text(source).into_escaped(),
+        _ => highlighter
+            .and_then(|highlighter| (highlighter.0)(language, source))
+            .unwrap_or_else(|| Markup::text(source).into_escaped()),
     }
 }
 
@@ -138,7 +141,7 @@ mod tests {
     #[test]
     fn console_marks_prompts() {
         assert_eq!(
-            highlight(b"console", b"$ ls # list\nfile").as_bytes(),
+            highlight(b"console", b"$ ls # list\nfile", None).as_bytes(),
             b"<span class=\"gp\">$ ls </span><span class=\"k\"># list</span>\n<span class=\"go\">file</span>"
         );
     }

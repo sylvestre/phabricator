@@ -3,6 +3,8 @@
 //! they deferred and expands the stored tokens.
 
 use std::collections::{BTreeSet, HashMap};
+use std::fmt;
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 use pcre2::bytes::Regex;
@@ -25,6 +27,21 @@ pub enum Mode {
     Text,
     /// HTML for mail, with inline styles instead of classes.
     HtmlMail,
+}
+
+/// Highlights the code of code blocks in a language: the HTML, or `None`
+/// to leave it to the built-in highlighters (plain text for most
+/// languages). The pages use syntect, where PHP uses Pygments.
+#[derive(Clone)]
+pub struct Highlighter(pub Arc<HighlightFn>);
+
+/// What a [`Highlighter`] calls: the language and the code, to the HTML.
+pub type HighlightFn = dyn Fn(&[u8], &[u8]) -> Option<Markup> + Send + Sync;
+
+impl fmt::Debug for Highlighter {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Highlighter")
+    }
 }
 
 /// The engine settings (`setConfig()` keys).
@@ -56,6 +73,14 @@ pub struct Config {
     pub ignored_object_names: Option<String>,
     /// `bugzilla.url`.
     pub bugzilla_url: Option<String>,
+    /// The hosts of the install (`PhabricatorEnv::getSelfURIMap()`:
+    /// the base and production URIs and `phabricator.allowed-uris`),
+    /// lowercased. Links to them show the objects they point to.
+    pub self_hosts: BTreeSet<String>,
+    /// `remarkup.enable-embedded-youtube`.
+    pub youtube: bool,
+    /// The highlighter of code blocks.
+    pub highlighter: Option<Highlighter>,
 }
 
 impl Config {
@@ -72,6 +97,27 @@ impl Config {
             .or(self.base_uri.as_deref())
             .unwrap_or("");
         [php::rtrim(base.as_bytes(), b"/"), path].concat()
+    }
+
+    /// `PhabricatorEnv::isSelfURI()`.
+    pub fn is_self_uri(&self, uri: &[u8]) -> bool {
+        crate::uri::domain(uri).is_some_and(|host| {
+            self.self_hosts
+                .contains(String::from_utf8_lossy(&crate::php::utf8_strtolower(&host)).as_ref())
+        })
+    }
+
+    /// `PhabricatorEnv::isValidRemoteURIForLink()`: an allowed protocol and
+    /// a domain.
+    pub fn is_valid_remote_uri_for_link(&self, uri: &[u8]) -> bool {
+        let Ok(protocol) = crate::uri::protocol(uri) else {
+            return false;
+        };
+        !protocol.is_empty()
+            && self
+                .allowed_protocols
+                .contains(String::from_utf8_lossy(&protocol).as_ref())
+            && crate::uri::domain(uri).is_some()
     }
 
     /// `PhabricatorEnv::getURI()`.
@@ -104,6 +150,16 @@ pub enum LinkMode {
     Bare,
 }
 
+/// A `{src}` waiting for its repository
+/// (`DiffusionSourceLinkRemarkupRule::KEY_SOURCELINKS`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceLink {
+    /// Its token in the storage.
+    pub token: Vec<u8>,
+    /// The repository and location, or what is wrong with it.
+    pub parsed: crate::rules::source_link::ParsedSource,
+}
+
 /// What rules record while marking up (`setTextMetadata()`).
 #[derive(Debug, Clone, Default)]
 pub struct Metadata {
@@ -124,6 +180,11 @@ pub struct Metadata {
     /// `KEY_MENTIONED` and `KEY_MENTIONED_OBJECTS`: the PHIDs of the users
     /// and objects the text mentions, in order.
     pub mentioned_phids: Vec<String>,
+    /// `PhabricatorHandleRemarkupRule::KEY_RULE_HANDLE`: the tokens of each
+    /// `{PHID-...}`.
+    pub handles: IndexMap<String, Vec<Vec<u8>>>,
+    /// The `{src}` links.
+    pub source_links: Vec<SourceLink>,
 }
 
 /// What the rules see of the engine while marking up.
@@ -265,11 +326,22 @@ pub struct Prepared<'e> {
 }
 
 impl Prepared<'_> {
-    /// The object references to resolve: rule prefix and ID as written.
+    /// The object references to resolve: rule prefix and ID as written,
+    /// from references and from links to objects (`https://phab/D123`).
     pub fn object_references(&self) -> Vec<(&'static str, Vec<u8>)> {
         let mut references: Vec<(&'static str, Vec<u8>)> = Vec::new();
-        for mention in &self.context.metadata.objects {
-            let reference = (mention.prefix, mention.id.clone());
+        let linked = self
+            .self_links()
+            .filter_map(crate::rules::self_link::object_name)
+            .filter_map(|name| crate::objects::parse_object_name(&name))
+            .filter(|(prefix, _)| *prefix != "@");
+        let written = self
+            .context
+            .metadata
+            .objects
+            .iter()
+            .map(|mention| (mention.prefix, mention.id.clone()));
+        for reference in written.chain(linked) {
             if !references.contains(&reference) {
                 references.push(reference);
             }
@@ -277,9 +349,68 @@ impl Prepared<'_> {
         references
     }
 
-    /// The mentioned usernames, lowercased.
+    /// The links to the install (literal `<uri>` links are rendered as
+    /// they are).
+    fn self_links(&self) -> impl Iterator<Item = &[u8]> {
+        let config = self.context.config;
+        self.context
+            .metadata
+            .hyperlinks
+            .iter()
+            .filter(|link| link.mode != LinkMode::Literal)
+            .map(|link| link.uri.as_slice())
+            .filter(move |link| {
+                config.is_self_uri(link)
+                    && matches!(
+                        crate::uri::protocol(link).as_deref(),
+                        Ok(b"http" | b"https")
+                    )
+            })
+    }
+
+    /// The mentioned usernames, lowercased, from mentions and from links
+    /// to profiles (`https://phab/@alice`).
     pub fn mentioned_usernames(&self) -> Vec<Vec<u8>> {
-        self.context.metadata.mentions.keys().cloned().collect()
+        let mut usernames: Vec<Vec<u8>> = self.context.metadata.mentions.keys().cloned().collect();
+        for link in self.self_links() {
+            if let Some(("@", username)) = crate::rules::self_link::object_name(link)
+                .and_then(|name| crate::objects::parse_object_name(&name))
+            {
+                let username = username.to_ascii_lowercase();
+                if !usernames.contains(&username) {
+                    usernames.push(username);
+                }
+            }
+        }
+        usernames
+    }
+
+    /// The PHIDs of `{PHID-...}` handles.
+    pub fn handle_phids(&self) -> Vec<String> {
+        self.context.metadata.handles.keys().cloned().collect()
+    }
+
+    /// The repositories of source links, by identifier as written: a
+    /// callsign, an ID or a short name.
+    pub fn repository_identifiers(&self) -> Vec<Vec<u8>> {
+        let mut identifiers: Vec<Vec<u8>> = Vec::new();
+        let written = self
+            .context
+            .metadata
+            .source_links
+            .iter()
+            .filter_map(|link| link.parsed.as_ref().ok())
+            .map(|(identifier, _)| identifier.clone());
+        let linked = self
+            .self_links()
+            .filter_map(crate::rules::self_link::browse_target)
+            .map(|(identifier, _)| identifier);
+        for identifier in written.chain(linked) {
+            if !identifiers.contains(&identifier) {
+                identifiers.push(identifier);
+            }
+        }
+        identifiers
     }
 }
 

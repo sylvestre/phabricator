@@ -27,10 +27,28 @@ pub enum Style {
     Project,
 }
 
+/// `PhabricatorRepositoryCommitPHIDType::getCommitObjectNamePattern()`:
+/// `rXYZ123` (SVN), `rXYZabcde`, `R12:abcde` or a bare hash.
+pub const COMMIT_ID: &str = "(?:r[A-Z]+:?|R[0-9]+:)[1-9]\\d*\
+     |(?:r[A-Z]+:?|R[0-9]+:)[a-f0-9]{5,40}\
+     |[a-f0-9]{7,40}";
+
+/// How a rule renders embeds (`renderObjectEmbed()`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Embed {
+    /// A tag with the object's full name.
+    Default,
+    /// `PhabricatorEmbedFileRemarkupRule`: the image, video, audio or a
+    /// link to the file.
+    File,
+}
+
 /// A `PhabricatorObjectRemarkupRule`.
 pub struct ObjectRule {
     prefix: &'static str,
     style: Style,
+    embed_style: Embed,
+    priority: f64,
     embed: Regex,
     reference: Regex,
 }
@@ -38,17 +56,27 @@ pub struct ObjectRule {
 impl ObjectRule {
     /// A rule for objects named `prefix` followed by `id_pattern`.
     pub fn new(prefix: &'static str, id_pattern: &str, style: Style) -> Self {
-        let quoted = quote(prefix);
         // A prefix starting with a word character must start a word; "#"
         // must not follow one.
-        let boundary = if prefix.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
-            r"\b"
-        } else {
-            r"\B"
-        };
+        let word_start = prefix.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_');
+        Self::with_boundary(prefix, id_pattern, style, word_start)
+    }
+
+    /// [`ObjectRule::new()`], saying whether names start a word
+    /// (`getObjectNamePrefixBeginsWithWordCharacter()`).
+    fn with_boundary(
+        prefix: &'static str,
+        id_pattern: &str,
+        style: Style,
+        word_start: bool,
+    ) -> Self {
+        let quoted = quote(prefix);
+        let boundary = if word_start { r"\b" } else { r"\B" };
         Self {
             prefix,
             style,
+            embed_style: Embed::Default,
+            priority: 450.0,
             embed: preg::compile_unicode(&format!(
                 r"\B\{{{quoted}({id_pattern})([,\s](?:[^}}\\]|\\.)*)?\}}\B"
             )),
@@ -56,6 +84,17 @@ impl ObjectRule {
                 r"(?<![#@-]){boundary}{quoted}({id_pattern})(?:#([-\w\d]+))?(?!\w)"
             )),
         }
+    }
+
+    #[must_use]
+    fn with_priority(mut self, priority: f64) -> Self {
+        self.priority = priority;
+        self
+    }
+
+    /// The prefix of the names, like `D`.
+    pub fn prefix(&self) -> &'static str {
+        self.prefix
     }
 
     /// `DifferentialRemarkupRule`: `D123`.
@@ -66,6 +105,40 @@ impl ObjectRule {
     /// `ProjectRemarkupRule`: `#project`.
     pub fn project() -> Self {
         Self::new("#", PROJECT_ID, Style::Project)
+    }
+
+    /// `HeraldRemarkupRule`: `H123`.
+    pub fn herald() -> Self {
+        Self::new("H", NUMERIC_ID, Style::Object)
+    }
+
+    /// `PhabricatorSpacesRemarkupRule`: `S1`.
+    pub fn spaces() -> Self {
+        Self::new("S", NUMERIC_ID, Style::Object)
+    }
+
+    /// `DiffusionRepositoryRemarkupRule`: `rCALLSIGN`.
+    pub fn repository() -> Self {
+        Self::new("r", "[A-Z]+", Style::Object).with_priority(460.0)
+    }
+
+    /// `DiffusionRepositoryByIDRemarkupRule`: `R12`.
+    pub fn repository_by_id() -> Self {
+        Self::new("R", "[0-9]+", Style::Object).with_priority(460.0)
+    }
+
+    /// `DiffusionCommitRemarkupRule`: `rXYZabcdef`, `R12:abcdef` or a bare
+    /// hash.
+    pub fn commit() -> Self {
+        Self::with_boundary("", COMMIT_ID, Style::Object, true)
+    }
+
+    /// `PhabricatorEmbedFileRemarkupRule`: `F123` and `{F123, size=full}`.
+    pub fn file() -> Self {
+        Self {
+            embed_style: Embed::File,
+            ..Self::new("F", NUMERIC_ID, Style::Object)
+        }
     }
 
     fn mark_up(cx: &mut Context<'_>, mut mention: ObjectMention) -> Vec<u8> {
@@ -95,7 +168,10 @@ impl ObjectRule {
         } else {
             handle.uri.clone()
         };
-        let mut text = [self.prefix.as_bytes(), &mention.id].concat();
+        let mut text = handle
+            .reference_text
+            .clone()
+            .unwrap_or_else(|| [self.prefix.as_bytes(), &mention.id].concat());
         if let Some(anchor) = mention
             .anchor
             .as_deref()
@@ -206,7 +282,7 @@ fn mail_tag(text: &[u8], href: &[u8], handle: &ObjectHandle) -> Markup {
 
 impl InlineRule for ObjectRule {
     fn priority(&self) -> f64 {
-        450.0
+        self.priority
     }
 
     fn apply(&self, cx: &mut Context<'_>, text: Markup) -> Markup {
@@ -261,7 +337,20 @@ impl InlineRule for ObjectRule {
             }
             let view = match mention.kind {
                 ReferenceKind::Reference => self.render_reference(cx, &handle, mention),
-                ReferenceKind::Embed => Self::render_embed(cx, &handle),
+                ReferenceKind::Embed => {
+                    match (self.embed_style, cx.resolved.files.get(&mention.id)) {
+                        (Embed::File, Some(file))
+                            if !cx.is_text_mode() && !cx.is_html_mail_mode() =>
+                        {
+                            crate::rules::file::render_embed(
+                                file,
+                                &handle,
+                                mention.options.as_deref().unwrap_or_default(),
+                            )
+                        }
+                        _ => Self::render_embed(cx, &handle),
+                    }
+                }
             };
             cx.overwrite_stored_text(&mention.token, view);
         }

@@ -231,3 +231,48 @@ form.remove button:hover { color: var(--text); }
 .inline-editor textarea { display: block; width: 100%; box-sizing: border-box; margin-bottom: 6px; font: inherit; }
 .inline-comment button { margin-right: 6px; }
 .inline-unplaced { margin: 8px 0; }
+
+/* Remarkup: handles, steps, keys, icons, files and source links. */
+.remarkup-handle, .remarkup-source-link, .remarkup-file-link, .remarkup-nav-item, .remarkup-syntax-hint {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.remarkup-handle-closed { text-decoration: line-through; }
+.remarkup-source-link .fa, .remarkup-file-link .fa, .remarkup-nav-item .fa, .remarkup-syntax-hint .fa { margin-right: 4px; }
+.remarkup-nav-instructions { background: var(--bg); }
+.remarkup-nav-sequence-arrow { color: var(--muted); }
+.remarkup-syntax-hint { color: #cf222e; border-color: #cf222e; }
+.remarkup-file-details { margin-left: 6px; color: var(--muted); font-size: 12px; }
+kbd {
+  display: inline-block;
+  min-width: 1em;
+  padding: 2px 5px;
+  font: 12px/1 ui-monospace, Menlo, Consolas, monospace;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+.kbd-join { padding: 0 4px; color: var(--muted); }
+.remarkup-icon-blue, .remarkup-icon-sky { color: #0969da; }
+.remarkup-icon-bluegrey, .remarkup-icon-lightgreytext { color: var(--muted); }
+.remarkup-icon-green { color: #1a7f37; }
+.remarkup-icon-indigo, .remarkup-icon-violet { color: #8250df; }
+.remarkup-icon-lightbluetext { color: #54aeff; }
+.remarkup-icon-orange { color: #bc4c00; }
+.remarkup-icon-pink { color: #bf3989; }
+.remarkup-icon-red { color: #cf222e; }
+.remarkup-icon-white { color: #ffffff; }
+.remarkup-icon-yellow { color: #9a6700; }
+.phabricator-remarkup-embed-layout-left { text-align: left; }
+.phabricator-remarkup-embed-layout-center { text-align: center; }
+.phabricator-remarkup-embed-layout-right { text-align: right; }
+.phabricator-remarkup-embed-layout-inline { display: inline; }
+.phabricator-remarkup-embed-float-left { float: left; margin-right: 12px; }
+.phabricator-remarkup-embed-float-right { float: right; margin-left: 12px; }
+.phabricator-remarkup-embed-image img { max-width: 100%; height: auto; border: 1px solid var(--border); }
+.phabricator-remarkup-embed-image-full img, .phabricator-remarkup-embed-image-wide img, .remarkup-external-image { max-width: 100%; height: auto; }
+.embedded-youtube-video iframe, .phabricator-media { max-width: 100%; }

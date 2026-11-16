@@ -60,6 +60,11 @@ impl Trees {
 pub struct Tree(String);
 
 impl Tree {
+    /// The tree's top, which `source/` and `rev/` URIs are under.
+    pub fn root(&self) -> String {
+        format!("{ORIGIN}/{}/", self.0)
+    }
+
     /// The tree's root.
     pub fn uri(&self) -> String {
         format!("{ORIGIN}/{}/source/", self.0)

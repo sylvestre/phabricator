@@ -3,7 +3,7 @@
 
 use indexmap::IndexMap;
 
-use crate::engine::Context;
+use crate::engine::{Context, Highlighter};
 use crate::markup::{self, Content, Markup};
 use crate::options::{self, OptionValue};
 use crate::preg::{self, Pattern};
@@ -92,13 +92,13 @@ impl BlockRule for Code {
             text = preg::replace_regex(&pattern, &text, b"");
         }
 
-        let counterexample = option(b"counterexample").is_some_and(is_truthy);
+        let counterexample = option(b"counterexample").is_some_and(OptionValue::is_truthy);
         if cx.is_text_mode() {
             return Some(text_block(&text, counterexample, option(b"name")));
         }
 
-        let language = match option(b"lang").filter(|value| is_truthy(value)) {
-            Some(language) => as_string(language),
+        let language = match option(b"lang").filter(|value| value.is_truthy()) {
+            Some(language) => language.to_php_string(),
             None => highlight::guess_language(&text).unwrap_or_else(|| {
                 cx.config()
                     .default_language
@@ -110,7 +110,15 @@ impl BlockRule for Code {
         };
 
         let mail = cx.is_html_mail_mode();
-        let code_body = highlight_source(&text, &language, counterexample, option(b"lines"), mail);
+        let highlighter = cx.config().highlighter.as_ref().filter(|_| !mail);
+        let code_body = highlight_source(
+            &text,
+            &language,
+            counterexample,
+            option(b"lines"),
+            mail,
+            highlighter,
+        );
 
         let header_attributes: Vec<u8> = if mail {
             let mut rules = vec![
@@ -133,12 +141,12 @@ impl BlockRule for Code {
         };
         let header_key = if mail { "style" } else { "class" };
         let name_header = option(b"name")
-            .filter(|value| is_truthy(value))
+            .filter(|value| value.is_truthy())
             .map(|name| {
                 markup::tag(
                     "div",
                     &[(header_key, Some(&header_attributes))],
-                    Content::One(&Markup::Text(as_string(name))),
+                    Content::One(&Markup::Text(name.to_php_string())),
                 )
             });
 
@@ -194,7 +202,10 @@ fn text_block(text: &[u8], counterexample: bool, name: Option<&OptionValue>) -> 
     if counterexample {
         header.push(b"counterexample".to_vec());
     }
-    if let Some(name) = name.map(as_string).filter(|name| !name.is_empty()) {
+    if let Some(name) = name
+        .map(OptionValue::to_php_string)
+        .filter(|name| !name.is_empty())
+    {
         header.push([b"name=".as_slice(), &name].concat());
     }
     let mut out = Vec::new();
@@ -212,6 +223,7 @@ fn highlight_source(
     counterexample: bool,
     lines: Option<&OptionValue>,
     mail: bool,
+    highlighter: Option<&Highlighter>,
 ) -> Markup {
     let aux_class: &[u8] = if counterexample {
         b" remarkup-counterexample"
@@ -229,9 +241,9 @@ fn highlight_source(
         )
         .into_bytes()
     });
-    if let Some(lines) = lines.filter(|value| is_truthy(value)) {
+    if let Some(lines) = lines.filter(|value| value.is_truthy()) {
         // A minimum size, or the scrollbar is unusable.
-        let height = php_int(&as_string(lines)).max(6);
+        let height = php_int(&lines.to_php_string()).max(6);
         let mut style = aux_style.unwrap_or_default();
         style.extend_from_slice(
             format!(" max-height: {}em; overflow: auto;", 2 * height).as_bytes(),
@@ -239,8 +251,8 @@ fn highlight_source(
         aux_style = Some(style);
     }
 
-    let highlighted = highlight::highlight(language, text);
-    let body = Markup::html(php::rtrim(highlighted.as_bytes(), php::WHITESPACE));
+    let code = highlight::highlight(language, text, highlighter);
+    let body = Markup::html(php::rtrim(code.as_bytes(), php::WHITESPACE));
     let mut class = b"remarkup-code".to_vec();
     class.extend_from_slice(aux_class);
     markup::tag(
@@ -248,23 +260,6 @@ fn highlight_source(
         &[("class", Some(&class)), ("style", aux_style.as_deref())],
         Content::One(&body),
     )
-}
-
-/// PHP truthiness of an option: `true`, or a string other than `""` and
-/// `"0"`.
-fn is_truthy(value: &OptionValue) -> bool {
-    match value {
-        OptionValue::Flag => true,
-        OptionValue::Value(bytes) => !bytes.is_empty() && bytes != b"0",
-    }
-}
-
-/// `(string)` of an option: `true` is `"1"`.
-fn as_string(value: &OptionValue) -> Vec<u8> {
-    match value {
-        OptionValue::Flag => b"1".to_vec(),
-        OptionValue::Value(bytes) => bytes.clone(),
-    }
 }
 
 /// `(int)$text`: the leading digits, with an optional sign.
