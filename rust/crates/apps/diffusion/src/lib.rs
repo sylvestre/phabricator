@@ -1,5 +1,6 @@
 //! Methods of `PhabricatorDiffusionApplication`.
 
+pub mod commit_search;
 pub mod repository_search;
 
 use phab_conduit::{Application, Registry};
@@ -12,5 +13,6 @@ pub const APPLICATION: Application = Application {
 
 /// Registers the Diffusion methods.
 pub fn register(registry: &mut Registry) {
+    registry.register(commit_search::CommitSearch);
     registry.register(repository_search::RepositorySearch);
 }

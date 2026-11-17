@@ -274,7 +274,7 @@ pub fn id_paging(order: IdOrder, direction: pager::Direction) -> (&'static str, 
 
 /// The joins and conditions of a query, with the values they bind, built
 /// up like `buildJoinClauseParts()` and `buildWhereClauseParts()`.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Clauses {
     joins: Vec<String>,
     join_binds: Vec<Value>,

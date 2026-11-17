@@ -15,5 +15,10 @@ phab-db.workspace = true
 phab-policy.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+form_urlencoded.workspace = true
+phab-db = { workspace = true, features = ["test-support"] }
+tokio.workspace = true
+
 [lints]
 workspace = true

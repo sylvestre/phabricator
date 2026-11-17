@@ -158,6 +158,25 @@ pub async fn load_visible_by_identifiers(
     Ok(identifier_map(&references, commits))
 }
 
+/// The condition of `DiffusionCommitQuery::withIdentifiers()` on
+/// `repository_commit`, with its values; `None` when no identifier can
+/// name a commit (PHP's `PhabricatorEmptyQueryException`).
+pub async fn identifier_condition(
+    database: &Database,
+    config: &Config,
+    viewer: &Viewer,
+    identifiers: &[String],
+    now: i64,
+) -> Result<Option<(String, Vec<String>)>, VisibilityError> {
+    let references: Vec<Reference> = identifiers
+        .iter()
+        .map(|identifier| split(identifier))
+        .collect();
+    let scopes = visible_scopes(database, config, viewer, &references, now).await?;
+    Ok(where_clauses(&references, &scopes)
+        .map(|(clauses, values)| (format!("({})", clauses.join(" OR ")), values)))
+}
+
 /// The commits with these PHIDs that `viewer` can see (those of a
 /// repository they can see), by PHID.
 pub async fn load_visible_by_phids(

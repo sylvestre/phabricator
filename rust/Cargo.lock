@@ -1553,12 +1553,14 @@ dependencies = [
 name = "phab-app-diffusion"
 version = "0.1.0"
 dependencies = [
+ "form_urlencoded",
  "phab-app-differential",
  "phab-conduit",
  "phab-core",
  "phab-db",
  "phab-policy",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
