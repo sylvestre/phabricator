@@ -1,0 +1,13 @@
+[
+  {"name": "differential.getrawdiff: diff 1", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 1}},
+  {"name": "differential.getrawdiff: diff 2", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 2}},
+  {"name": "differential.getrawdiff: diff 3", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 3}},
+  {"name": "differential.getrawdiff: diff 4", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 4}},
+  {"name": "differential.getrawdiff: diff 5", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 5}},
+  {"name": "differential.getrawdiff: diff 6", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 6}},
+  {"name": "differential.getrawdiff: diff 7", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 7}},
+  {"name": "differential.getrawdiff: diff 8", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 8}},
+  {"name": "differential.getrawdiff: diff 9", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 9}},
+  {"name": "differential.getrawdiff: string ID", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": "9"}},
+  {"name": "differential.getrawdiff: unknown diff", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 999}}
+]

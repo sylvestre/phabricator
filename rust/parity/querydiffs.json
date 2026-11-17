@@ -8,5 +8,6 @@
   {"name": "differential.querydiffs: string IDs", "method": "differential.querydiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": ["1", "3"]}},
   {"name": "differential.querydiffs: unknown", "method": "differential.querydiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [999]}},
   {"name": "differential.querydiffs: nothing", "method": "differential.querydiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
-  {"name": "differential.querydiffs: empty lists", "method": "differential.querydiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [], "revisionIDs": []}}
+  {"name": "differential.querydiffs: empty lists", "method": "differential.querydiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [], "revisionIDs": []}},
+  {"name": "differential.querydiffs: renames, modes and deletes", "method": "differential.querydiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [9]}}
 ]

@@ -9,6 +9,7 @@
 
 mod changeset;
 pub mod edit_distance;
+pub mod git_patch;
 mod hunk;
 pub mod intraline;
 pub mod lines;

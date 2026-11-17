@@ -1,4 +1,5 @@
-//! `differential.querydiffs` against a test database.
+//! `differential.querydiffs` and `differential.getrawdiff` against a test
+//! database.
 
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
@@ -19,7 +20,7 @@ const DATABASES: &[&str] = &[
     "file",
 ];
 
-async fn answer(context: &Context, params: Value) -> Value {
+async fn call(context: &Context, method: &str, params: Value) -> Response {
     let mut registry = Registry::default();
     phab_app_differential::register(&mut registry);
     let mut params = params;
@@ -31,17 +32,20 @@ async fn answer(context: &Context, params: Value) -> Value {
         body,
         ..HttpRequest::default()
     };
-    let response = call::dispatch(
+    call::dispatch(
         context,
         &registry,
-        "differential.querydiffs",
+        method,
         &http,
         Mode::Shadow,
         1_700_000_000,
     )
     .await
-    .response;
-    match response {
+    .response
+}
+
+async fn answer(context: &Context, params: Value) -> Value {
+    match call(context, "differential.querydiffs", params.clone()).await {
         Response::Envelope(Envelope {
             result,
             error_code: None,
@@ -161,6 +165,35 @@ async fn describes_diffs_like_php() {
     );
     assert_eq!(answer(&context, json!({"ids": [2]})).await, json!([]));
     assert_eq!(answer(&context, json!({})).await, json!([]));
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn renders_git_patches() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+
+    let Response::Envelope(envelope) =
+        call(&context, "differential.getrawdiff", json!({"diffID": 1})).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        envelope.result,
+        json!(
+            "diff --git a/a.txt b/a.txt\nold mode 100644\nnew mode 100755\n--- a/a.txt\n\
+             +++ b/a.txt\n@@ -1 +1 @@\n-x\n+y\n\n"
+        )
+    );
+    // The hidden revision's diff is not found.
+    let Response::Envelope(envelope) =
+        call(&context, "differential.getrawdiff", json!({"diffID": 2})).await
+    else {
+        panic!("expected an error");
+    };
+    assert_eq!(envelope.error_code.as_deref(), Some("ERR_NOT_FOUND"));
 
     test_db.drop_databases().await;
 }
