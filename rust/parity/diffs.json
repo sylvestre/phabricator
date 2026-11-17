@@ -1,0 +1,18 @@
+[
+  {"name": "differential.diff.search: all", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "differential.diff.search: oldest", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "oldest"}},
+  {"name": "differential.diff.search: unknown order", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "name"}},
+  {"name": "differential.diff.search: by ids", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": [1, 3, 8, 99]}}},
+  {"name": "differential.diff.search: by phids", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"phids": ["PHID-DIFF-4zrni7x2txdw4qts4ocn", "PHID-DIFF-54oed22lgjayvkr5dpu7"]}}},
+  {"name": "differential.diff.search: by revision", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"revisionPHIDs": ["PHID-DREV-edjtusnk22iepdwjfktk", "PHID-DREV-2sj7m2nfbseplup7mu2m"]}}},
+  {"name": "differential.diff.search: by unknown revision", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"revisionPHIDs": ["PHID-DREV-nope"]}}},
+  {"name": "differential.diff.search: empty revisions", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"revisionPHIDs": []}}},
+  {"name": "differential.diff.search: commits attachment", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"commits": true}}},
+  {"name": "differential.diff.search: commits of the raw diff", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": [8]}, "attachments": {"commits": true}}},
+  {"name": "differential.diff.search: limit 2", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2}},
+  {"name": "differential.diff.search: limit 2 after 7", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2, "after": "7"}},
+  {"name": "differential.diff.search: before 3", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"before": "3", "limit": 1}},
+  {"name": "differential.diff.search: unknown cursor", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": "99"}},
+  {"name": "differential.diff.search: unknown constraint", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"revisionIDs": [1]}}},
+  {"name": "differential.diff.search: saved query (PHP)", "method": "differential.diff.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"queryKey": "all"}}
+]
