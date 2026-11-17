@@ -31,7 +31,7 @@ const SEQUENCE: Column = Column::new("seq");
 
 /// `ConduitAPIMethod::newPager()`: the limit, 100 by default, between 1
 /// and 1000.
-fn limit(value: Option<&Value>) -> Result<usize, MethodError> {
+pub(crate) fn limit(value: Option<&Value>) -> Result<usize, MethodError> {
     match value {
         None | Some(Value::Null) => Ok(100),
         Some(Value::Number(number)) if !number.is_f64() => {

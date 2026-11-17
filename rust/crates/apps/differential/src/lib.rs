@@ -11,6 +11,7 @@ pub mod repository;
 pub mod search;
 pub mod storage;
 pub mod title;
+pub mod transaction_search;
 
 pub use storage::{Comment, Repositories, Revision, Transaction};
 
@@ -19,4 +20,5 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(search::RevisionSearch);
     registry.register(diff_search::DiffSearch);
     registry.register(edge_search::EdgeSearch);
+    registry.register(transaction_search::TransactionSearch);
 }

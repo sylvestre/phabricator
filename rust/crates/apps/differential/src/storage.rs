@@ -436,10 +436,10 @@ pub async fn load_transactions(
     rows.iter().map(transaction_from_row).collect()
 }
 
-const TRANSACTION_COLUMNS: &str = "phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
+pub(crate) const TRANSACTION_COLUMNS: &str = "phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
      transactionType, oldValue, newValue, metadata, dateCreated";
 
-fn transaction_from_row(row: &MySqlRow) -> Result<Transaction, DbError> {
+pub(crate) fn transaction_from_row(row: &MySqlRow) -> Result<Transaction, DbError> {
     Ok(Transaction {
         phid: Phid::new(rows::text(row, "phid")?),
         author_phid: Phid::new(rows::text(row, "authorPHID")?),
