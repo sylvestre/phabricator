@@ -1,11 +1,13 @@
 //! `differential.revision.search`: `DifferentialRevisionSearchEngine`
 //! through `PhabricatorApplicationSearchEngine::buildConduitResponse()`.
 //!
-//! Ported: the `ids`, `phids`, `authorPHIDs`, `repositoryPHIDs`, `statuses`
-//! and date constraints (with plain values, not usernames nor functions
-//! like `viewer()`), the default order (`newest`), paging, every field and
-//! every attachment. The other constraints and orders, and saved queries,
-//! are left to PHP (`MethodError::Unsupported`).
+//! Ported: the `ids`, `phids`, `authorPHIDs`, `responsiblePHIDs`,
+//! `reviewerPHIDs`, `repositoryPHIDs`, `statuses`, `subscribers`,
+//! `projects` and date constraints (with plain values, not usernames nor
+//! functions like `viewer()`; projects without subprojects or
+//! milestones), the builtin orders but `relevance`, paging, every field
+//! and every attachment. `query`, `affectedPaths`, order vectors and saved
+//! queries are left to PHP (`MethodError::Unsupported`).
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -63,6 +65,15 @@ struct Constraints {
     statuses: Option<Vec<String>>,
     created: (Option<i64>, Option<i64>),
     modified: (Option<i64>, Option<i64>),
+    /// `withReviewers()`.
+    reviewers: Option<Vec<String>>,
+    /// `withResponsibleUsers()`, as given; [`Constraints::resolve()`]
+    /// adds the projects of the users.
+    responsibles: Option<Vec<String>>,
+    /// The subscribers extension: subscribed by any of them.
+    subscribers: Option<Vec<String>>,
+    /// The projects extension: tagged with each of them.
+    projects: Option<Vec<String>>,
 }
 
 impl Constraints {
@@ -141,6 +152,9 @@ impl Constraints {
                         .ok_or(MethodError::Unsupported("status functions"))?;
                     constraints.statuses = Some(statuses);
                 }
+                "reviewerPHIDs" | "responsiblePHIDs" | "subscribers" | "projects" => {
+                    constraints.parse_relation(&key, value)?;
+                }
                 "createdStart" => constraints.created.0 = Some(epoch(&key, value)?),
                 "createdEnd" => constraints.created.1 = Some(epoch(&key, value)?),
                 "modifiedStart" => constraints.modified.0 = Some(epoch(&key, value)?),
@@ -157,9 +171,215 @@ impl Constraints {
 }
 
 impl Constraints {
+    /// The constraints on who reviews, is responsible for, subscribes to
+    /// and tags the revision. Datasource fields refuse an empty list;
+    /// `ConduitUserListParameterType` and `ConduitProjectListParameterType`
+    /// allow it. Functions like `none()` or `viewer()`, usernames and
+    /// hashtags go to PHP.
+    fn parse_relation(&mut self, key: &str, value: &Value) -> Result<(), MethodError> {
+        let allows_empty = key == "subscribers" || key == "projects";
+        if allows_empty && matches!(value, Value::Array(list) if list.is_empty()) {
+            return Ok(());
+        }
+        let list = nonempty_list(key, value)?;
+        let prefix = if key == "projects" {
+            "PHID-PROJ-"
+        } else {
+            "PHID-"
+        };
+        let phids = Some(plain_phids(list, prefix)?);
+        match key {
+            "reviewerPHIDs" => self.reviewers = phids,
+            "responsiblePHIDs" => self.responsibles = phids,
+            "subscribers" => self.subscribers = phids,
+            _ => self.projects = phids,
+        }
+        Ok(())
+    }
+}
+
+/// `column IN (...)` with its values.
+fn in_list<'v>(column: &str, values: impl IntoIterator<Item = &'v String>) -> (String, Vec<Value>) {
+    let values: Vec<Value> = values.into_iter().map(|value| json!(value)).collect();
+    (
+        format!("{column} IN ({})", phab_db::placeholders(values.len())),
+        values,
+    )
+}
+
+/// `DifferentialReviewerStatus::STATUS_RESIGNED`.
+const RESIGNED: &str = "resigned";
+
+impl Constraints {
+    /// What PHP's datasources add to the values as given: the projects of
+    /// responsible users (`expandResponsibleUsers()`). Projects with
+    /// subprojects or milestones, which also match their descendants, are
+    /// left to PHP.
+    async fn resolve(&mut self, request: &ApiRequest<'_>) -> Result<(), MethodError> {
+        let context = request.context;
+        let database = &context.database;
+        if let Some(projects) = &self.projects {
+            let sql = format!(
+                "SELECT phid FROM {} WHERE parentProjectPHID IN ({}) LIMIT 1",
+                database.table("project", "project"),
+                phab_db::placeholders(projects.len())
+            );
+            let children = phab_db::bind_all(phab_db::sqlx::query(&sql), projects.iter())
+                .fetch_all(database.pool())
+                .await?;
+            if !children.is_empty() {
+                return Err(MethodError::Unsupported("projects with subprojects"));
+            }
+        }
+        let Some(responsibles) = &mut self.responsibles else {
+            return Ok(());
+        };
+        let users: Vec<&String> = responsibles
+            .iter()
+            .filter(|phid| phid.starts_with("PHID-USER-"))
+            .collect();
+        if users.is_empty() {
+            return Ok(());
+        }
+        // PhabricatorProjectQuery::withMemberPHIDs(): the materialized
+        // members.
+        let sql = format!(
+            "SELECT DISTINCT src FROM {} WHERE type = ? AND dst IN ({})",
+            database.table("project", "edge"),
+            phab_db::placeholders(users.len())
+        );
+        let query = phab_db::sqlx::query(&sql).bind(phab_db::edges::PROJECT_MATERIALIZED_MEMBER);
+        let rows = phab_db::bind_all(query, users.iter().map(|phid| phid.as_str()))
+            .fetch_all(database.pool())
+            .await?;
+        let phids: Vec<Phid> = rows
+            .iter()
+            .map(|row| rows::text(row, "src").map(Phid::new))
+            .collect::<Result<_, _>>()?;
+        let projects = phab_app_project::storage::load_by_phid(database, &phids).await?;
+        let (visible, _) = phab_app_project::policy::visible_projects(
+            database,
+            &context.config,
+            &request.viewer,
+            projects,
+            request.now,
+        )
+        .await
+        .map_err(MethodError::internal)?;
+        responsibles.extend(
+            visible
+                .into_iter()
+                .map(|project| project.phid.into_string()),
+        );
+        Ok(())
+    }
+
+    /// The condition that a reviewer of these, who did not resign, reviews
+    /// the revision (the `reviewer` join).
+    fn reviewed_by(database: &Database, reviewers: &[&String]) -> (String, Vec<Value>) {
+        let (list, mut binds) = in_list("reviewerPHID", reviewers.iter().copied());
+        binds.insert(0, json!(RESIGNED));
+        (
+            format!(
+                "phid IN (SELECT revisionPHID FROM {} WHERE reviewerStatus != ? AND {list})",
+                database.table("differential", "differential_reviewer")
+            ),
+            binds,
+        )
+    }
+
+    /// The condition that the revision has an edge of `edge_type` to one
+    /// of `destinations` (`buildEdgeLogicJoinClause()`).
+    fn has_edge(
+        database: &Database,
+        edge_type: i64,
+        destinations: &[&String],
+    ) -> (String, Vec<Value>) {
+        let (list, mut binds) = in_list("dst", destinations.iter().copied());
+        binds.insert(0, json!(edge_type));
+        (
+            format!(
+                "phid IN (SELECT src FROM {} WHERE type = ? AND {list})",
+                database.table("differential", "edge")
+            ),
+            binds,
+        )
+    }
+
+    /// The author and reviewer conditions. With responsible users, PHP
+    /// unions two queries: one where they are authors, one where they (or
+    /// their projects) review.
+    fn people_conditions(&self, database: &Database) -> Vec<(String, Vec<Value>)> {
+        let authors: Vec<&String> = self.authors.iter().flatten().collect();
+        let reviewers: Vec<&String> = self.reviewers.iter().flatten().collect();
+        let Some(responsibles) = &self.responsibles else {
+            let mut parts = Vec::new();
+            if self.authors.is_some() {
+                parts.push(in_list("authorPHID", authors));
+            }
+            if self.reviewers.is_some() {
+                parts.push(Self::reviewed_by(database, &reviewers));
+            }
+            return parts;
+        };
+        let all = |parts: Vec<(String, Vec<Value>)>| {
+            let sql: Vec<String> = parts.iter().map(|(sql, _)| format!("({sql})")).collect();
+            (
+                sql.join(" AND "),
+                parts
+                    .into_iter()
+                    .flat_map(|(_, binds)| binds)
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let mut as_authors = vec![in_list(
+            "authorPHID",
+            authors.iter().copied().chain(responsibles),
+        )];
+        if !reviewers.is_empty() {
+            as_authors.push(Self::reviewed_by(database, &reviewers));
+        }
+        let mut as_reviewers = Vec::new();
+        if !authors.is_empty() {
+            as_reviewers.push(in_list("authorPHID", authors.iter().copied()));
+        }
+        let all_reviewers: Vec<&String> = reviewers.iter().copied().chain(responsibles).collect();
+        as_reviewers.push(Self::reviewed_by(database, &all_reviewers));
+        let (first, mut binds) = all(as_authors);
+        let (second, more) = all(as_reviewers);
+        binds.extend(more);
+        vec![(format!("({first}) OR ({second})"), binds)]
+    }
+
     /// The `WHERE` conditions of the constraints (`buildWhereClauseParts()`),
     /// and the values they bind.
-    fn add_conditions(&self, conditions: &mut Vec<String>, binds: &mut Vec<Value>) {
+    fn add_conditions(
+        &self,
+        database: &Database,
+        conditions: &mut Vec<String>,
+        binds: &mut Vec<Value>,
+    ) {
+        let mut parts = self.people_conditions(database);
+        if let Some(subscribers) = &self.subscribers {
+            let subscribers: Vec<&String> = subscribers.iter().collect();
+            parts.push(Self::has_edge(
+                database,
+                phab_db::edges::OBJECT_HAS_SUBSCRIBER,
+                &subscribers,
+            ));
+        }
+        // Each project is a constraint of its own.
+        for project in self.projects.iter().flatten() {
+            parts.push(Self::has_edge(
+                database,
+                phab_db::edges::OBJECT_HAS_PROJECT,
+                &[project],
+            ));
+        }
+        for (sql, values) in parts {
+            conditions.push(format!("({sql})"));
+            binds.extend(values);
+        }
         let mut in_list = |column: &str, values: Vec<Value>| {
             conditions.push(format!(
                 "{column} IN ({})",
@@ -172,12 +392,6 @@ impl Constraints {
         }
         if let Some(phids) = &self.phids {
             in_list("phid", phids.iter().map(|phid| json!(phid)).collect());
-        }
-        if let Some(authors) = &self.authors {
-            in_list(
-                "authorPHID",
-                authors.iter().map(|phid| json!(phid)).collect(),
-            );
         }
         if let Some(repositories) = &self.repositories {
             in_list(
@@ -581,7 +795,7 @@ impl PolicyAwareQuery for Revisions<'_> {
             conditions.push(format!("id IN ({})", phab_db::placeholders(ids.len())));
             binds.extend(ids.iter().map(|id| json!(id)));
         }
-        constraints.add_conditions(&mut conditions, &mut binds);
+        constraints.add_conditions(database, &mut conditions, &mut binds);
         // Paging backwards reverses the order and the comparisons.
         let descending = self.order.descending() == (direction == Direction::Forward);
         let (comparison, order) = if descending {
@@ -1070,7 +1284,7 @@ impl Method for RevisionSearch {
         Box::pin(async move {
             // In the order buildConduitResponse() reads them.
             check_unported(request)?;
-            let constraints = Constraints::parse(request.value("constraints"))?;
+            let mut constraints = Constraints::parse(request.value("constraints"))?;
             let requested = requested_attachments(request.value("attachments"))?;
             let order = Order::parse(request.value("order"))?;
             let paging = Paging::for_search(
@@ -1078,6 +1292,7 @@ impl Method for RevisionSearch {
                 request.value("after"),
                 request.value("before"),
             )?;
+            constraints.resolve(request).await?;
             let (start, direction) = paging.start();
             let query = Revisions {
                 request,
@@ -1175,7 +1390,10 @@ mod tests {
         for unported in [
             json!({"statuses": ["open()"]}),
             json!({"authorPHIDs": ["alice"]}),
-            json!({"responsiblePHIDs": ["PHID-USER-1"]}),
+            json!({"responsiblePHIDs": ["viewer()"]}),
+            json!({"reviewerPHIDs": ["none()"]}),
+            json!({"projects": ["release-managers"]}),
+            json!({"subscribers": ["alice"]}),
             json!({"ids": {"0": 1}}),
             json!({"phids": [1]}),
             json!("x"),
