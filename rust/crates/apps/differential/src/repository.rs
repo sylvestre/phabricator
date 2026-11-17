@@ -57,6 +57,11 @@ impl Repository {
         })
     }
 
+    /// `getDetail()`: a value of the `details` column.
+    pub fn detail(&self, key: &str) -> Option<&serde_json::Value> {
+        self.details.get(key)
+    }
+
     /// `isSVN()`.
     pub fn is_svn(&self) -> bool {
         self.vcs == "svn"

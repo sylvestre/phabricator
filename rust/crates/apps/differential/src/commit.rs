@@ -158,6 +158,59 @@ pub async fn load_visible_by_identifiers(
     Ok(identifier_map(&references, commits))
 }
 
+/// The commits with these PHIDs that `viewer` can see (those of a
+/// repository they can see), by PHID.
+pub async fn load_visible_by_phids(
+    database: &Database,
+    config: &Config,
+    viewer: &Viewer,
+    phids: &[Phid],
+    now: i64,
+) -> Result<HashMap<Phid, Commit>, VisibilityError> {
+    if phids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sql = format!(
+        "SELECT repositoryID, phid, commitIdentifier, summary, importStatus FROM {} \
+         WHERE phid IN ({})",
+        database.table("repository", "repository_commit"),
+        phab_db::placeholders(phids.len()),
+    );
+    let found = phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
+        .fetch_all(database.pool())
+        .await
+        .map_err(|error| db_error(error.into()))?
+        .iter()
+        .map(from_row)
+        .collect::<Result<Vec<_>, DbError>>()
+        .map_err(db_error)?;
+    let mut repository_ids: Vec<i64> = found.iter().map(|(id, ..)| *id).collect();
+    repository_ids.sort_unstable();
+    repository_ids.dedup();
+    let repositories = repository::load_by_ids(database, &repository_ids)
+        .await
+        .map_err(db_error)?;
+    let repositories: HashMap<i64, Repository> =
+        repository::visible(database, config, viewer, repositories, now)
+            .await?
+            .into_iter()
+            .map(|repository| (repository.id, repository))
+            .collect();
+    Ok(found
+        .into_iter()
+        .filter_map(|(repository_id, phid, identifier, summary, status)| {
+            let commit = Commit {
+                phid: phid.clone(),
+                identifier,
+                summary,
+                is_unreachable: status & IMPORTED_UNREACHABLE != 0,
+                repository: repositories.get(&repository_id)?.clone(),
+            };
+            Some((phid, commit))
+        })
+        .collect())
+}
+
 /// The repositories the viewer can see which references name, by callsign
 /// and by ID.
 async fn visible_scopes(
@@ -204,7 +257,7 @@ fn where_clauses(
         let Some(scope) = &reference.repository else {
             if reference.hash.len() >= MINIMUM_UNQUALIFIED_HASH {
                 clauses.push("(commitIdentifier LIKE ? AND LENGTH(commitIdentifier) = 40)");
-                values.push(format!("{}%", like_escape(&reference.hash)));
+                values.push(format!("{}%", phab_db::like_escape(&reference.hash)));
             }
             continue;
         };
@@ -222,7 +275,7 @@ fn where_clauses(
         } else if reference.hash.len() >= MINIMUM_QUALIFIED_HASH {
             clauses.push("(repositoryID = ? AND commitIdentifier LIKE ?)");
             values.push(repository.id.to_string());
-            values.push(format!("{}%", like_escape(&reference.hash)));
+            values.push(format!("{}%", phab_db::like_escape(&reference.hash)));
         }
     }
     (!clauses.is_empty()).then_some((clauses, values))
@@ -267,18 +320,6 @@ fn identifier_map(
 
 fn db_error(error: DbError) -> VisibilityError {
     VisibilityError::Loader(error.into())
-}
-
-/// Escapes `%`, `_` and `\` for `LIKE`, as `qsprintf()`'s `%>` does.
-fn like_escape(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for character in text.chars() {
-        if matches!(character, '%' | '_' | '\\') {
-            escaped.push('\\');
-        }
-        escaped.push(character);
-    }
-    escaped
 }
 
 #[cfg(test)]

@@ -1,0 +1,19 @@
+[package]
+name = "phab-app-diffusion"
+description = "Diffusion: the Conduit methods on repositories"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+phab-app-differential.workspace = true
+phab-conduit.workspace = true
+phab-core.workspace = true
+phab-db.workspace = true
+phab-policy.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1548,6 +1548,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-diffusion"
+version = "0.1.0"
+dependencies = [
+ "phab-app-differential",
+ "phab-conduit",
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "serde_json",
+]
+
+[[package]]
 name = "phab-app-feed"
 version = "0.1.0"
 dependencies = [
@@ -1594,6 +1606,7 @@ dependencies = [
  "phab-conduit",
  "phab-core",
  "phab-db",
+ "phab-policy",
  "serde_json",
  "tokio",
 ]
@@ -1602,9 +1615,11 @@ dependencies = [
 name = "phab-app-project"
 version = "0.1.0"
 dependencies = [
+ "phab-conduit",
  "phab-core",
  "phab-db",
  "phab-policy",
+ "serde_json",
  "thiserror",
  "tokio",
 ]
@@ -1737,8 +1752,10 @@ dependencies = [
  "axum",
  "phab-app-conduit",
  "phab-app-differential",
+ "phab-app-diffusion",
  "phab-app-feed",
  "phab-app-people",
+ "phab-app-project",
  "phab-auth",
  "phab-conduit",
  "phab-core",

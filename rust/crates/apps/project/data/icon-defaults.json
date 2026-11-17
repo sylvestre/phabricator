@@ -1,0 +1,151 @@
+{
+  "icons": [
+    {
+      "key": "project",
+      "icon": "fa-briefcase",
+      "name": "Project",
+      "default": true,
+      "image": "v3/briefcase.png"
+    },
+    {
+      "key": "tag",
+      "icon": "fa-tags",
+      "name": "Tag",
+      "image": "v3/tag.png"
+    },
+    {
+      "key": "policy",
+      "icon": "fa-lock",
+      "name": "Policy",
+      "image": "v3/lock.png"
+    },
+    {
+      "key": "group",
+      "icon": "fa-users",
+      "name": "Group",
+      "image": "v3/people.png"
+    },
+    {
+      "key": "folder",
+      "icon": "fa-folder",
+      "name": "Folder",
+      "image": "v3/folder.png"
+    },
+    {
+      "key": "timeline",
+      "icon": "fa-calendar",
+      "name": "Timeline",
+      "image": "v3/calendar.png"
+    },
+    {
+      "key": "goal",
+      "icon": "fa-flag-checkered",
+      "name": "Goal",
+      "image": "v3/flag.png"
+    },
+    {
+      "key": "release",
+      "icon": "fa-truck",
+      "name": "Release",
+      "image": "v3/truck.png"
+    },
+    {
+      "key": "bugs",
+      "icon": "fa-bug",
+      "name": "Bugs",
+      "image": "v3/bug.png"
+    },
+    {
+      "key": "cleanup",
+      "icon": "fa-trash-o",
+      "name": "Cleanup",
+      "image": "v3/trash.png"
+    },
+    {
+      "key": "umbrella",
+      "icon": "fa-umbrella",
+      "name": "Umbrella",
+      "image": "v3/umbrella.png"
+    },
+    {
+      "key": "communication",
+      "icon": "fa-envelope",
+      "name": "Communication",
+      "image": "v3/mail.png"
+    },
+    {
+      "key": "organization",
+      "icon": "fa-building",
+      "name": "Organization",
+      "image": "v3/organization.png"
+    },
+    {
+      "key": "infrastructure",
+      "icon": "fa-cloud",
+      "name": "Infrastructure",
+      "image": "v3/cloud.png"
+    },
+    {
+      "key": "account",
+      "icon": "fa-credit-card",
+      "name": "Account",
+      "image": "v3/creditcard.png"
+    },
+    {
+      "key": "experimental",
+      "icon": "fa-flask",
+      "name": "Experimental",
+      "image": "v3/experimental.png"
+    },
+    {
+      "key": "milestone",
+      "icon": "fa-map-marker",
+      "name": "Milestone",
+      "special": "milestone",
+      "image": "v3/marker.png"
+    }
+  ],
+  "colors": [
+    {
+      "key": "red",
+      "name": "Red"
+    },
+    {
+      "key": "orange",
+      "name": "Orange"
+    },
+    {
+      "key": "yellow",
+      "name": "Yellow"
+    },
+    {
+      "key": "green",
+      "name": "Green"
+    },
+    {
+      "key": "blue",
+      "name": "Blue",
+      "default": true
+    },
+    {
+      "key": "indigo",
+      "name": "Indigo"
+    },
+    {
+      "key": "violet",
+      "name": "Violet"
+    },
+    {
+      "key": "pink",
+      "name": "Pink"
+    },
+    {
+      "key": "grey",
+      "name": "Grey"
+    },
+    {
+      "key": "checkered",
+      "name": "Checkered"
+    }
+  ]
+}

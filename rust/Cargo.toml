@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth", "crates/phab-conduit", "crates/phab-parity", "crates/phab-web", "crates/phab-remarkup", "crates/phab-diff", "crates/apps/conduit", "crates/apps/people", "crates/apps/differential", "crates/apps/project", "crates/apps/feed", "crates/apps/files", "crates/apps/herald", "bins/phab-server", "bins/phab-replay"]
+members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth", "crates/phab-conduit", "crates/phab-parity", "crates/phab-web", "crates/phab-remarkup", "crates/phab-diff", "crates/apps/conduit", "crates/apps/people", "crates/apps/differential", "crates/apps/diffusion", "crates/apps/project", "crates/apps/feed", "crates/apps/files", "crates/apps/herald", "bins/phab-server", "bins/phab-replay"]
 
 [workspace.package]
 version = "0.1.0"
@@ -18,6 +18,7 @@ phab-conduit = { path = "crates/phab-conduit" }
 phab-app-conduit = { path = "crates/apps/conduit" }
 phab-app-people = { path = "crates/apps/people" }
 phab-app-differential = { path = "crates/apps/differential" }
+phab-app-diffusion = { path = "crates/apps/diffusion" }
 phab-app-project = { path = "crates/apps/project" }
 phab-app-feed = { path = "crates/apps/feed" }
 phab-app-files = { path = "crates/apps/files" }
