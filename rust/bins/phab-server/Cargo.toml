@@ -14,6 +14,7 @@ phab-app-differential.workspace = true
 phab-app-diffusion.workspace = true
 phab-app-feed.workspace = true
 phab-app-people.workspace = true
+phab-app-phid.workspace = true
 phab-app-project.workspace = true
 phab-auth.workspace = true
 phab-conduit.workspace = true

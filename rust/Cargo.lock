@@ -1536,6 +1536,7 @@ dependencies = [
 name = "phab-app-differential"
 version = "0.1.0"
 dependencies = [
+ "form_urlencoded",
  "phab-conduit",
  "phab-core",
  "phab-db",
@@ -1607,6 +1608,21 @@ dependencies = [
  "phab-core",
  "phab-db",
  "phab-policy",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "phab-app-phid"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "phab-app-differential",
+ "phab-app-project",
+ "phab-auth",
+ "phab-conduit",
+ "phab-core",
+ "phab-db",
  "serde_json",
  "tokio",
 ]
@@ -1755,6 +1771,7 @@ dependencies = [
  "phab-app-diffusion",
  "phab-app-feed",
  "phab-app-people",
+ "phab-app-phid",
  "phab-app-project",
  "phab-auth",
  "phab-conduit",

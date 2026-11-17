@@ -27,6 +27,7 @@ fn methods() -> Registry {
     phab_app_differential::register(&mut registry);
     phab_app_diffusion::register(&mut registry);
     phab_app_project::register(&mut registry);
+    phab_app_phid::register(&mut registry);
     registry
 }
 

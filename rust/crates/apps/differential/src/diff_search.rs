@@ -238,6 +238,32 @@ impl PolicyAwareQuery for Diffs<'_> {
     }
 }
 
+/// The diffs with these PHIDs the viewer can see, as `(ID, PHID)`
+/// (`DifferentialDiffQuery::withPHIDs()`).
+pub async fn visible_diffs(
+    request: &ApiRequest<'_>,
+    phids: &[Phid],
+) -> Result<Vec<(i64, Phid)>, MethodError> {
+    if phids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let query = Diffs {
+        request,
+        revision_ids: None,
+        ids: None,
+        phids: Some(phids.iter().map(|phid| phid.as_str().to_owned()).collect()),
+        order: IdOrder::Newest,
+        revisions: std::sync::Mutex::default(),
+    };
+    let rows = query.load(None, None, Direction::Forward, None).await?;
+    Ok(query
+        .filter(rows)
+        .await?
+        .into_iter()
+        .map(|row| (row.id, row.phid))
+        .collect())
+}
+
 /// The `arc:onto` and `local:commits` properties of diffs, by diff ID.
 async fn load_properties(
     database: &Database,
