@@ -1536,6 +1536,7 @@ dependencies = [
 name = "phab-app-differential"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "form_urlencoded",
  "phab-app-project",
  "phab-conduit",

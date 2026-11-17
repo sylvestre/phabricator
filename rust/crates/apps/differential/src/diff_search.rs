@@ -32,10 +32,10 @@ const ATTACHMENTS: &[&str] = &["commits"];
 
 /// A `differential_diff` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DiffRow {
-    id: i64,
-    phid: Phid,
-    revision_id: Option<i64>,
+pub(crate) struct DiffRow {
+    pub(crate) id: i64,
+    pub(crate) phid: Phid,
+    pub(crate) revision_id: Option<i64>,
     author_phid: Option<String>,
     repository_phid: Option<String>,
     base: Option<String>,
@@ -262,6 +262,27 @@ pub async fn visible_diffs(
         .into_iter()
         .map(|row| (row.id, row.phid))
         .collect())
+}
+
+/// The diffs with these IDs the viewer can see
+/// (`DifferentialDiffQuery::withIDs()`).
+pub(crate) async fn visible_diff_rows(
+    request: &ApiRequest<'_>,
+    ids: &[i64],
+) -> Result<Vec<DiffRow>, MethodError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let query = Diffs {
+        request,
+        revision_ids: None,
+        ids: Some(ids.to_vec()),
+        phids: None,
+        order: IdOrder::Newest,
+        revisions: std::sync::Mutex::default(),
+    };
+    let rows = query.load(None, None, Direction::Forward, None).await?;
+    query.filter(rows).await
 }
 
 /// The `arc:onto` and `local:commits` properties of diffs, by diff ID.

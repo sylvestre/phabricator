@@ -1,0 +1,18 @@
+[
+  {"name": "differential.changeset.search: one diff", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": ["PHID-DIFF-f5lg6rbaoabsxfxwgbp3"]}}},
+  {"name": "differential.changeset.search: several diffs", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": ["PHID-DIFF-f5lg6rbaoabsxfxwgbp3", "PHID-DIFF-jwtb7gq2etgin2prmz4u", "PHID-DIFF-2z3mprjfngxdgj2bmloo", "PHID-DIFF-p2j7vy4kbvb2zbas453l"]}}},
+  {"name": "differential.changeset.search: several diffs, oldest", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": ["PHID-DIFF-f5lg6rbaoabsxfxwgbp3", "PHID-DIFF-jwtb7gq2etgin2prmz4u", "PHID-DIFF-2z3mprjfngxdgj2bmloo", "PHID-DIFF-p2j7vy4kbvb2zbas453l"]}, "order": "oldest"}},
+  {"name": "differential.changeset.search: paged", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": ["PHID-DIFF-f5lg6rbaoabsxfxwgbp3", "PHID-DIFF-jwtb7gq2etgin2prmz4u", "PHID-DIFF-2z3mprjfngxdgj2bmloo", "PHID-DIFF-p2j7vy4kbvb2zbas453l"]}, "limit": 2}},
+  {"name": "differential.changeset.search: second page", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": ["PHID-DIFF-f5lg6rbaoabsxfxwgbp3", "PHID-DIFF-jwtb7gq2etgin2prmz4u", "PHID-DIFF-2z3mprjfngxdgj2bmloo", "PHID-DIFF-p2j7vy4kbvb2zbas453l"]}, "limit": 2, "after": "7"}},
+  {"name": "differential.changeset.search: before", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": ["PHID-DIFF-f5lg6rbaoabsxfxwgbp3", "PHID-DIFF-jwtb7gq2etgin2prmz4u", "PHID-DIFF-2z3mprjfngxdgj2bmloo", "PHID-DIFF-p2j7vy4kbvb2zbas453l"]}, "limit": 2, "before": "3"}},
+  {"name": "differential.changeset.search: ids", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": [1, 4, 5]}}},
+  {"name": "differential.changeset.search: unknown diff", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": ["PHID-DIFF-doesnotexist00000000"]}}},
+  {"name": "differential.changeset.search: empty diffs", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": []}}},
+  {"name": "differential.changeset.search: empty ids", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": []}}},
+  {"name": "differential.changeset.search: bad constraint", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"bogus": 1}}},
+  {"name": "differential.changeset.search: bad order", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "bogus"}},
+  {"name": "differential.changeset.search: diff without revision, to PHP", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"diffPHIDs": ["PHID-DIFF-4zrni7x2txdw4qts4ocn"]}}},
+  {"name": "differential.changeset.search: everything, to PHP", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "differential.changeset.search: ids with diff 8's changeset, to PHP", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": [8, 9]}}},
+  {"name": "differential.changeset.search: ids without it", "method": "differential.changeset.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": [7, 8]}}}
+]
