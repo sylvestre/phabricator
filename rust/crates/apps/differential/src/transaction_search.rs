@@ -12,7 +12,7 @@ use std::fmt::Write;
 use phab_conduit::pager::{self, Direction, PolicyAwareQuery};
 use phab_conduit::search::{self, Clauses, IdOrder};
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
-use phab_core::{Phid, PhidType};
+use phab_core::{Phid, PhidType, php};
 use phab_db::sqlx::mysql::MySqlRow;
 use phab_db::{Database, DbError, edges, rows};
 use phab_policy::PolicySubject;
@@ -516,35 +516,11 @@ async fn load_changesets(
         .collect::<Result<_, DbError>>()?)
 }
 
-/// A decoded PHP value as `json_encode()` gives it back: PHP decodes
-/// objects to arrays, so an empty object or one keyed `0..n` is a list.
-fn php_value(value: &Value) -> Value {
-    match value {
-        Value::Object(map) => {
-            let is_list = map
-                .keys()
-                .enumerate()
-                .all(|(index, key)| *key == index.to_string());
-            if is_list {
-                Value::Array(map.values().map(php_value).collect())
-            } else {
-                Value::Object(
-                    map.iter()
-                        .map(|(key, value)| (key.clone(), php_value(value)))
-                        .collect(),
-                )
-            }
-        }
-        Value::Array(list) => Value::Array(list.iter().map(php_value).collect()),
-        other => other.clone(),
-    }
-}
-
 /// `{"old": ..., "new": ...}`.
 fn old_new(transaction: &Transaction) -> Value {
     json!({
-        "old": php_value(&transaction.old_value),
-        "new": php_value(&transaction.new_value),
+        "old": php::round_trip(&transaction.old_value),
+        "new": php::round_trip(&transaction.new_value),
     })
 }
 
@@ -575,7 +551,7 @@ fn reviewer_operations(transaction: &Transaction) -> Result<Value, MethodError> 
                 "operation": "add",
                 "phid": phid,
                 "oldStatus": null,
-                "newStatus": php_value(value),
+                "newStatus": php::round_trip(value),
                 "isBlocking": value.as_str() == Some(BLOCKING),
             }));
         }
@@ -585,7 +561,7 @@ fn reviewer_operations(transaction: &Transaction) -> Result<Value, MethodError> 
             operations.push(json!({
                 "operation": "remove",
                 "phid": phid,
-                "oldStatus": php_value(value),
+                "oldStatus": php::round_trip(value),
                 "newStatus": null,
                 "isBlocking": false,
             }));
@@ -722,14 +698,14 @@ fn type_and_fields(
             let commit = transaction
                 .metadata_value("commitPHID")
                 .filter(|value| phab_core::php::is_truthy(value));
-            let commits: Vec<Value> = commit.into_iter().map(php_value).collect();
+            let commits: Vec<Value> = commit.into_iter().map(php::round_trip).collect();
             Ok((Some("close"), json!({"commitPHIDs": commits})))
         }
         "differential:update" => {
             let commits = transaction
                 .metadata_value("commitPHIDs")
                 .filter(|value| !value.is_null())
-                .map_or_else(|| json!([]), php_value);
+                .map_or_else(|| json!([]), php::round_trip);
             let mut fields = old_new(transaction);
             fields["commitPHIDs"] = commits;
             Ok((Some("update"), fields))
@@ -984,13 +960,6 @@ mod tests {
             edge_operations(&maps),
             Ok(json!({"operations": [{"operation": "add", "phid": "PHID-PROJ-a"}]}))
         );
-    }
-
-    #[test]
-    fn php_values_turn_objects_into_lists() {
-        assert_eq!(php_value(&json!({})), json!([]));
-        assert_eq!(php_value(&json!({"0": "a", "1": "b"})), json!(["a", "b"]));
-        assert_eq!(php_value(&json!({"x": {}})), json!({"x": []}));
     }
 
     #[test]

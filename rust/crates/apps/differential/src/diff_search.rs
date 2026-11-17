@@ -273,15 +273,34 @@ pub(crate) async fn visible_diff_rows(
     if ids.is_empty() {
         return Ok(Vec::new());
     }
+    query_diffs(
+        request,
+        Some(ids.to_vec()),
+        None,
+        IdOrder::Newest,
+        Direction::Forward,
+    )
+    .await
+}
+
+/// `DifferentialDiffQuery::execute()` without a limit: the diffs with
+/// these IDs and of these revisions the viewer can see, in `order`.
+pub(crate) async fn query_diffs(
+    request: &ApiRequest<'_>,
+    ids: Option<Vec<i64>>,
+    revision_ids: Option<Vec<i64>>,
+    order: IdOrder,
+    direction: Direction,
+) -> Result<Vec<DiffRow>, MethodError> {
     let query = Diffs {
         request,
-        revision_ids: None,
-        ids: Some(ids.to_vec()),
+        revision_ids,
+        ids,
         phids: None,
-        order: IdOrder::Newest,
+        order,
         revisions: std::sync::Mutex::default(),
     };
-    let rows = query.load(None, None, Direction::Forward, None).await?;
+    let rows = query.load(None, None, direction, None).await?;
     query.filter(rows).await
 }
 

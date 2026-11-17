@@ -1542,6 +1542,7 @@ dependencies = [
  "phab-conduit",
  "phab-core",
  "phab-db",
+ "phab-diff",
  "phab-policy",
  "rstest",
  "serde",

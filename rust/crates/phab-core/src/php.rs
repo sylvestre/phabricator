@@ -34,6 +34,30 @@ pub fn string_cast(value: &Value) -> Cow<'_, str> {
     }
 }
 
+/// A JSON value as `json_encode(json_decode($json, true))` gives it back: PHP decodes
+/// objects to arrays, so an empty object or one keyed `0..n` is a list.
+pub fn round_trip(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let is_list = map
+                .keys()
+                .enumerate()
+                .all(|(index, key)| *key == index.to_string());
+            if is_list {
+                Value::Array(map.values().map(round_trip).collect())
+            } else {
+                Value::Object(
+                    map.iter()
+                        .map(|(key, value)| (key.clone(), round_trip(value)))
+                        .collect(),
+                )
+            }
+        }
+        Value::Array(list) => Value::Array(list.iter().map(round_trip).collect()),
+        other => other.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -67,5 +91,12 @@ mod tests {
     #[case(json!([1]), "Array")]
     fn string_casts_match_php(#[case] value: Value, #[case] expected: &str) {
         assert_eq!(string_cast(&value), expected);
+    }
+
+    #[test]
+    fn php_values_turn_objects_into_lists() {
+        assert_eq!(round_trip(&json!({})), json!([]));
+        assert_eq!(round_trip(&json!({"0": "a", "1": "b"})), json!(["a", "b"]));
+        assert_eq!(round_trip(&json!({"x": {}})), json!({"x": []}));
     }
 }

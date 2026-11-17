@@ -51,6 +51,23 @@ impl ChangeType {
         }
     }
 
+    /// The `changeType` column.
+    pub fn value(self) -> i64 {
+        match self {
+            Self::Add => 1,
+            Self::Change => 2,
+            Self::Delete => 3,
+            Self::MoveAway => 4,
+            Self::CopyAway => 5,
+            Self::MoveHere => 6,
+            Self::CopyHere => 7,
+            Self::Multicopy => 8,
+            Self::Message => 9,
+            Self::Child => 10,
+            Self::Unknown(other) => other,
+        }
+    }
+
     /// `DifferentialChangeType::isCreateChangeType()`.
     pub fn is_create(self) -> bool {
         matches!(self, Self::Add | Self::CopyHere | Self::MoveHere)
@@ -108,6 +125,21 @@ impl FileType {
             7 => Self::Normal,
             8 => Self::Submodule,
             other => Self::Unknown(other),
+        }
+    }
+
+    /// The `fileType` column.
+    pub fn value(self) -> i64 {
+        match self {
+            Self::Text => 1,
+            Self::Image => 2,
+            Self::Binary => 3,
+            Self::Directory => 4,
+            Self::Symlink => 5,
+            Self::Deleted => 6,
+            Self::Normal => 7,
+            Self::Submodule => 8,
+            Self::Unknown(other) => other,
         }
     }
 }
