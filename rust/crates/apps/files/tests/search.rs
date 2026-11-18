@@ -211,3 +211,65 @@ async fn filters_and_pages() {
 
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn describes_one_file() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    let mut registry = Registry::default();
+    phab_app_files::register(&mut registry);
+    let info = |params: Value| {
+        let mut params = params;
+        params["__conduit__"] = json!({"token": TOKEN});
+        let body: String = form_urlencoded::Serializer::new(String::new())
+            .append_pair("params", &params.to_string())
+            .finish();
+        HttpRequest {
+            body,
+            ..HttpRequest::default()
+        }
+    };
+    let call = |http: HttpRequest| {
+        let (context, registry) = (&context, &registry);
+        async move {
+            call::dispatch(
+                context,
+                registry,
+                "file.info",
+                &http,
+                Mode::Shadow,
+                1_700_000_000,
+            )
+            .await
+            .response
+        }
+    };
+
+    // Integers are MySQL's strings; deleted files are found too.
+    let Response::Envelope(envelope) = call(info(json!({"id": 5}))).await else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        envelope.result,
+        json!({
+            "id": "5",
+            "phid": "PHID-FILE-5",
+            "objectName": "F5",
+            "name": "gone.txt",
+            "mimeType": "text/plain",
+            "byteSize": "1500",
+            "authorPHID": "PHID-USER-bob",
+            "dateCreated": "500",
+            "dateModified": "501",
+            "uri": "http://phabricator.test/F5",
+        })
+    );
+    // The hidden revision's file does not exist for Bob.
+    let Response::Envelope(envelope) = call(info(json!({"phid": "PHID-FILE-3"}))).await else {
+        panic!("expected an error");
+    };
+    assert_eq!(envelope.error_code.as_deref(), Some("ERR-NOT-FOUND"));
+
+    test_db.drop_databases().await;
+}

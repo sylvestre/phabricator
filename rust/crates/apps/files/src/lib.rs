@@ -3,6 +3,7 @@
 //!
 //! The file contents are still served by PHP (`/file/data/...`).
 
+pub mod info;
 pub mod search;
 
 use std::collections::{HashMap, HashSet};
@@ -21,6 +22,7 @@ use serde_json::Value;
 
 /// Registers the Files methods.
 pub fn register(registry: &mut phab_conduit::Registry) {
+    registry.register(info::FileInfo);
     registry.register(search::FileSearch);
 }
 

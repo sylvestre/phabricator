@@ -194,7 +194,7 @@ async fn visible_by_attachment(
 /// visible through its policy, its author, an attached object the viewer
 /// can see, or its original when it is a thumbnail (which also needs the
 /// original to be visible).
-async fn visible_files(
+pub(crate) async fn visible_files(
     request: &ApiRequest<'_>,
     candidates: Vec<File>,
 ) -> Result<Vec<File>, MethodError> {

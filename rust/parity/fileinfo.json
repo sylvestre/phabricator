@@ -1,0 +1,13 @@
+[
+  {"name": "file.info: id 1", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 1}},
+  {"name": "file.info: id 12", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 12}},
+  {"name": "file.info: id 42", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 42}},
+  {"name": "file.info: id 46", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 46}},
+  {"name": "file.info: string id", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": "13"}},
+  {"name": "file.info: phid", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"phid": "PHID-FILE-zbqo36grm6qt2qxxxq6r"}},
+  {"name": "file.info: id wins over phid", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 12, "phid": "PHID-FILE-zbqo36grm6qt2qxxxq6r"}},
+  {"name": "file.info: unknown id", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 999}},
+  {"name": "file.info: unknown phid", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"phid": "PHID-FILE-doesnotexist00000000"}},
+  {"name": "file.info: nothing", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "file.info: id 0 uses phid", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 0, "phid": "PHID-FILE-zbqo36grm6qt2qxxxq6r"}}
+]
