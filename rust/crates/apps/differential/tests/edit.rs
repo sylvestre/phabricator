@@ -451,3 +451,90 @@ async fn requests_changes() {
 
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn resigns() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(
+        &context,
+        json!({"objectIdentifier": "D1", "transactions": [{"type": "resign", "value": true}]}),
+    )
+    .await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        transaction_types(&test_db).await,
+        ["differential.revision.resign"]
+    );
+    let (status, reviewers) = review_state(&test_db).await;
+    assert_eq!(status, "needs-review");
+    assert_eq!(
+        reviewers[0].1,
+        "resigned PHID-DIFF-1 PHID-USER-bob {\"sticky\":null}"
+    );
+    // Resigning twice is refused, by PHP; Bob doesn't own D1 either.
+    for kind in ["resign", "plan-changes", "abandon"] {
+        let params =
+            json!({"objectIdentifier": "D1", "transactions": [{"type": kind, "value": true}]});
+        assert!(
+            matches!(edit(&context, params.clone()).await, Response::Fallback(_)),
+            "{params}"
+        );
+    }
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn takes_author_actions() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // Bob owns D1 now.
+    test_db
+        .execute(
+            "UPDATE `{ns}_differential`.differential_revision SET authorPHID = 'PHID-USER-bob' \
+             WHERE id = 1; DELETE FROM `{ns}_differential`.differential_reviewer \
+             WHERE reviewerPHID = 'PHID-USER-bob'",
+        )
+        .await;
+
+    for (kind, status) in [
+        ("plan-changes", "changes-planned"),
+        ("abandon", "abandoned"),
+    ] {
+        let params =
+            json!({"objectIdentifier": "D1", "transactions": [{"type": kind, "value": true}]});
+        let Response::Envelope(Envelope {
+            error_code: None, ..
+        }) = edit(&context, params.clone()).await
+        else {
+            panic!("{params}: expected an answer");
+        };
+        assert_eq!(review_state(&test_db).await.0, status, "{params}");
+    }
+    assert_eq!(
+        transaction_types(&test_db).await,
+        [
+            "differential.revision.plan",
+            "differential.revision.abandon"
+        ]
+    );
+    // An abandoned revision can't be abandoned again.
+    assert!(matches!(
+        edit(
+            &context,
+            json!({"objectIdentifier": "D1", "transactions": [{"type": "abandon", "value": true}]})
+        )
+        .await,
+        Response::Fallback(_)
+    ));
+
+    test_db.drop_databases().await;
+}

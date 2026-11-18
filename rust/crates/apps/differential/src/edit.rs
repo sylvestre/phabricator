@@ -73,6 +73,7 @@ fn is_empty_comment(text: &str) -> bool {
 enum Review {
     Accept,
     Reject,
+    Resign,
 }
 
 impl Review {
@@ -81,6 +82,7 @@ impl Review {
         match self {
             Self::Accept => "accepted",
             Self::Reject => "rejected",
+            Self::Resign => "resigned",
         }
     }
 
@@ -89,6 +91,33 @@ impl Review {
         match self {
             Self::Accept => "differential.revision.accept",
             Self::Reject => "differential.revision.reject",
+            Self::Resign => "differential.revision.resign",
+        }
+    }
+}
+
+/// An action of the revision's author which sets its status:
+/// "Plan Changes" and "Abandon".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuthorAction {
+    PlanChanges,
+    Abandon,
+}
+
+impl AuthorAction {
+    /// The status it sets.
+    fn status(self) -> &'static str {
+        match self {
+            Self::PlanChanges => "changes-planned",
+            Self::Abandon => "abandoned",
+        }
+    }
+
+    /// The transaction type.
+    fn transaction_type(self) -> &'static str {
+        match self {
+            Self::PlanChanges => "differential.revision.plan",
+            Self::Abandon => "differential.revision.abandon",
         }
     }
 }
@@ -100,6 +129,8 @@ struct Wanted {
     comment: Option<String>,
     /// A review, for the reviewers the actor has authority over.
     review: Option<Review>,
+    /// An action of the author.
+    author_action: Option<AuthorAction>,
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
@@ -129,11 +160,23 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
             (Some("reject"), Some(Value::Bool(true))) if wanted.review.is_none() => {
                 wanted.review = Some(Review::Reject);
             }
+            (Some("resign"), Some(Value::Bool(true))) if wanted.review.is_none() => {
+                wanted.review = Some(Review::Resign);
+            }
+            (Some("plan-changes"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
+                wanted.author_action = Some(AuthorAction::PlanChanges);
+            }
+            (Some("abandon"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
+                wanted.author_action = Some(AuthorAction::Abandon);
+            }
             _ => return Err(MethodError::Unsupported("transactions not ported")),
         }
     }
     if wanted == Wanted::default() {
         return Err(MethodError::Unsupported("empty transaction lists"));
+    }
+    if wanted.review.is_some() && wanted.author_action.is_some() {
+        return Err(MethodError::Unsupported("several actions"));
     }
     Ok(wanted)
 }
@@ -405,6 +448,8 @@ struct Plan {
     subscription: Option<(String, Vec<String>)>,
     /// The review, its transaction and its reviewers.
     review: Option<(Review, String, Vec<ReviewerUpdate>)>,
+    /// The author's action and its transaction.
+    author_action: Option<(AuthorAction, String)>,
     /// The comment: its text, transaction and comment PHIDs.
     comment: Option<(String, String, String)>,
     /// The `differential.revision.status` transaction `updateReviewStatus()`
@@ -656,10 +701,24 @@ async fn plan_review(
         .author_phid
         .as_ref()
         .is_some_and(|author| author.as_str() == actor);
-    if revision.is_closed() || revision.status == "draft" || !facts.should_broadcast || is_author {
+    let resigned = facts
+        .reviewers
+        .iter()
+        .any(|reviewer| reviewer.reviewer == actor && reviewer.status == "resigned");
+    let refused = match review {
+        Review::Accept | Review::Reject => {
+            revision.status == "draft" || !facts.should_broadcast || is_author
+        }
+        Review::Resign => resigned,
+    };
+    if revision.is_closed() || refused {
         return Err(MethodError::Unsupported("reviews PHP refuses"));
     }
-    let authority = reviewer_authority(database, facts, actor).await?;
+    let mut authority = reviewer_authority(database, facts, actor).await?;
+    // Resigning only affects the actor.
+    if review == Review::Resign {
+        authority.retain(|phid| phid == actor);
+    }
     if !authority.iter().any(|phid| phid == actor) {
         return Err(MethodError::Unsupported(
             "reviews by people who don't review",
@@ -669,6 +728,7 @@ async fn plan_review(
     let sticky = sticky_accept(request);
     let done = |reviewer: &crate::storage::Reviewer| match review {
         Review::Accept => reviewer.is_accepted(active.as_ref(), sticky),
+        Review::Resign => false,
         // isRejected(): rejected, not voided, on the active diff.
         Review::Reject => {
             reviewer.status == "rejected"
@@ -685,7 +745,7 @@ async fn plan_review(
         authority.iter().any(|phid| phid == reviewer.phid.as_str())
     };
     // isViewerReviewerStatusFully(): the review would change nothing.
-    if revision.reviewers.iter().filter(authorized).all(done) {
+    if review != Review::Resign && revision.reviewers.iter().filter(authorized).all(done) {
         return Err(MethodError::Unsupported("reviews PHP refuses"));
     }
     // Accepting as the defaults leaves out the reviewers who accepted
@@ -700,10 +760,23 @@ async fn plan_review(
                 .iter()
                 .find(|reviewer| reviewer.phid.as_str() == phid)
                 .is_some_and(|reviewer| {
-                    authorized(&reviewer) && (review == Review::Reject || !done(reviewer))
+                    authorized(&reviewer) && (review != Review::Accept || !done(reviewer))
                 })
         })
         .collect();
+    reviewer_updates(database, review, revision, facts, &authority).await
+}
+
+/// The rows `applyReviewerEffect()` writes for `authority`, and the
+/// reviewers of `revision` and `facts` once written.
+async fn reviewer_updates(
+    database: &Database,
+    review: Review,
+    revision: &mut Revision,
+    facts: &mut Facts,
+    authority: &[String],
+) -> Result<Vec<ReviewerUpdate>, MethodError> {
+    let active = revision.active_diff_phid.clone();
     let sql = format!(
         "SELECT reviewerPHID, options FROM {} WHERE revisionPHID = ? AND reviewerPHID IN ({})",
         database.table("differential", "differential_reviewer"),
@@ -716,7 +789,7 @@ async fn plan_review(
     .fetch_all(database.pool())
     .await?;
     let mut updates = Vec::new();
-    for phid in &authority {
+    for phid in authority {
         let row = found
             .iter()
             .find(|row| rows::text(row, "reviewerPHID").is_ok_and(|text| text == *phid))
@@ -751,6 +824,42 @@ async fn plan_review(
         });
     }
     Ok(updates)
+}
+
+/// `DifferentialRevisionPlanChangesTransaction` and
+/// `DifferentialRevisionAbandonTransaction`: the new status, once PHP's
+/// validation passes. Abandoning a revision with a repository may queue
+/// merge conflict checks, which is left to PHP.
+fn plan_author_action(
+    request: &ApiRequest<'_>,
+    action: AuthorAction,
+    revision: &mut Revision,
+    actor: &str,
+) -> Result<(), MethodError> {
+    let is_author = revision
+        .author_phid
+        .as_ref()
+        .is_some_and(|author| author.as_str() == actor);
+    let refused = match action {
+        // Drafts may plan changes through Conduit; not ported.
+        AuthorAction::PlanChanges => {
+            !is_author || revision.status == "draft" || revision.status == "changes-planned"
+        }
+        AuthorAction::Abandon => {
+            revision.repository_phid.is_some()
+                || (!is_author
+                    && !request
+                        .context
+                        .config
+                        .value("differential.always-allow-abandon")
+                        .is_some_and(php::is_truthy))
+        }
+    };
+    if revision.is_closed() || refused {
+        return Err(MethodError::Unsupported("author actions not ported"));
+    }
+    action.status().clone_into(&mut revision.status);
+    Ok(())
 }
 
 /// A new transaction PHID of revisions.
@@ -789,6 +898,13 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         }
         None => None,
     };
+    let author_action = match wanted.author_action {
+        Some(action) => {
+            plan_author_action(request, action, &mut revision, &actor)?;
+            Some((action, transaction_phid()))
+        }
+        None => None,
+    };
     let comment = wanted.comment.map(|text| {
         (
             text,
@@ -810,6 +926,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .iter()
         .map(|(phid, _)| phid.clone())
         .chain(review.iter().map(|(_, phid, _)| phid.clone()))
+        .chain(author_action.iter().map(|(_, phid)| phid.clone()))
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
@@ -838,6 +955,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         group_id: random::random_characters(32),
         subscription,
         review,
+        author_action,
         comment,
         status,
         applied_phids,
@@ -909,6 +1027,16 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
         );
         insert_transaction(request, plan, connection, row).await?;
         write_reviewers(request, plan, *review, updates, connection).await?;
+    }
+    if let Some((action, phid)) = &plan.author_action {
+        let row = (
+            phid.as_str(),
+            action.transaction_type(),
+            "false",
+            "true",
+            &*metadata,
+        );
+        insert_transaction(request, plan, connection, row).await?;
     }
     if let Some((text, phid, comment_phid)) = &plan.comment {
         write_comment(

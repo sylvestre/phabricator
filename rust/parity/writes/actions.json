@@ -1,0 +1,9 @@
+[
+  {"name": "resign from D3", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "resign", "value": true}]}},
+  {"name": "plan changes on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "plan-changes", "value": true}]}},
+  {"name": "abandon D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "abandon", "value": true}]}},
+  {"name": "plan changes on D1 with a comment", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "plan-changes", "value": true}, {"type": "comment", "value": "Reworking this."}]}},
+  {"name": "abandon D2 (repository)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "abandon", "value": true}]}},
+  {"name": "resign from D7 (project member)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "resign", "value": true}]}},
+  {"name": "plan changes on D3 (not mine)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "plan-changes", "value": true}]}}
+]
