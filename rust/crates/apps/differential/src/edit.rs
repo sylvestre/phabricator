@@ -96,20 +96,24 @@ impl Review {
     }
 }
 
-/// An action of the revision's author which sets its status:
-/// "Plan Changes" and "Abandon".
+/// An action of the revision's author which sets its status: "Plan
+/// Changes", "Abandon", "Request Review" and "Reclaim".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AuthorAction {
     PlanChanges,
     Abandon,
+    RequestReview,
+    Reclaim,
 }
 
 impl AuthorAction {
-    /// The status it sets.
+    /// The status it sets: "Reclaim" sets "needs-review" on revisions
+    /// which broadcast, which are the only ones ported.
     fn status(self) -> &'static str {
         match self {
             Self::PlanChanges => "changes-planned",
             Self::Abandon => "abandoned",
+            Self::RequestReview | Self::Reclaim => "needs-review",
         }
     }
 
@@ -118,6 +122,8 @@ impl AuthorAction {
         match self {
             Self::PlanChanges => "differential.revision.plan",
             Self::Abandon => "differential.revision.abandon",
+            Self::RequestReview => "differential.revision.request",
+            Self::Reclaim => "differential.revision.reclaim",
         }
     }
 }
@@ -168,6 +174,12 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
             }
             (Some("abandon"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
                 wanted.author_action = Some(AuthorAction::Abandon);
+            }
+            (Some("request-review"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
+                wanted.author_action = Some(AuthorAction::RequestReview);
+            }
+            (Some("reclaim"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
+                wanted.author_action = Some(AuthorAction::Reclaim);
             }
             _ => return Err(MethodError::Unsupported("transactions not ported")),
         }
@@ -429,6 +441,9 @@ fn new_review_status(revision: &Revision, sticky_accept: bool) -> Option<String>
     Some(status.to_owned())
 }
 
+/// The reviewers a void affects: their row IDs and PHIDs.
+type Voided = Vec<(i64, String)>;
+
 /// A reviewer row a review writes (`applyReviewerEffect()`).
 struct ReviewerUpdate {
     reviewer: String,
@@ -450,6 +465,9 @@ struct Plan {
     review: Option<(Review, String, Vec<ReviewerUpdate>)>,
     /// The author's action and its transaction.
     author_action: Option<(AuthorAction, String)>,
+    /// The `differential.revision.void` transaction of "Request Review":
+    /// its PHID, the reviewers it voids and the statuses it must void.
+    void: Option<(String, Voided, Vec<&'static str>)>,
     /// The comment: its text, transaction and comment PHIDs.
     comment: Option<(String, String, String)>,
     /// The `differential.revision.status` transaction `updateReviewStatus()`
@@ -826,45 +844,155 @@ async fn reviewer_updates(
     Ok(updates)
 }
 
-/// `DifferentialRevisionPlanChangesTransaction` and
-/// `DifferentialRevisionAbandonTransaction`: the new status, once PHP's
-/// validation passes. Abandoning a revision with a repository may queue
-/// merge conflict checks, which is left to PHP.
+/// The author's actions (`DifferentialRevisionPlanChangesTransaction`,
+/// `...AbandonTransaction`, `...RequestReviewTransaction`,
+/// `...ReclaimTransaction`): the new status, once PHP's validation passes.
+/// Abandoning a revision with a repository may queue merge conflict checks,
+/// and drafts promote or demote: those are left to PHP.
 fn plan_author_action(
     request: &ApiRequest<'_>,
     action: AuthorAction,
     revision: &mut Revision,
+    facts: &Facts,
     actor: &str,
 ) -> Result<(), MethodError> {
     let is_author = revision
         .author_phid
         .as_ref()
         .is_some_and(|author| author.as_str() == actor);
-    let refused = match action {
-        // Drafts may plan changes through Conduit; not ported.
+    let status = revision.status.as_str();
+    let ported = match action {
         AuthorAction::PlanChanges => {
-            !is_author || revision.status == "draft" || revision.status == "changes-planned"
+            is_author && !revision.is_closed() && !matches!(status, "draft" | "changes-planned")
         }
         AuthorAction::Abandon => {
-            revision.repository_phid.is_some()
-                || (!is_author
-                    && !request
-                        .context
-                        .config
-                        .value("differential.always-allow-abandon")
-                        .is_some_and(php::is_truthy))
+            let allowed = is_author
+                || request
+                    .context
+                    .config
+                    .value("differential.always-allow-abandon")
+                    .is_some_and(php::is_truthy);
+            allowed && !revision.is_closed() && revision.repository_phid.is_none()
         }
+        // Members of #secure-revision may request review of drafts.
+        AuthorAction::RequestReview => {
+            is_author
+                && facts.should_broadcast
+                && !revision.is_closed()
+                && !matches!(status, "draft" | "needs-review")
+        }
+        AuthorAction::Reclaim => is_author && facts.should_broadcast && status == "abandoned",
     };
-    if revision.is_closed() || refused {
+    if !ported {
         return Err(MethodError::Unsupported("author actions not ported"));
     }
     action.status().clone_into(&mut revision.status);
     Ok(())
 }
 
+/// The `differential.revision.void` transaction "Request Review" adds
+/// (`expandTransaction()`): the reviewers whose accepts and rejections it
+/// voids, and the statuses it must void. Voids `revision`'s reviewers.
+async fn plan_void(
+    request: &ApiRequest<'_>,
+    revision: &mut Revision,
+    old_status: &str,
+    actor: &str,
+) -> Result<Option<(Voided, Vec<&'static str>)>, MethodError> {
+    let database = &request.context.database;
+    // "Changes Planned" then "Request Review" keeps sticky accepts.
+    let force: Vec<&'static str> = if old_status == "changes-planned" {
+        Vec::new()
+    } else {
+        vec!["accepted"]
+    };
+    let sql = format!(
+        "SELECT id, reviewerPHID, reviewerStatus, options FROM {} WHERE revisionPHID = ? AND \
+         voidedPHID IS NULL AND reviewerStatus IN ('accepted', 'rejected') ORDER BY id",
+        database.table("differential", "differential_reviewer")
+    );
+    let found = phab_db::sqlx::query(&sql)
+        .bind(revision.phid.as_str())
+        .fetch_all(database.pool())
+        .await?;
+    let default = sticky_accept(request);
+    let mut voided = Vec::new();
+    for row in &found {
+        let status = rows::text(row, "reviewerStatus")?;
+        // getOption('sticky'), coalesced with the configuration.
+        let sticky = match rows::json(row, "options")? {
+            Value::Object(options) => match options.get("sticky") {
+                None | Some(Value::Null) => default,
+                Some(value) => php::is_truthy(value),
+            },
+            _ => default,
+        };
+        if status == "accepted" && !force.contains(&"accepted") && sticky {
+            continue;
+        }
+        voided.push((rows::int(row, "id")?, rows::text(row, "reviewerPHID")?));
+    }
+    if voided.is_empty() {
+        return Ok(None);
+    }
+    for reviewer in &mut revision.reviewers {
+        if voided
+            .iter()
+            .any(|(_, phid)| phid == reviewer.phid.as_str())
+        {
+            reviewer.voided_phid = Some(Phid::new(actor));
+        }
+    }
+    Ok(Some((voided, force)))
+}
+
 /// A new transaction PHID of revisions.
 fn transaction_phid() -> String {
     Phid::generate(PhidType::TRANSACTION, Some(PhidType::REVISION)).into_string()
+}
+
+/// What Herald and the publish task need of the planned edit.
+struct Publication {
+    rules: Vec<Rule>,
+    transcript: engine::TranscriptRow,
+    herald_header: String,
+    worker_data: String,
+}
+
+/// Runs Herald on the edited revision and builds the publish task.
+async fn publication(
+    database: &Database,
+    revision: &Revision,
+    facts: &Facts,
+    actor: &str,
+    applied_phids: &[String],
+) -> Result<Publication, MethodError> {
+    let (rules, evaluation, applied, must_encrypt) =
+        run_herald(database, revision, facts, applied_phids).await?;
+    let subject = Subject {
+        phid: revision.phid.as_str().to_owned(),
+        content_type: "differential".to_owned(),
+        name: revision.title.clone(),
+        applied_transaction_phids: Some(applied_phids.to_vec()),
+    };
+    let transcript = evaluation.transcript(&subject, &applied);
+    let herald_header = engine::combine_headers(
+        saved_header(database, &revision.phid).await?.as_deref(),
+        &engine::rules_header(&applied),
+    );
+    let state = worker_state(revision, facts, actor, &must_encrypt, &herald_header);
+    let worker_data = php::json_encode(&json!({
+        "objectPHID": revision.phid.as_str(),
+        "actorPHID": actor,
+        "xactionPHIDs": applied_phids,
+        "state": state,
+    }));
+    Ok(Publication {
+        rules,
+        transcript,
+        herald_header,
+        worker_data,
+    })
 }
 
 async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
@@ -898,12 +1026,20 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         }
         None => None,
     };
+    let old_status = revision.status.clone();
     let author_action = match wanted.author_action {
         Some(action) => {
-            plan_author_action(request, action, &mut revision, &actor)?;
+            plan_author_action(request, action, &mut revision, &facts, &actor)?;
             Some((action, transaction_phid()))
         }
         None => None,
+    };
+    let void = if wanted.author_action == Some(AuthorAction::RequestReview) {
+        plan_void(request, &mut revision, &old_status, &actor)
+            .await?
+            .map(|(reviewers, force)| (transaction_phid(), reviewers, force))
+    } else {
+        None
     };
     let comment = wanted.comment.map(|text| {
         (
@@ -927,42 +1063,25 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .map(|(phid, _)| phid.clone())
         .chain(review.iter().map(|(_, phid, _)| phid.clone()))
         .chain(author_action.iter().map(|(_, phid)| phid.clone()))
+        .chain(void.iter().map(|(phid, _, _)| phid.clone()))
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
-    let (rules, evaluation, applied, must_encrypt) =
-        run_herald(database, &revision, &facts, &applied_phids).await?;
-    let subject = Subject {
-        phid: revision.phid.as_str().to_owned(),
-        content_type: "differential".to_owned(),
-        name: revision.title.clone(),
-        applied_transaction_phids: Some(applied_phids.clone()),
-    };
-    let transcript = evaluation.transcript(&subject, &applied);
-    let herald_header = engine::combine_headers(
-        saved_header(database, &revision.phid).await?.as_deref(),
-        &engine::rules_header(&applied),
-    );
-    let state = worker_state(&revision, &facts, &actor, &must_encrypt, &herald_header);
-    let worker_data = php::json_encode(&json!({
-        "objectPHID": revision.phid.as_str(),
-        "actorPHID": actor,
-        "xactionPHIDs": applied_phids,
-        "state": state,
-    }));
+    let published = publication(database, &revision, &facts, &actor, &applied_phids).await?;
     Ok(Plan {
         actor,
         group_id: random::random_characters(32),
         subscription,
         review,
         author_action,
+        void,
         comment,
         status,
         applied_phids,
-        rules,
-        transcript,
-        herald_header,
-        worker_data,
+        rules: published.rules,
+        transcript: published.transcript,
+        herald_header: published.herald_header,
+        worker_data: published.worker_data,
         revision,
     })
 }
@@ -1038,6 +1157,9 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
         );
         insert_transaction(request, plan, connection, row).await?;
     }
+    if let Some((phid, reviewers, force)) = &plan.void {
+        write_void(request, plan, (phid, reviewers, force), connection).await?;
+    }
     if let Some((text, phid, comment_phid)) = &plan.comment {
         write_comment(
             request,
@@ -1077,6 +1199,49 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     )
     .await?;
     transaction.commit().await?;
+    Ok(())
+}
+
+/// The void transaction and its effect on the reviewers.
+async fn write_void(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    (phid, reviewers, force): (&str, &[(i64, String)], &[&str]),
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let metadata = php::json_encode(&json!({
+        "void.force": force,
+        "core.groupID": plan.group_id,
+    }));
+    // mpull() keeps the rows' IDs as keys.
+    let new = php::json_encode(&Value::Object(
+        reviewers
+            .iter()
+            .map(|(id, phid)| (id.to_string(), json!(phid)))
+            .collect(),
+    ));
+    let row = (
+        phid,
+        "differential.revision.void",
+        "false",
+        &*new,
+        &*metadata,
+    );
+    insert_transaction(request, plan, connection, row).await?;
+    phab_db::bind_all(
+        phab_db::sqlx::query(&format!(
+            "UPDATE {} SET voidedPHID = ? WHERE revisionPHID = ? AND voidedPHID IS NULL AND \
+             reviewerPHID IN ({})",
+            database.table("differential", "differential_reviewer"),
+            phab_db::placeholders(reviewers.len())
+        ))
+        .bind(&plan.actor)
+        .bind(plan.revision.phid.as_str()),
+        reviewers.iter().map(|(_, phid)| phid.as_str()),
+    )
+    .execute(&mut *connection)
+    .await?;
     Ok(())
 }
 

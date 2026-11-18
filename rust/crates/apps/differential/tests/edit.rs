@@ -538,3 +538,72 @@ async fn takes_author_actions() {
 
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn requests_review_again() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // Bob owns D1, which Dave accepted without sticking and Erin rejected.
+    test_db
+        .execute(
+            "UPDATE `{ns}_differential`.differential_revision SET authorPHID = 'PHID-USER-bob', \
+             status = 'needs-revision' WHERE id = 1; \
+             DELETE FROM `{ns}_differential`.differential_reviewer; \
+             INSERT INTO `{ns}_differential`.differential_reviewer (revisionPHID, reviewerPHID, \
+               reviewerStatus, dateCreated, dateModified, options, lastActionDiffPHID) VALUES \
+             ('PHID-DREV-1', 'PHID-USER-dave', 'accepted', 1, 1, '{\"sticky\":false}', \
+               'PHID-DIFF-1'), \
+             ('PHID-DREV-1', 'PHID-USER-erin', 'rejected', 1, 1, '{}', 'PHID-DIFF-1')",
+        )
+        .await;
+
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(
+        &context,
+        json!({"objectIdentifier": "D1", "transactions": [{"type": "request-review", "value": true}]}),
+    )
+    .await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        transaction_types(&test_db).await,
+        [
+            "differential.revision.request",
+            "differential.revision.void"
+        ]
+    );
+    let value = |sql: &'static str| one_value(&test_db, sql);
+    assert_eq!(
+        value(
+            "SELECT CONCAT(newValue, ' ', metadata) AS value FROM \
+             `{ns}_differential`.differential_transaction WHERE transactionType = \
+             'differential.revision.void'"
+        )
+        .await
+        .as_str()
+        .map(|text| text
+            .split(",\"core.groupID")
+            .next()
+            .unwrap_or_default()
+            .to_owned()),
+        Some(
+            "{\"3\":\"PHID-USER-dave\",\"4\":\"PHID-USER-erin\"} {\"void.force\":[\"accepted\"]"
+                .to_owned()
+        )
+    );
+    assert_eq!(
+        value(
+            "SELECT GROUP_CONCAT(voidedPHID) AS value FROM \
+             `{ns}_differential`.differential_reviewer"
+        )
+        .await,
+        "PHID-USER-bob,PHID-USER-bob"
+    );
+    // The voided reject still holds back an accept: "needs-review".
+    assert_eq!(review_state(&test_db).await.0, "needs-review");
+
+    test_db.drop_databases().await;
+}
