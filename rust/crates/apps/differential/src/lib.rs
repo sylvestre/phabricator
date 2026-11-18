@@ -13,6 +13,7 @@ pub mod get_raw_diff;
 pub mod legacy_query;
 pub mod query_diffs;
 pub mod repository;
+pub mod revision_comments;
 pub mod search;
 pub mod storage;
 pub mod title;
@@ -33,4 +34,5 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(legacy_query::LegacyQuery);
     registry.register(edge_search::EdgeSearch);
     registry.register(transaction_search::TransactionSearch);
+    registry.register(revision_comments::GetRevisionComments);
 }

@@ -1,4 +1,5 @@
-//! `transaction.search` on revisions against a test database.
+//! `transaction.search` on revisions, and `differential.getrevisioncomments`,
+//! against a test database.
 
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
@@ -601,6 +602,107 @@ async fn leaves_the_rest_to_php() {
             "{params}"
         );
     }
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn lists_revision_comments() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // An action of the old days.
+    add_transactions(
+        &test_db,
+        &[(
+            12,
+            "differential:action",
+            "PHID-USER-alice",
+            "PHID-DREV-open",
+            "users",
+            "",
+            "null",
+            "\"accept\"",
+            "{}",
+        )],
+    )
+    .await;
+    let mut registry = Registry::default();
+    phab_app_differential::register(&mut registry);
+    let comments = |params: Value| {
+        let (context, registry) = (&context, &registry);
+        async move {
+            let mut params = params;
+            params["__conduit__"] = json!({"token": TOKEN});
+            let body: String = form_urlencoded::Serializer::new(String::new())
+                .append_pair("params", &params.to_string())
+                .finish();
+            let http = HttpRequest {
+                body,
+                ..HttpRequest::default()
+            };
+            call::dispatch(
+                context,
+                registry,
+                "differential.getrevisioncomments",
+                &http,
+                Mode::Shadow,
+                1_700_000_000,
+            )
+            .await
+            .response
+        }
+    };
+    let Response::Envelope(envelope) = comments(json!({"ids": [1, 2]})).await else {
+        panic!("expected an answer");
+    };
+    let result = &envelope.result;
+    // Only the visible revision; its visible transactions, newest first.
+    assert_eq!(
+        result
+            .as_object()
+            .expect("a map")
+            .keys()
+            .collect::<Vec<_>>(),
+        ["1"]
+    );
+    let entry = |id: usize, action: Value, author: &str, content: Value| {
+        json!({
+            "revisionID": "1",
+            "action": action,
+            "authorPHID": author,
+            "dateCreated": format!("{id}00"),
+            "content": content,
+        })
+    };
+    let (alice, bob) = ("PHID-USER-alice", "PHID-USER-bob");
+    assert_eq!(
+        result["1"],
+        json!([
+            entry(12, json!("accept"), alice, Value::Null),
+            entry(11, json!("none"), bob, Value::Null),
+            entry(8, json!("none"), alice, Value::Null),
+            entry(7, json!("none"), alice, Value::Null),
+            entry(6, json!("none"), alice, Value::Null),
+            // The inline's text; the removed comment's latest version is
+            // empty.
+            entry(5, json!("none"), bob, json!("Use this")),
+            entry(4, json!("comment"), bob, Value::Null),
+            entry(3, json!("none"), alice, Value::Null),
+            entry(2, json!("none"), alice, Value::Null),
+            entry(1, json!("none"), alice, Value::Null),
+        ])
+    );
+    for params in [json!({"ids": []}), json!({}), json!({"ids": [2]})] {
+        let Response::Envelope(envelope) = comments(params.clone()).await else {
+            panic!("{params}: expected an answer");
+        };
+        assert_eq!(envelope.result, json!([]), "{params}");
+    }
+    assert!(matches!(
+        comments(json!({"ids": 1})).await,
+        Response::Fallback(_)
+    ));
 
     test_db.drop_databases().await;
 }

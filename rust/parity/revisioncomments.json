@@ -1,0 +1,11 @@
+[
+  {"name": "getrevisioncomments: one", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [1]}},
+  {"name": "getrevisioncomments: all", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [1, 2, 3, 4, 5, 6, 7]}},
+  {"name": "getrevisioncomments: strings", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": ["3", "6"]}},
+  {"name": "getrevisioncomments: unknown", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [99]}},
+  {"name": "getrevisioncomments: empty", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": []}},
+  {"name": "getrevisioncomments: missing", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "getrevisioncomments: inlines", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [1], "inlines": true}},
+  {"name": "getrevisioncomments: scalar", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": 3}},
+  {"name": "getrevisioncomments: zero", "method": "differential.getrevisioncomments", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": 0}}
+]

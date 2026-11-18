@@ -28,10 +28,10 @@ const FILE_DIRECTORY: i64 = 4;
 
 /// A `differential_transaction` row.
 #[derive(Debug, Clone)]
-struct TransactionRow {
+pub(crate) struct TransactionRow {
     id: i64,
-    transaction: Transaction,
-    date_created: i64,
+    pub(crate) transaction: Transaction,
+    pub(crate) date_created: i64,
     date_modified: i64,
 }
 
@@ -48,7 +48,7 @@ impl TransactionRow {
 
 /// A `differential_transaction_comment` row of a transaction.
 #[derive(Debug, Clone)]
-struct CommentRow {
+pub(crate) struct CommentRow {
     id: i64,
     phid: Phid,
     transaction_phid: Phid,
@@ -56,7 +56,7 @@ struct CommentRow {
     view_policy: String,
     edit_policy: String,
     version: i64,
-    content: String,
+    pub(crate) content: String,
     is_deleted: bool,
     date_created: i64,
     date_modified: i64,
@@ -262,11 +262,12 @@ fn constraints(value: Option<&Value>) -> Result<TransactionConstraints, MethodEr
 }
 
 /// `DifferentialTransactionQuery` for `transaction.search`.
-struct Transactions<'a> {
-    request: &'a ApiRequest<'a>,
-    object: Option<Phid>,
-    phids: Option<Vec<String>>,
-    authors: Option<Vec<String>>,
+pub(crate) struct Transactions<'a> {
+    pub(crate) request: &'a ApiRequest<'a>,
+    /// `withObjectPHIDs()`.
+    pub(crate) objects: Option<Vec<Phid>>,
+    pub(crate) phids: Option<Vec<String>>,
+    pub(crate) authors: Option<Vec<String>>,
 }
 
 impl Transactions<'_> {
@@ -354,8 +355,8 @@ impl PolicyAwareQuery for Transactions<'_> {
             if let Some(phids) = &self.phids {
                 clauses.in_list("phid", search::strings(phids));
             }
-            if let Some(object) = &self.object {
-                clauses.in_list("objectPHID", [json!(object.as_str())]);
+            if let Some(objects) = &self.objects {
+                clauses.in_list("objectPHID", objects.iter().map(|o| json!(o.as_str())));
             }
             if let Some(authors) = &self.authors {
                 clauses.in_list("authorPHID", search::strings(authors));
@@ -453,7 +454,7 @@ async fn visible_comments(
 }
 
 /// The visible comments with these PHIDs (`needComments()`), by PHID.
-async fn load_attached_comments(
+pub(crate) async fn load_attached_comments(
     request: &ApiRequest<'_>,
     phids: &[Phid],
 ) -> Result<HashMap<Phid, CommentRow>, MethodError> {
@@ -867,7 +868,7 @@ impl Method for TransactionSearch {
             let (phids, authors) = constraints(request.value("constraints"))?;
             let query = Transactions {
                 request,
-                object,
+                objects: object.map(|object| vec![object]),
                 phids,
                 authors,
             };
