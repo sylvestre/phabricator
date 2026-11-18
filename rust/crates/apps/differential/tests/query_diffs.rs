@@ -1,6 +1,6 @@
 //! `differential.querydiffs`, `differential.getrawdiff`,
-//! `differential.getcommitpaths` and `differential.getalldiffs` against a
-//! test database.
+//! `differential.getcommitpaths`, `differential.getalldiffs` and
+//! `differential.getdiff` against a test database.
 
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
@@ -309,6 +309,50 @@ async fn lists_all_diffs() {
         .await,
         Response::Fallback(_)
     ));
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn describes_one_diff() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    let dict = answer(&context, json!({"ids": [1]})).await["1"].clone();
+
+    let get = |params: Value| {
+        let context = &context;
+        async move { call(context, "differential.getdiff", params).await }
+    };
+    // By ID, or the revision's newest diff; the revision wins.
+    for params in [
+        json!({"diff_id": 1}),
+        json!({"diff_id": "1"}),
+        json!({"revision_id": 1}),
+        json!({"revision_id": 1, "diff_id": 2}),
+    ] {
+        let Response::Envelope(envelope) = get(params.clone()).await else {
+            panic!("{params}: expected an answer");
+        };
+        assert_eq!(envelope.result, dict, "{params}");
+    }
+    // The hidden revision's diff, unknown diffs and no diff at all.
+    for params in [
+        json!({"diff_id": 2}),
+        json!({"revision_id": 2}),
+        json!({"diff_id": 99}),
+        json!({}),
+        json!({"diff_id": 0}),
+    ] {
+        let Response::Envelope(envelope) = get(params.clone()).await else {
+            panic!("{params}: expected an error");
+        };
+        assert_eq!(
+            envelope.error_code.as_deref(),
+            Some("ERR_BAD_DIFF"),
+            "{params}"
+        );
+    }
 
     test_db.drop_databases().await;
 }

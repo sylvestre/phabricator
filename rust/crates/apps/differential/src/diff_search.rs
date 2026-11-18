@@ -304,6 +304,41 @@ pub(crate) async fn query_diffs(
     query.filter(rows).await
 }
 
+/// `DifferentialDiffQuery::withIDs(array($id))->executeOne()`: the diff,
+/// or `None` when it doesn't exist or its revision is hidden
+/// (`willFilterPage()` drops it). A hidden diff without a revision raises
+/// a policy exception, which is left to PHP.
+pub(crate) async fn execute_one(
+    request: &ApiRequest<'_>,
+    id: i64,
+) -> Result<Option<DiffRow>, MethodError> {
+    let found = query_diffs(
+        request,
+        Some(vec![id]),
+        None,
+        IdOrder::Newest,
+        Direction::Forward,
+    )
+    .await?;
+    if let Some(diff) = found.into_iter().next() {
+        return Ok(Some(diff));
+    }
+    let database = &request.context.database;
+    let sql = format!(
+        "SELECT revisionID FROM {} WHERE id = ?",
+        database.table("differential", "differential_diff")
+    );
+    if let Some(row) = phab_db::sqlx::query(&sql)
+        .bind(id)
+        .fetch_optional(database.pool())
+        .await?
+        && rows::opt_int(&row, "revisionID")?.unwrap_or(0) == 0
+    {
+        return Err(MethodError::Unsupported("a diff the viewer can't see"));
+    }
+    Ok(None)
+}
+
 /// The `arc:onto` and `local:commits` properties of diffs, by diff ID.
 async fn load_properties(
     database: &Database,

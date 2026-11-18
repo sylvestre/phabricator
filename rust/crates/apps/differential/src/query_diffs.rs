@@ -277,6 +277,70 @@ impl Method for GetAllDiffs {
     }
 }
 
+/// An `optional id` parameter: `None` when falsy.
+fn optional_id(value: Option<&Value>) -> Result<Option<i64>, MethodError> {
+    match value {
+        Some(value) if php::is_truthy(value) => match value {
+            Value::Number(number) if !number.is_f64() => number.as_i64().map(Some),
+            Value::String(text) if text.bytes().all(|b| b.is_ascii_digit()) => {
+                text.parse().ok().map(Some)
+            }
+            _ => None,
+        }
+        .ok_or(MethodError::Unsupported("an unusual ID")),
+        _ => Ok(None),
+    }
+}
+
+/// `ERR_BAD_DIFF`.
+fn bad_diff() -> MethodError {
+    MethodError::Conduit {
+        code: "ERR_BAD_DIFF".to_owned(),
+        info: Some("No such diff exists.".to_owned()),
+    }
+}
+
+/// `differential.getdiff` (`DifferentialGetDiffConduitAPIMethod`): a diff
+/// by ID, or the latest visible diff of a revision, as `getDiffDict()`.
+pub struct GetDiff;
+
+impl Method for GetDiff {
+    fn name(&self) -> &'static str {
+        "differential.getdiff"
+    }
+
+    fn params(&self) -> &'static [&'static str] {
+        &["revision_id", "diff_id"]
+    }
+
+    fn application(&self) -> Option<phab_conduit::Application> {
+        Some(crate::search::APPLICATION)
+    }
+
+    fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
+        Box::pin(async move {
+            let mut diff_id = optional_id(request.value("diff_id"))?;
+            // A revision wins: its newest diff the viewer can see.
+            if let Some(revision_id) = optional_id(request.value("revision_id"))? {
+                let diffs = diff_search::query_diffs(
+                    request,
+                    None,
+                    Some(vec![revision_id]),
+                    IdOrder::Newest,
+                    Direction::Forward,
+                )
+                .await?;
+                diff_id = Some(diffs.first().ok_or_else(bad_diff)?.id);
+            }
+            let diff_id = diff_id.ok_or_else(bad_diff)?;
+            let diff = diff_search::execute_one(request, diff_id)
+                .await?
+                .ok_or_else(bad_diff)?;
+            diff_dict(&request.context.database, &diff).await
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
