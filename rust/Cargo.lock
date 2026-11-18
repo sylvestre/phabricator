@@ -1603,6 +1603,7 @@ dependencies = [
  "phab-core",
  "phab-db",
  "phab-policy",
+ "serde_json",
  "thiserror",
 ]
 

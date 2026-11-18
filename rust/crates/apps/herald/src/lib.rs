@@ -1,6 +1,7 @@
 //! Herald rules (`HeraldRule`) and spaces (`PhabricatorSpacesNamespace`),
 //! as references to them (`H123`, `S1`) show them.
 
+pub mod engine;
 pub mod spaces;
 
 use std::collections::HashSet;

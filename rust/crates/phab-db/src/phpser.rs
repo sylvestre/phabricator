@@ -2,8 +2,9 @@
 //!
 //! Columns using `LiskDAO::SERIALIZATION_PHP` (markup cache, Herald
 //! transcripts) and some cache keys (`PhabricatorUserProfileImageCacheType`)
-//! use this format. Objects and references are rejected: Phabricator never
-//! stores them in columns the Rust services read.
+//! use this format. Objects are written (Herald transcripts hold them) but
+//! not read, and references are rejected: Phabricator never stores them in
+//! columns the Rust services read.
 
 use std::fmt::Write as _;
 
@@ -41,7 +42,7 @@ impl From<i64> for Key {
     }
 }
 
-/// A PHP value, without objects and references.
+/// A PHP value, without references.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     /// `null`.
@@ -56,6 +57,25 @@ pub enum Value {
     Str(Vec<u8>),
     /// An array, with its entries in order.
     Array(Vec<(Key, Self)>),
+    /// An object of `class`, with its properties in declaration order.
+    /// Names are mangled as PHP does: see [`protected()`] and
+    /// [`private()`]. [`unserialize()`] never returns objects.
+    Object {
+        /// The class name.
+        class: String,
+        /// The properties, by mangled name.
+        properties: Vec<(Vec<u8>, Self)>,
+    },
+}
+
+/// The mangled name of a protected property: `\0*\0name`.
+pub fn protected(name: &str) -> Vec<u8> {
+    [b"\0*\0".as_slice(), name.as_bytes()].concat()
+}
+
+/// The mangled name of a private property of `class`: `\0Class\0name`.
+pub fn private(class: &str, name: &str) -> Vec<u8> {
+    [b"\0", class.as_bytes(), b"\0", name.as_bytes()].concat()
 }
 
 impl Value {
@@ -98,6 +118,26 @@ impl Value {
 impl From<Option<&str>> for Value {
     fn from(value: Option<&str>) -> Self {
         value.map_or(Self::Null, Self::str)
+    }
+}
+
+/// `json_decode($text, true)` of a decoded JSON value: objects become
+/// arrays with string keys (canonical integer strings becoming integers),
+/// and integers which don't fit become floats.
+pub fn from_json(value: &serde_json::Value) -> Value {
+    match value {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(flag) => Value::Bool(*flag),
+        serde_json::Value::Number(number) => number
+            .as_i64()
+            .map_or_else(|| Value::Float(number.as_f64().unwrap_or(0.0)), Value::Int),
+        serde_json::Value::String(text) => Value::str(text),
+        serde_json::Value::Array(items) => Value::list(items.iter().map(from_json)),
+        serde_json::Value::Object(map) => Value::Array(
+            map.iter()
+                .map(|(key, item)| (Key::from(key.as_str()), from_json(item)))
+                .collect(),
+        ),
     }
 }
 
@@ -172,6 +212,16 @@ fn write_value(output: &mut Vec<u8>, value: &Value) {
                     Key::Str(bytes) => write_string(output, bytes),
                 }
                 write_value(output, entry);
+            }
+            output.push(b'}');
+        }
+        Value::Object { class, properties } => {
+            output.extend_from_slice(
+                format!("O:{}:\"{class}\":{}:{{", class.len(), properties.len()).as_bytes(),
+            );
+            for (name, property) in properties {
+                write_string(output, name);
+                write_value(output, property);
             }
             output.push(b'}');
         }
@@ -401,6 +451,34 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+
+    #[test]
+    fn serializes_objects_like_php() {
+        // A HeraldApplyTranscript, which has private properties, inside a
+        // list; a protected property of another class.
+        let apply = Value::Object {
+            class: "HeraldApplyTranscript".to_owned(),
+            properties: vec![
+                (private("HeraldApplyTranscript", "ruleID"), Value::str("2")),
+                (
+                    private("HeraldApplyTranscript", "applied"),
+                    Value::Bool(true),
+                ),
+            ],
+        };
+        assert_eq!(
+            serialize(&Value::list([apply])),
+            b"a:1:{i:0;O:21:\"HeraldApplyTranscript\":2:{s:29:\"\0HeraldApplyTranscript\0ruleID\";s:1:\"2\";s:30:\"\0HeraldApplyTranscript\0applied\";b:1;}}"
+        );
+        let rule = Value::Object {
+            class: "HeraldRuleTranscript".to_owned(),
+            properties: vec![(protected("reason"), Value::Null)],
+        };
+        assert_eq!(
+            serialize(&rule),
+            b"O:20:\"HeraldRuleTranscript\":1:{s:9:\"\0*\0reason\";N;}"
+        );
+    }
 
     // Expected output from PHP 8.4's serialize().
     #[rstest]
