@@ -1,0 +1,16 @@
+[
+  {"name": "policy.query: one", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-ofzfbypnshhskeqnmwp4"]}},
+  {"name": "policy.query: several", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-parityprocessed", "PHID-PLCY-ofzfbypnshhskeqnmwp4", "PHID-PLCY-aaaparity"]}},
+  {"name": "policy.query: reversed", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-aaaparity", "PHID-PLCY-ofzfbypnshhskeqnmwp4", "PHID-PLCY-parityprocessed"]}},
+  {"name": "policy.query: duplicates", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-ofzfbypnshhskeqnmwp4", "PHID-PLCY-ofzfbypnshhskeqnmwp4"]}},
+  {"name": "policy.query: unknown", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-nope"]}},
+  {"name": "policy.query: unknown and known", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-nope", "PHID-PLCY-parityprocessed"]}},
+  {"name": "policy.query: empty", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": []}},
+  {"name": "policy.query: missing", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "policy.query: global", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["users"]}},
+  {"name": "policy.query: project", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PROJ-ny4vv46ou3q6czrebiig"]}},
+  {"name": "policy.query: limit", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-ofzfbypnshhskeqnmwp4", "PHID-PLCY-parityprocessed"], "limit": 1}},
+  {"name": "policy.query: limit 5", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-ofzfbypnshhskeqnmwp4", "PHID-PLCY-parityprocessed"], "limit": 5}},
+  {"name": "policy.query: offset", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PLCY-ofzfbypnshhskeqnmwp4"], "offset": 3}},
+  {"name": "policy.query: string", "method": "policy.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": "PHID-PLCY-ofzfbypnshhskeqnmwp4"}}
+]
