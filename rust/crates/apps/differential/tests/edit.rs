@@ -232,17 +232,6 @@ async fn leaves_the_rest_to_php() {
         edit(&context, comment("Looks good.")).await,
         Response::Fallback(_)
     ));
-    // Bob neither reviews nor subscribes: commenting subscribes him.
-    test_db
-        .execute(
-            "DELETE FROM `{ns}_differential`.differential_reviewer \
-             WHERE reviewerPHID = 'PHID-USER-bob'",
-        )
-        .await;
-    assert!(matches!(
-        edit(&context, comment("Looks good.")).await,
-        Response::Fallback(_)
-    ));
     // Nothing was written.
     let sql = format!(
         "SELECT COUNT(*) AS n FROM `{}_differential`.differential_transaction",
@@ -253,6 +242,63 @@ async fn leaves_the_rest_to_php() {
         .await
         .expect("a count");
     assert_eq!(phab_db::rows::int(&row, "n").expect("n"), 0);
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn subscribes_who_comments() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // Bob neither reviews nor subscribes: commenting subscribes him.
+    test_db
+        .execute(
+            "DELETE FROM `{ns}_differential`.differential_reviewer \
+             WHERE reviewerPHID = 'PHID-USER-bob'",
+        )
+        .await;
+
+    let Response::Envelope(Envelope {
+        result,
+        error_code: None,
+        ..
+    }) = edit(&context, comment("Looks good.")).await
+    else {
+        panic!("expected an answer");
+    };
+    let phids: Vec<&str> = result["transactions"]
+        .as_array()
+        .expect("transactions")
+        .iter()
+        .map(|xaction| xaction["phid"].as_str().expect("a PHID"))
+        .collect();
+    assert_eq!(phids.len(), 2);
+    let value = |sql: &'static str| one_value(&test_db, sql);
+    assert_eq!(
+        value(
+            "SELECT CONCAT(transactionType, ' ', oldValue, ' ', newValue) AS value FROM \
+             `{ns}_differential`.differential_transaction ORDER BY id LIMIT 1"
+        )
+        .await,
+        "core:subscribers [\"PHID-USER-dave\"] [\"PHID-USER-dave\",\"PHID-USER-bob\"]"
+    );
+    assert_eq!(
+        value(
+            "SELECT CONCAT(src, ' ', type) AS value FROM `{ns}_user`.edge WHERE \
+             dst = 'PHID-DREV-1'"
+        )
+        .await,
+        "PHID-USER-bob 22"
+    );
+    let data = value("SELECT data AS value FROM `{ns}_worker`.worker_taskdata").await;
+    let data: Value = serde_json::from_str(data.as_str().expect("data")).expect("JSON");
+    assert_eq!(data["xactionPHIDs"], json!(phids));
+    // The newest subscriber first, as the edges are read.
+    assert_eq!(
+        data["state"]["mailCCPHIDs"],
+        json!(["PHID-USER-bob", "PHID-USER-dave"])
+    );
 
     test_db.drop_databases().await;
 }

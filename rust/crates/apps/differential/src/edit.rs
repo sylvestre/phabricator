@@ -12,7 +12,8 @@
 //! Ported: one `comment` on an existing revision, without remarkup that
 //! mentions or references anything, by an actor who can see it, when
 //! Herald's rules are ones [`phab_app_herald::engine`] evaluates and the
-//! review status stays the same.
+//! review status stays the same. A comment subscribes its author when
+//! nothing else does (`applyImplicitCC()`).
 
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
@@ -352,6 +353,9 @@ struct Plan {
     revision: Revision,
     text: String,
     actor: String,
+    /// The `core:subscribers` transaction `applyImplicitCC()` adds: its
+    /// PHID and the subscribers before.
+    subscription: Option<(String, Vec<String>)>,
     transaction_phid: String,
     comment_phid: String,
     group_id: String,
@@ -366,7 +370,7 @@ async fn run_herald(
     database: &Database,
     revision: &Revision,
     facts: &Facts,
-    transaction_phid: &str,
+    applied_phids: &[String],
 ) -> Result<(Vec<Rule>, Evaluation, Vec<Applied>, Vec<String>), MethodError> {
     let unsupported = |error: engine::HeraldError| match error {
         engine::HeraldError::Unsupported(what) => MethodError::Unsupported(what),
@@ -380,7 +384,7 @@ async fn run_herald(
         phid: revision.phid.as_str().to_owned(),
         content_type: "differential".to_owned(),
         name: revision.title.clone(),
-        applied_transaction_phids: Some(vec![transaction_phid.to_owned()]),
+        applied_transaction_phids: Some(applied_phids.to_vec()),
     };
     let values = vec![
         ("new-object".to_owned(), Php::Bool(false)),
@@ -560,20 +564,33 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     let database = &request.context.database;
     let facts = Facts::load(database, &revision).await?;
     check_side_effects(request, &revision, &facts).await?;
-    if implies_subscription(database, &revision, &facts, &actor).await? {
-        return Err(MethodError::Unsupported(
-            "comments which subscribe their author",
-        ));
-    }
+    let mut facts = facts;
+    let subscription = if implies_subscription(database, &revision, &facts, &actor).await? {
+        let old = facts.subscribers.clone();
+        // The new edge is the newest: it comes first after the edit.
+        facts.subscribers.insert(0, actor.clone());
+        Some((
+            Phid::generate(PhidType::TRANSACTION, Some(PhidType::REVISION)).into_string(),
+            old,
+        ))
+    } else {
+        None
+    };
     let transaction_phid =
         Phid::generate(PhidType::TRANSACTION, Some(PhidType::REVISION)).into_string();
+    // The subscription comes first (array_unshift()).
+    let applied_phids: Vec<String> = subscription
+        .iter()
+        .map(|(phid, _)| phid.clone())
+        .chain([transaction_phid.clone()])
+        .collect();
     let (rules, evaluation, applied, must_encrypt) =
-        run_herald(database, &revision, &facts, &transaction_phid).await?;
+        run_herald(database, &revision, &facts, &applied_phids).await?;
     let subject = Subject {
         phid: revision.phid.as_str().to_owned(),
         content_type: "differential".to_owned(),
         name: revision.title.clone(),
-        applied_transaction_phids: Some(vec![transaction_phid.clone()]),
+        applied_transaction_phids: Some(applied_phids.clone()),
     };
     let transcript = evaluation.transcript(&subject, &applied);
     let herald_header = engine::combine_headers(
@@ -584,7 +601,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     let worker_data = php::json_encode(&json!({
         "objectPHID": revision.phid.as_str(),
         "actorPHID": actor,
-        "xactionPHIDs": [transaction_phid],
+        "xactionPHIDs": applied_phids,
         "state": state,
     }));
     Ok(Plan {
@@ -593,6 +610,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         comment_phid: Phid::generate(PhidType::TRANSACTION_COMMENT, None).into_string(),
         group_id: random::random_characters(32),
         transaction_phid,
+        subscription,
         rules,
         transcript,
         herald_header,
@@ -617,6 +635,9 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     .execute(&mut *connection)
     .await?;
     let metadata = php::json_encode(&json!({"core.groupID": plan.group_id}));
+    if let Some((phid, old)) = &plan.subscription {
+        write_subscription(request, plan, phid, old, &metadata, connection).await?;
+    }
     phab_db::sqlx::query(&format!(
         "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
          commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
@@ -679,6 +700,68 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     )
     .await?;
     transaction.commit().await?;
+    Ok(())
+}
+
+/// The `core:subscribers` transaction of `applyImplicitCC()` and its edges
+/// (`PhabricatorEdgeEditor`, with the inverse edge).
+async fn write_subscription(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    phid: &str,
+    old: &[String],
+    metadata: &str,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let revision = plan.revision.phid.as_str();
+    let mut new = old.to_vec();
+    new.push(plan.actor.clone());
+    phab_db::sqlx::query(&format!(
+        "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
+         commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
+         dateCreated, dateModified) VALUES (?, ?, ?, 'public', ?, NULL, 0, 'core:subscribers', \
+         ?, ?, ?, ?, ?, ?)",
+        database.table("differential", "differential_transaction")
+    ))
+    .bind(phid)
+    .bind(&plan.actor)
+    .bind(revision)
+    .bind(&plan.actor)
+    .bind(php::json_encode(&json!(old)))
+    .bind(php::json_encode(&json!(new)))
+    .bind(CONDUIT_SOURCE)
+    .bind(metadata)
+    .bind(request.now)
+    .bind(request.now)
+    .execute(&mut *connection)
+    .await?;
+    for (application, src, edge_type, dst) in [
+        (
+            "differential",
+            revision,
+            edges::OBJECT_HAS_SUBSCRIBER,
+            plan.actor.as_str(),
+        ),
+        (
+            "user",
+            plan.actor.as_str(),
+            edges::SUBSCRIBED_TO_OBJECT,
+            revision,
+        ),
+    ] {
+        phab_db::sqlx::query(&format!(
+            "INSERT INTO {} (src, type, dst, dateCreated, seq, dataID) VALUES (?, ?, ?, ?, 0, \
+             NULL) ON DUPLICATE KEY UPDATE dataID = VALUES(dataID)",
+            database.table(application, "edge")
+        ))
+        .bind(src)
+        .bind(edge_type)
+        .bind(dst)
+        .bind(request.now)
+        .execute(&mut *connection)
+        .await?;
+    }
     Ok(())
 }
 
@@ -756,7 +839,13 @@ impl Method for RevisionEdit {
             write(request, &plan).await?;
             Ok(json!({
                 "object": {"id": plan.revision.id, "phid": plan.revision.phid.as_str()},
-                "transactions": [{"phid": plan.transaction_phid}],
+                "transactions": plan
+                    .subscription
+                    .iter()
+                    .map(|(phid, _)| phid.as_str())
+                    .chain([plan.transaction_phid.as_str()])
+                    .map(|phid| json!({"phid": phid}))
+                    .collect::<Vec<_>>(),
             }))
         })
     }
