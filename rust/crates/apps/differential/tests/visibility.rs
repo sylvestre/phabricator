@@ -1,148 +1,133 @@
-//! Loading Differential objects and checking who can see them.
+//! `differential.custom.revision.visibility` against a test database.
 
-use phab_app_differential::{Repositories, storage};
-use phab_core::{Config, Phid};
+use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
+use phab_core::Config;
 use phab_db::testing::TestDatabase;
-use phab_policy::{Capability, PolicySubject, Viewer, loader};
+use serde_json::{Value, json};
 
-const DATABASES: &[&str] = &[
-    "differential",
-    "repository",
-    "project",
-    "user",
-    "policy",
-    "spaces",
-];
+const TOKEN: &str = "api-vsvsvsvsvsvsvsvsvsvsvsvsvsvs";
 
-async fn visible(test_db: &TestDatabase, viewer: &Viewer, phids: &[&str]) -> Vec<bool> {
-    let database = test_db.database();
-    let phids: Vec<Phid> = phids.iter().map(|phid| Phid::new(*phid)).collect();
-    let mut revisions = storage::load_revisions(database, &phids).await.unwrap();
-    revisions.sort_by_key(|revision| {
-        phids
-            .iter()
-            .position(|phid| *phid == revision.phid)
-            .unwrap_or(usize::MAX)
-    });
-    let subjects: Vec<PolicySubject> = revisions
-        .iter()
-        .map(phab_app_differential::Revision::subject)
-        .collect();
-    let refs: Vec<&PolicySubject> = subjects.iter().collect();
-    let facts = loader::load_facts(
-        database,
-        &Config::default(),
-        viewer,
-        &refs,
-        &Repositories { database },
-        0,
+async fn visibility(context: &Context, params: Value) -> Envelope {
+    let mut registry = Registry::default();
+    phab_app_differential::register(&mut registry);
+    let mut params = params;
+    params["__conduit__"] = json!({"token": TOKEN});
+    let body: String = form_urlencoded::Serializer::new(String::new())
+        .append_pair("params", &params.to_string())
+        .finish();
+    let http = HttpRequest {
+        body,
+        ..HttpRequest::default()
+    };
+    match call::dispatch(
+        context,
+        &registry,
+        "differential.custom.revision.visibility",
+        &http,
+        Mode::Shadow,
+        1_700_000_000,
     )
     .await
-    .unwrap();
-    phab_policy::filter(viewer, &refs, &[Capability::VIEW], &facts).unwrap()
+    .response
+    {
+        Response::Envelope(envelope) => envelope,
+        other @ Response::Fallback(_) => panic!("{params}: expected an envelope, got {other:?}"),
+    }
 }
 
+/// Revisions `(id, view policy)`, none of which Bob can see but D2.
+const REVISIONS: &[(i64, &str)] = &[
+    (1, "PHID-PLCY-default"),
+    (2, "users"),
+    (3, "PHID-PLCY-processed"),
+    (4, "admin"),
+];
+
 #[tokio::test]
-async fn revisions_need_their_repository() {
-    let Some(test_db) = TestDatabase::create(DATABASES).await else {
+async fn classifies_revisions_bob_cannot_see() {
+    let Some(test_db) = TestDatabase::create(&[
+        "differential",
+        "project",
+        "user",
+        "policy",
+        "spaces",
+        "conduit",
+    ])
+    .await
+    else {
         return;
     };
     test_db
-        .execute(
-            "INSERT INTO `{ns}_repository`.repository (phid, name, versionControlSystem, details, \
-               dateCreated, dateModified, viewPolicy, editPolicy, pushPolicy) VALUES \
-             ('PHID-REPO-open', 'open', 'hg', '{}', 1, 1, 'users', 'admin', 'admin'), \
-             ('PHID-REPO-secret', 'secret', 'hg', '{}', 1, 1, 'admin', 'admin', 'admin'); \
-             INSERT INTO `{ns}_differential`.differential_revision (title, phid, status, summary, \
-               testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, viewPolicy, \
-               editPolicy, repositoryPHID, properties, activeDiffPHID) VALUES \
-             ('a', 'PHID-DREV-open', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', \
-               'users', 'users', 'PHID-REPO-open', '{}', ''), \
-             ('b', 'PHID-DREV-secret', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', \
-               'users', 'users', 'PHID-REPO-secret', '{}', ''), \
-             ('c', 'PHID-DREV-private', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', \
-               'obj.subscriptions.subscribers', 'users', NULL, '{}', ''), \
-             ('d', 'PHID-DREV-orphan', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', \
-               'users', 'users', 'PHID-REPO-deleted', '{}', ''); \
-             INSERT INTO `{ns}_differential`.differential_reviewer (revisionPHID, reviewerPHID, \
-               reviewerStatus, dateCreated, dateModified, options) VALUES \
-             ('PHID-DREV-private', 'PHID-USER-bob', 'accepted', 1, 1, '{}'), \
-             ('PHID-DREV-private', 'PHID-USER-carol', 'resigned', 1, 1, '{}')",
-        )
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_user`.user (phid, userName, realName, dateCreated, dateModified, \
+               conduitCertificate, isSystemAgent, isDisabled, isAdmin, isEmailVerified, isApproved, \
+               accountSecret, isEnrolledInMultiFactor, isMailingList) VALUES \
+             ('PHID-USER-bob', 'bob', 'Bob', 1, 1, 'c', 0, 0, 0, 1, 1, 's', 0, 0); \
+             INSERT INTO `{{ns}}_conduit`.conduit_token \
+               (objectPHID, tokenType, token, expires, dateCreated, dateModified) VALUES \
+             ('PHID-USER-bob', 'api', '{TOKEN}', NULL, 1, 1); \
+             INSERT INTO `{{ns}}_project`.project (id, name, phid, authorPHID, dateCreated, \
+               dateModified, status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, \
+               hasWorkboard, hasMilestones, hasSubprojects, projectPath, projectDepth, \
+               projectPathKey, properties, subtype, primarySlug) VALUES \
+             (1, 'secure-revision', 'PHID-PROJ-secure', 'PHID-USER-x', 1, 1, '0', 'admin', \
+               'admin', 'admin', 'project', 'red', 'k', 0, 0, 0, 'p1', 0, 'k001', '{{}}', \
+               'default', 'secure-revision'); \
+             INSERT INTO `{{ns}}_policy`.policy (phid, rules, defaultAction, dateCreated, \
+               dateModified) VALUES \
+             ('PHID-PLCY-default', '[{{\"action\":\"allow\",\"rule\":\"PhabricatorProjectsPolicyRule\",\"value\":[\"PHID-PROJ-secure\"]}}]', 'deny', 1, 1), \
+             ('PHID-PLCY-processed', '[{{\"action\":\"deny\",\"rule\":\"PhabricatorProjectsPolicyRule\",\"value\":[\"PHID-PROJ-secure\"]}},{{\"action\":\"allow\",\"rule\":\"PhabricatorProjectsAllPolicyRule\",\"value\":[\"PHID-PROJ-bmo\"]}}]', 'deny', 1, 1)"
+        ))
         .await;
-
-    let all = [
-        "PHID-DREV-open",
-        "PHID-DREV-secret",
-        "PHID-DREV-private",
-        "PHID-DREV-orphan",
-    ];
-    let alice = Viewer::user(Phid::new("PHID-USER-alice"), false);
-    let bob = Viewer::user(Phid::new("PHID-USER-bob"), false);
-    let carol = Viewer::user(Phid::new("PHID-USER-carol"), false);
-    let admin = Viewer::user(Phid::new("PHID-USER-root"), true);
-    // Even the author needs to see the repository.
-    assert_eq!(
-        visible(&test_db, &alice, &all).await,
-        [true, false, true, false]
-    );
-    // Reviewers are implicit subscribers, unless they resigned.
-    assert_eq!(
-        visible(&test_db, &bob, &all).await,
-        [true, false, true, false]
-    );
-    assert_eq!(
-        visible(&test_db, &carol, &all).await,
-        [true, false, false, false]
-    );
-    assert_eq!(
-        visible(&test_db, &admin, &all).await,
-        [true, true, false, false]
-    );
-    assert_eq!(
-        visible(&test_db, &Viewer::anonymous(), &all).await,
-        [false, false, false, false]
-    );
-
-    test_db.drop_databases().await;
-}
-
-#[tokio::test]
-async fn loads_transactions_and_comments() {
-    let Some(test_db) = TestDatabase::create(DATABASES).await else {
-        return;
+    for (id, view) in REVISIONS {
+        test_db
+            .execute(&format!(
+                "INSERT INTO `{{ns}}_differential`.differential_revision (id, title, phid, \
+                   status, summary, testPlan, authorPHID, dateCreated, dateModified, attached, \
+                   mailKey, viewPolicy, editPolicy, repositoryPHID, properties, activeDiffPHID) \
+                   VALUES ({id}, 'R{id}', 'PHID-DREV-{id}', 'needs-review', '', '', \
+                   'PHID-USER-alice', 1, 1, '{{}}', 'k', '{view}', 'admin', NULL, '{{}}', '')"
+            ))
+            .await;
+    }
+    let context = Context {
+        database: test_db.database().clone(),
+        config: Config::default(),
+        hostname: "web1".to_owned(),
     };
-    test_db
-        .execute(
-            "INSERT INTO `{ns}_differential`.differential_transaction (phid, authorPHID, objectPHID, \
-               viewPolicy, editPolicy, commentPHID, commentVersion, transactionType, oldValue, \
-               newValue, contentSource, metadata, dateCreated, dateModified) VALUES \
-             ('PHID-XACT-DREV-1', 'PHID-USER-alice', 'PHID-DREV-1', 'public', 'PHID-USER-alice', \
-               'PHID-XCMT-1', 1, 'core:comment', 'null', 'null', '{}', '{\"core.create\":true}', 1, 1); \
-             INSERT INTO `{ns}_differential`.differential_transaction_comment (phid, \
-               transactionPHID, authorPHID, viewPolicy, editPolicy, commentVersion, content, \
-               contentSource, isDeleted, dateCreated, dateModified, isNewFile, lineNumber, lineLength, \
-               hasReplies, attributes) VALUES \
-             ('PHID-XCMT-1', 'PHID-XACT-DREV-1', 'PHID-USER-alice', 'public', 'PHID-USER-alice', 1, \
-               'LGTM', '{}', 0, 1, 1, 0, 0, 0, 0, '{}')",
-        )
-        .await;
-    let database = test_db.database();
-    let transactions = storage::load_transactions(database, &[Phid::new("PHID-XACT-DREV-1")])
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 1);
-    assert_eq!(transactions[0].transaction_type, "core:comment");
-    assert_eq!(transactions[0].comment_phid, Some(Phid::new("PHID-XCMT-1")));
+
+    for (id, expected) in [
+        (json!(1), "unprocessed"),
+        (json!("2"), "public"),
+        (json!(3), "secure"),
+        (json!(4), "secure"),
+    ] {
+        let envelope = visibility(&context, json!({"revisionID": id})).await;
+        assert_eq!(
+            envelope.result["visibility"], expected,
+            "{id}: {envelope:?}"
+        );
+    }
     assert_eq!(
-        transactions[0].metadata_value("core.create"),
-        Some(&serde_json::json!(true))
+        visibility(&context, json!({"revisionID": 3})).await.result,
+        json!({"revisionID": "3", "visibility": "secure"})
     );
-    let comments = storage::load_comments(database, &[Phid::new("PHID-XCMT-1")])
-        .await
-        .unwrap();
-    assert_eq!(comments[0].content, "LGTM");
-    assert!(!comments[0].is_empty());
+    let envelope = visibility(&context, json!({"revisionID": 99})).await;
+    assert_eq!(
+        (
+            envelope.error_code.as_deref(),
+            envelope.error_info.as_deref()
+        ),
+        (
+            Some("ERR-REVISION-NOT-FOUND"),
+            Some("Revision D99 not found.")
+        )
+    );
+    let envelope = visibility(&context, json!({})).await;
+    assert_eq!(
+        envelope.error_code.as_deref(),
+        Some("ERR-INVALID-PARAMETER")
+    );
 
     test_db.drop_databases().await;
 }

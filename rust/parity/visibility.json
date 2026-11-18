@@ -1,0 +1,14 @@
+[
+  {"name": "revision visibility: D1", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": 1}},
+  {"name": "revision visibility: D2", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": 2}},
+  {"name": "revision visibility: D6", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": 6}},
+  {"name": "revision visibility: D50", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": 50}},
+  {"name": "revision visibility: D51", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": 51}},
+  {"name": "revision visibility: string", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": "50"}},
+  {"name": "revision visibility: unknown", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": 99}},
+  {"name": "revision visibility: missing", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "revision visibility: zero", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": 0}},
+  {"name": "revision visibility: empty", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": ""}},
+  {"name": "revision visibility: float", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": 1.5}},
+  {"name": "revision visibility: text", "method": "differential.custom.revision.visibility", "token": "$PHAB_REPLAY_TOKEN", "params": {"revisionID": "abc"}}
+]
