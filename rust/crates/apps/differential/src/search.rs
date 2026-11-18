@@ -52,28 +52,28 @@ const ATTACHMENTS: &[&str] = &["reviewers", "subscribers", "projects", "reviewer
 
 /// The custom field keys of `DifferentialBugzillaBugIDField` and
 /// `DifferentialUpliftRequestCustomField` (moz-extensions).
-const BUG_FIELD: &str = "differential:bugzilla-bug-id";
-const UPLIFT_FIELD: &str = "differential:uplift-request";
+pub(crate) const BUG_FIELD: &str = "differential:bugzilla-bug-id";
+pub(crate) const UPLIFT_FIELD: &str = "differential:uplift-request";
 
 /// The ported constraints.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct Constraints {
-    ids: Option<Vec<i64>>,
-    phids: Option<Vec<String>>,
-    authors: Option<Vec<String>>,
-    repositories: Option<Vec<String>>,
-    statuses: Option<Vec<String>>,
-    created: (Option<i64>, Option<i64>),
-    modified: (Option<i64>, Option<i64>),
+pub(crate) struct Constraints {
+    pub(crate) ids: Option<Vec<i64>>,
+    pub(crate) phids: Option<Vec<String>>,
+    pub(crate) authors: Option<Vec<String>>,
+    pub(crate) repositories: Option<Vec<String>>,
+    pub(crate) statuses: Option<Vec<String>>,
+    pub(crate) created: (Option<i64>, Option<i64>),
+    pub(crate) modified: (Option<i64>, Option<i64>),
     /// `withReviewers()`.
-    reviewers: Option<Vec<String>>,
+    pub(crate) reviewers: Option<Vec<String>>,
     /// `withResponsibleUsers()`, as given; [`Constraints::resolve()`]
     /// adds the projects of the users.
-    responsibles: Option<Vec<String>>,
+    pub(crate) responsibles: Option<Vec<String>>,
     /// The subscribers extension: subscribed by any of them.
-    subscribers: Option<Vec<String>>,
+    pub(crate) subscribers: Option<Vec<String>>,
     /// The projects extension: tagged with each of them.
-    projects: Option<Vec<String>>,
+    pub(crate) projects: Option<Vec<String>>,
 }
 
 impl Constraints {
@@ -353,7 +353,7 @@ impl Constraints {
 
     /// The `WHERE` conditions of the constraints (`buildWhereClauseParts()`),
     /// and the values they bind.
-    fn add_conditions(
+    pub(crate) fn add_conditions(
         &self,
         database: &Database,
         conditions: &mut Vec<String>,
@@ -497,7 +497,7 @@ fn check_unported(request: &ApiRequest<'_>) -> Result<(), MethodError> {
 
 /// The builtin orders of `DifferentialRevisionQuery`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Order {
+pub(crate) enum Order {
     /// By decreasing id.
     Newest,
     /// By increasing id.
@@ -511,7 +511,7 @@ enum Order {
 impl Order {
     /// The `order` parameter, by key or alias. Order vectors and the
     /// fulltext `relevance` are left to PHP.
-    fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
+    pub(crate) fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
         let key = match value {
             None | Some(Value::Null) => return Ok(Self::Newest),
             Some(Value::String(key)) => key.as_str(),
@@ -559,9 +559,9 @@ fn requested_attachments(value: Option<&Value>) -> Result<Vec<&'static str>, Met
 }
 
 /// A `differential_reviewer` row, with what the attachments show.
-struct ReviewerRow {
-    reviewer: String,
-    status: String,
+pub(crate) struct ReviewerRow {
+    pub(crate) reviewer: String,
+    pub(crate) status: String,
     actor: Option<String>,
     voided: Option<String>,
     last_action_diff: Option<String>,
@@ -569,7 +569,7 @@ struct ReviewerRow {
 
 /// The reviewers of each revision, in the order `loadReviewers()` reads
 /// them.
-async fn load_reviewers(
+pub(crate) async fn load_reviewers(
     database: &Database,
     revisions: &[Revision],
 ) -> Result<HashMap<Phid, Vec<ReviewerRow>>, MethodError> {
@@ -611,7 +611,7 @@ async fn load_reviewers(
 }
 
 /// The destinations of one edge type from each revision, newest first.
-async fn load_edge_lists(
+pub(crate) async fn load_edge_lists(
     database: &Database,
     revisions: &[Revision],
     edge_type: i64,
@@ -736,13 +736,13 @@ impl AttachmentData {
 }
 
 /// `DifferentialRevisionQuery` with the ported constraints and orders.
-struct Revisions<'a> {
-    request: &'a ApiRequest<'a>,
-    constraints: Constraints,
-    order: Order,
+pub(crate) struct Revisions<'a> {
+    pub(crate) request: &'a ApiRequest<'a>,
+    pub(crate) constraints: Constraints,
+    pub(crate) order: Order,
     /// What the policy filter keeps between pages; the cursor's own query
     /// has a filter of its own.
-    memory: std::sync::Mutex<phab_policy::QueryMemory>,
+    pub(crate) memory: std::sync::Mutex<phab_policy::QueryMemory>,
 }
 
 impl Revisions<'_> {
@@ -891,14 +891,14 @@ impl PolicyAwareQuery for Revisions<'_> {
 }
 
 /// What the result fields need beyond [`Revision`].
-struct Extra {
-    summary: String,
-    test_plan: String,
-    date_created: i64,
-    properties: Value,
+pub(crate) struct Extra {
+    pub(crate) summary: String,
+    pub(crate) test_plan: String,
+    pub(crate) date_created: i64,
+    pub(crate) properties: Value,
 }
 
-async fn load_extra(
+pub(crate) async fn load_extra(
     database: &Database,
     revisions: &[Revision],
 ) -> Result<HashMap<i64, Extra>, MethodError> {
@@ -967,7 +967,7 @@ async fn load_diff_ids(
 }
 
 /// The stored values of the two custom fields, by revision PHID.
-async fn load_custom_fields(
+pub(crate) async fn load_custom_fields(
     database: &Database,
     revisions: &[Revision],
 ) -> Result<HashMap<(Phid, &'static str), String>, MethodError> {
@@ -1105,7 +1105,7 @@ async fn load_stack_graphs(
 
 /// `DifferentialRevisionStatus`: the name, whether it is closed, and the
 /// ANSI color, of a status key.
-fn status_info(status: &str, close_on_accept: bool) -> Option<Value> {
+pub(crate) fn status_info(status: &str, close_on_accept: bool) -> Option<Value> {
     let (name, closed, color) = match status {
         "needs-review" => ("Needs Review", false, Some("magenta")),
         "needs-revision" => ("Needs Revision", false, Some("red")),
@@ -1119,37 +1119,12 @@ fn status_info(status: &str, close_on_accept: bool) -> Option<Value> {
     Some(json!({"value": status, "name": name, "closed": closed, "color.ansi": color}))
 }
 
-/// `json_encode(phutil_json_decode($value))`: PHP has no empty objects,
-/// and objects keyed "0", "1"... become lists.
-fn php_array(value: &Value) -> Value {
-    match value {
-        Value::Array(items) => items.iter().map(php_array).collect(),
-        Value::Object(entries) => {
-            let is_list = entries
-                .keys()
-                .enumerate()
-                .all(|(index, key)| *key == index.to_string());
-            if is_list {
-                entries.values().map(php_array).collect()
-            } else {
-                Value::Object(
-                    entries
-                        .iter()
-                        .map(|(key, item)| (key.clone(), php_array(item)))
-                        .collect(),
-                )
-            }
-        }
-        other => other.clone(),
-    }
-}
-
 /// `DifferentialUpliftRequestCustomField::setValueFromStorage()`: the JSON
 /// object or list, anything else (no value, invalid JSON, a scalar) being
 /// an empty list.
-fn uplift_request(stored: Option<&String>) -> Value {
+pub(crate) fn uplift_request(stored: Option<&String>) -> Value {
     match stored.and_then(|stored| serde_json::from_str::<Value>(stored).ok()) {
-        Some(value @ (Value::Object(_) | Value::Array(_))) => php_array(&value),
+        Some(value @ (Value::Object(_) | Value::Array(_))) => phab_core::php::round_trip(&value),
         _ => json!([]),
     }
 }

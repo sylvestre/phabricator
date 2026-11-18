@@ -9,6 +9,7 @@ pub mod diff_search;
 pub mod edge_search;
 pub mod feed;
 pub mod get_raw_diff;
+pub mod legacy_query;
 pub mod query_diffs;
 pub mod repository;
 pub mod search;
@@ -25,6 +26,7 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(changeset_search::ChangesetSearch);
     registry.register(query_diffs::QueryDiffs);
     registry.register(get_raw_diff::GetRawDiff);
+    registry.register(legacy_query::LegacyQuery);
     registry.register(edge_search::EdgeSearch);
     registry.register(transaction_search::TransactionSearch);
 }
