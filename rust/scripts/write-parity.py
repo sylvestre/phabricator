@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""Compares what two runs of the same Conduit write do to the database of
+the development stack.
+
+    rust/scripts/write-parity.py [--sides php,rust] [--show] <api token> <scenarios.json>...
+
+For each scenario, the script dumps every `phabricator_*` database, runs the
+call on the first side, records the rows it added and removed, restores the
+databases it changed, then does the same on the second side. Then
+it compares the two sets of row changes, once the values each run makes up
+(new PHIDs, the current time, random keys) are normalized.
+
+A side is `php` (through nginx, with X-Phab-Skip-Rust) or `rust` (the Rust
+service itself). `--sides php,php` checks the harness: PHP against itself
+must not differ.
+
+The daemons are stopped while it runs, so queued tasks stay in the queue
+and are compared too; they are started again at the end.
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import time
+
+PROXY = "http://localhost:1090"
+STACK = "http://phabricator.test"
+DB = "phabricator-phabdb-1"
+PHP = "phabricator-phabricator-1"
+WEB = "phabricator-phabricator.test-1"
+MYSQL = "mysql -uroot -ppassword"
+# How much of a differing row to print.
+WIDTH = int(__import__("os").environ.get("WRITE_PARITY_WIDTH", "300"))
+
+# Databases restored after every run, whose ignored tables change.
+TOUCHED = {"phabricator_conduit", "phabricator_user", "phabricator_cache"}
+
+# Tables whose rows are bookkeeping, not the edit.
+IGNORED = {
+    "phabricator_conduit.conduit_methodcalllog",
+    "phabricator_conduit.conduit_token",
+    "phabricator_daemon.daemon_log",
+    "phabricator_daemon.daemon_logevent",
+    "phabricator_cache.cache_general",
+    "phabricator_cache.cache_markupcache",
+    "phabricator_user.user_cache",
+    "phabricator_system.system_actionlog",
+}
+
+# Transaction PHIDs have shorter random parts than the others.
+PHID = re.compile(r"PHID-[A-Z]{4}(?:-[A-Z]{4})?-[a-z0-9]{10,24}")
+INTEGER = re.compile(r"(?<![\w.-])\d{9,10}(?![\w.])")
+# Timings inside serialized Herald transcripts.
+ELAPSED = re.compile(r'(elapsed\\?";d:)[0-9.Ee+-]+')
+# Random keys: transaction groups.
+GROUP_ID = re.compile(r'(core\.groupID\\?":\\?")[a-z0-9]{32}')
+# How long something took, like a Herald transcript's duration.
+DURATION = re.compile(r"(?<![\w.])\d+\.\d{5,}(?![\w.])")
+
+
+def sh(command, stdin=None):
+    return subprocess.run(
+        command, input=stdin, capture_output=True, check=True,
+        shell=isinstance(command, str)).stdout
+
+
+def databases():
+    return sh(["docker", "exec", DB, "sh", "-c",
+               f"{MYSQL} -N -e 'SHOW DATABASES LIKE \"phabricator%\"' "
+               "2>/dev/null"]).decode().split()
+
+
+def dump(names=None, rows_only=True):
+    """A dump of these databases: one INSERT per row to compare rows, or
+    extended inserts to restore quickly."""
+    names = names or databases()
+    style = "--skip-extended-insert" if rows_only else "--extended-insert"
+    return sh(["docker", "exec", DB, "sh", "-c",
+               f"mysqldump -uroot -ppassword {style} --skip-dump-date "
+               f"--order-by-primary --databases {' '.join(names)} "
+               "2>/dev/null"])
+
+
+def snapshots():
+    """A quick-to-restore dump of each database."""
+    return {name: dump([name], rows_only=False) for name in databases()}
+
+
+def restore(snapshots, changed):
+    """Restores the databases a run changed."""
+    for name in sorted(changed):
+        sh(["docker", "exec", "-i", DB, "sh", "-c", f"{MYSQL} 2>/dev/null"],
+           stdin=snapshots[name])
+
+
+def rows(snapshot):
+    """The rows of a dump, as `db.table` and the INSERT line."""
+    found = set()
+    database = None
+    for line in snapshot.decode("utf-8", "replace").splitlines():
+        if line.startswith("USE `"):
+            database = line[5:line.index("`", 5)]
+        elif line.startswith("INSERT INTO `"):
+            table = line[13:line.index("`", 13)]
+            name = f"{database}.{table}"
+            if name not in IGNORED:
+                found.add((name, line[line.index(" VALUES ") + 8:]))
+    return found
+
+
+def changed_databases(before, after):
+    return {table.split(".")[0] for table, _ in before ^ after}
+
+
+def call(side, scenario, token):
+    params = dict(scenario.get("params", {}))
+    params["__conduit__"] = {"token": token}
+    data = ["--data-urlencode", "params=" + json.dumps(params),
+            "-d", "output=json", "-d", "__conduit__=1"]
+    if side == "php":
+        out = sh(["curl", "-s", "-H", "X-Phab-Skip-Rust: 1", "-x", PROXY,
+                  f"{STACK}/api/{scenario['method']}"] + data)
+    elif side == "rust":
+        body = subprocess.run(
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{url_effective}",
+             "--get", "http://x/"] + data, capture_output=True,
+            text=True).stdout.split("?", 1)[1]
+        out = sh(["docker", "exec", WEB, "wget", "-qO-",
+                  "--post-data", body,
+                  f"http://phab-rust:8080/api/{scenario['method']}"])
+    else:
+        raise ValueError(side)
+    return json.loads(out)
+
+
+def normalize(changes, known, started, finished):
+    """Replaces what a run makes up, in the order it appears."""
+    names = {}
+
+    def phid(match):
+        value = match.group(0)
+        if value in known:
+            return value
+        prefix = value[:value.rindex("-")]
+        return names.setdefault(value, f"{prefix}-<{len(names) + 1}>")
+
+    def now(match):
+        value = int(match.group(0))
+        return "<now>" if started - 5 <= value <= finished + 5 else match.group(0)
+
+    normalized = set()
+    for table, values in sorted(changes):
+        values = PHID.sub(phid, values)
+        values = INTEGER.sub(now, values)
+        values = DURATION.sub("<duration>", values)
+        values = GROUP_ID.sub(r"\1<group>", values)
+        values = ELAPSED.sub(r"\1<duration>", values)
+        normalized.add((table, values))
+    return normalized
+
+
+def run_side(side, scenario, token, saved, before, known):
+    started = int(time.time())
+    answer = call(side, scenario, token)
+    finished = int(time.time())
+    after = rows(dump())
+    added = normalize(after - before, known, started, finished)
+    removed = normalize(before - after, known, started, finished)
+    restore(saved, changed_databases(before, after) | TOUCHED)
+    return answer, added, removed
+
+
+def show(label, changes):
+    for table, values in sorted(changes):
+        print(f"    {label} {table}: {values[:WIDTH]}")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sides", default="php,rust")
+    parser.add_argument("--show", action="store_true",
+                        help="print every row change of the first side")
+    parser.add_argument("token")
+    parser.add_argument("files", nargs="+")
+    args = parser.parse_args()
+    sides = args.sides.split(",")
+
+    sh(["docker", "exec", PHP, "/app/phabricator/bin/phd", "stop"])
+    saved = snapshots()
+    snapshot = dump()
+    before = rows(snapshot)
+    known = set(PHID.findall(snapshot.decode("utf-8", "replace")))
+    failures = 0
+    try:
+        for path in args.files:
+            with open(path) as scenarios:
+                for scenario in json.load(scenarios):
+                    results = [run_side(side, scenario, args.token, saved,
+                                        before, known) for side in sides]
+                    (answer_a, added_a, removed_a) = results[0]
+                    (answer_b, added_b, removed_b) = results[1]
+                    errors = (answer_a.get("error_code"),
+                              answer_b.get("error_code"))
+                    same = (added_a == added_b and removed_a == removed_b
+                            and errors[0] == errors[1])
+                    status = "same" if same else "DIFFERENT"
+                    print(f"{status}: {scenario['name']} "
+                          f"({len(added_a)} rows added, "
+                          f"{len(removed_a)} removed, errors {errors})")
+                    if args.show:
+                        show("added", added_a)
+                        show("removed", removed_a)
+                    if not same:
+                        failures += 1
+                        show(f"only {sides[0]} added", added_a - added_b)
+                        show(f"only {sides[1]} added", added_b - added_a)
+                        show(f"only {sides[0]} removed", removed_a - removed_b)
+                        show(f"only {sides[1]} removed", removed_b - removed_a)
+    finally:
+        sh(["docker", "exec", PHP, "/app/phabricator/bin/phd", "start"])
+    sys.exit(1 if failures else 0)
+
+
+if __name__ == "__main__":
+    main()
