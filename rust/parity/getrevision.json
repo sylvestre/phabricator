@@ -1,0 +1,14 @@
+[
+  {"name": "getrevision: D1", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 1}},
+  {"name": "getrevision: D2", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 2}},
+  {"name": "getrevision: D3", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 3}},
+  {"name": "getrevision: D4", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 4}},
+  {"name": "getrevision: D5", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 5}},
+  {"name": "getrevision: D6", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 6}},
+  {"name": "getrevision: D7", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 7}},
+  {"name": "getrevision: string", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": "6"}},
+  {"name": "getrevision: unknown", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 99}},
+  {"name": "getrevision: missing", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "getrevision: zero", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 0}},
+  {"name": "getrevision: float", "method": "differential.getrevision", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 1.5}}
+]

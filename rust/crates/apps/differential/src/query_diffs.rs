@@ -173,7 +173,7 @@ async fn authorship(
 }
 
 /// `getDiffDict()`.
-async fn diff_dict(database: &Database, diff: &DiffRow) -> Result<Value, MethodError> {
+pub(crate) async fn diff_dict(database: &Database, diff: &DiffRow) -> Result<Value, MethodError> {
     let mut dict = diff_columns(database, diff.id).await?;
     let changesets = diff_storage::load_changesets(database, diff.id)
         .await

@@ -32,6 +32,7 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(get_raw_diff::GetRawDiff);
     registry.register(get_commit_paths::GetCommitPaths);
     registry.register(legacy_query::LegacyQuery);
+    registry.register(legacy_query::GetRevision);
     registry.register(edge_search::EdgeSearch);
     registry.register(transaction_search::TransactionSearch);
     registry.register(revision_comments::GetRevisionComments);

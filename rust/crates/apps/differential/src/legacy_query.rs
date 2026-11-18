@@ -529,6 +529,286 @@ impl Method for LegacyQuery {
     }
 }
 
+/// `ERR_BAD_REVISION`.
+fn bad_revision() -> MethodError {
+    MethodError::Conduit {
+        code: "ERR_BAD_REVISION".to_owned(),
+        info: Some("No such revision exists.".to_owned()),
+    }
+}
+
+/// `DiffusionCommitHintQuery::withCommits()` of the unreachable commits:
+/// the new identifier of those which were rewritten, by commit PHID. Hints
+/// are visible to everyone.
+async fn rewrite_hints(
+    database: &Database,
+    commits: impl Iterator<Item = &crate::commit::Commit>,
+) -> Result<HashMap<Phid, String>, MethodError> {
+    let unreachable: Vec<&crate::commit::Commit> =
+        commits.filter(|commit| commit.is_unreachable).collect();
+    let mut rewrites = HashMap::new();
+    if unreachable.is_empty() {
+        return Ok(rewrites);
+    }
+    let sql = format!(
+        "SELECT repositoryPHID, oldCommitIdentifier, newCommitIdentifier, hintType FROM {} \
+         WHERE repositoryPHID IN ({}) AND oldCommitIdentifier IN ({})",
+        database.table("repository", "repository_commithint"),
+        phab_db::placeholders(unreachable.len()),
+        phab_db::placeholders(unreachable.len())
+    );
+    let query = phab_db::bind_all(
+        phab_db::sqlx::query(&sql),
+        unreachable
+            .iter()
+            .map(|commit| commit.repository.phid.as_str()),
+    );
+    let hints = phab_db::bind_all(
+        query,
+        unreachable.iter().map(|commit| commit.identifier.as_str()),
+    )
+    .fetch_all(database.pool())
+    .await?;
+    for hint in &hints {
+        if rows::text(hint, "hintType")? != "rewritten" {
+            continue;
+        }
+        let repository = rows::text(hint, "repositoryPHID")?;
+        let old = rows::text(hint, "oldCommitIdentifier")?;
+        let Some(commit) = unreachable.iter().find(|commit| {
+            commit.repository.phid.as_str() == repository && commit.identifier == old
+        }) else {
+            continue;
+        };
+        let new = rows::opt_text(hint, "newCommitIdentifier")?
+            .ok_or(MethodError::Unsupported("a rewrite hint without a commit"))?;
+        rewrites.insert(commit.phid.clone(), new);
+    }
+    Ok(rewrites)
+}
+
+/// The commits of a revision as `differential.getrevision` shows them: the
+/// handle's full name and the commit's epoch.
+async fn commit_dicts(request: &ApiRequest<'_>, phids: &[Phid]) -> Result<Value, MethodError> {
+    let context = request.context;
+    let database = &context.database;
+    let commits = crate::commit::load_visible_by_phids(
+        database,
+        &context.config,
+        &request.viewer,
+        phids,
+        request.now,
+    )
+    .await
+    .map_err(MethodError::internal)?;
+    let mut epochs: HashMap<Phid, Option<String>> = HashMap::new();
+    if !phids.is_empty() {
+        let sql = format!(
+            "SELECT phid, epoch FROM {} WHERE phid IN ({})",
+            database.table("repository", "repository_commit"),
+            phab_db::placeholders(phids.len())
+        );
+        for row in phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
+            .fetch_all(database.pool())
+            .await?
+        {
+            epochs.insert(
+                Phid::new(rows::text(&row, "phid")?),
+                rows::opt_int(&row, "epoch")?.map(|epoch| epoch.to_string()),
+            );
+        }
+    }
+    let rewrites = rewrite_hints(database, commits.values()).await?;
+    phids
+        .iter()
+        .map(|phid| {
+            // Hidden commits have restricted handles.
+            let commit = commits
+                .get(phid)
+                .ok_or(MethodError::Unsupported("hidden commits of a revision"))?;
+            let full_name = match rewrites.get(phid) {
+                Some(new) => {
+                    let name = format!(
+                        "{} \u{267B} {}",
+                        commit.name(),
+                        commit.repository.format_commit_name(new)
+                    );
+                    if commit.summary.is_empty() {
+                        name
+                    } else {
+                        format!("{name}: {}", commit.summary)
+                    }
+                }
+                None => commit.full_name(),
+            };
+            Ok(json!({
+                "fullname": full_name,
+                // Lisk keeps MySQL's strings.
+                "dateCommitted": epochs.get(phid).cloned().flatten(),
+            }))
+        })
+        .collect::<Result<Vec<_>, MethodError>>()
+        .map(Value::Array)
+}
+
+/// `withIDs(array($id))->executeOne()`: the revision, `ERR_BAD_REVISION`
+/// when there is none, and PHP's policy exception for a hidden one.
+async fn execute_one(request: &ApiRequest<'_>, id: i64) -> Result<Revision, MethodError> {
+    let query = Revisions {
+        request,
+        constraints: Constraints {
+            ids: Some(vec![id]),
+            ..Constraints::default()
+        },
+        order: Order::Updated,
+        memory: std::sync::Mutex::default(),
+    };
+    if let Some(revision) = pager::execute(&query, None, Direction::Forward, 1)
+        .await?
+        .into_iter()
+        .next()
+    {
+        return Ok(revision);
+    }
+    let database = &request.context.database;
+    let sql = format!(
+        "SELECT 1 FROM {} WHERE id = ?",
+        database.table("differential", "differential_revision")
+    );
+    if phab_db::sqlx::query(&sql)
+        .bind(id)
+        .fetch_optional(database.pool())
+        .await?
+        .is_some()
+    {
+        return Err(MethodError::Unsupported("a revision the viewer can't see"));
+    }
+    Err(bad_revision())
+}
+
+/// The visible diffs of a revision as `getDiffDict()`; `mpull()` keeps
+/// the query's keys, the diff IDs, newest first.
+async fn diff_dicts(request: &ApiRequest<'_>, revision_id: i64) -> Result<Value, MethodError> {
+    let mut diffs = Map::new();
+    for diff in crate::diff_search::query_diffs(
+        request,
+        None,
+        Some(vec![revision_id]),
+        phab_conduit::search::IdOrder::Newest,
+        Direction::Forward,
+    )
+    .await?
+    {
+        diffs.insert(
+            diff.id.to_string(),
+            crate::query_diffs::diff_dict(&request.context.database, &diff).await?,
+        );
+    }
+    Ok(if diffs.is_empty() {
+        json!([])
+    } else {
+        Value::Object(diffs)
+    })
+}
+
+/// `differential.getrevision` (`DifferentialGetRevisionConduitAPIMethod`,
+/// deprecated): one revision with its diffs.
+pub struct GetRevision;
+
+impl Method for GetRevision {
+    fn name(&self) -> &'static str {
+        "differential.getrevision"
+    }
+
+    fn params(&self) -> &'static [&'static str] {
+        &["revision_id"]
+    }
+
+    fn application(&self) -> Option<phab_conduit::Application> {
+        Some(search::APPLICATION)
+    }
+
+    fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
+        Box::pin(async move {
+            let id = match request.value("revision_id") {
+                Some(Value::Number(number)) if !number.is_f64() => number.as_i64(),
+                Some(Value::String(text))
+                    if !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()) =>
+                {
+                    text.parse().ok()
+                }
+                _ => None,
+            }
+            .ok_or(MethodError::Unsupported("an unusual revision ID"))?;
+            let revisions = vec![execute_one(request, id).await?];
+            let revision = &revisions[0];
+            let database = &request.context.database;
+            let data = ResultData::load(database, &revisions).await?;
+            let extra = data
+                .extra
+                .get(&revision.id)
+                .ok_or_else(|| MethodError::internal("revision row vanished"))?;
+            let (legacy, name) = legacy_status(&revision.status).ok_or(
+                MethodError::Unsupported("a revision with an unknown status"),
+            )?;
+            // mpull() of the reviewers, which are keyed by PHID.
+            let reviewers: Map<String, Value> = data
+                .reviewers
+                .get(&revision.phid)
+                .into_iter()
+                .flatten()
+                .map(|row| (row.reviewer.clone(), json!(row.reviewer)))
+                .collect();
+            let reviewers = if reviewers.is_empty() {
+                json!([])
+            } else {
+                Value::Object(reviewers)
+            };
+            let commits: Vec<Phid> = data
+                .commits
+                .get(&revision.phid)
+                .cloned()
+                .unwrap_or_default();
+            let custom = |key| data.custom.get(&(revision.phid.clone(), key));
+            let base_uri = request
+                .context
+                .config
+                .base_uri()
+                .map_err(MethodError::internal)?;
+            Ok(json!({
+                // Lisk keeps MySQL's strings.
+                "id": revision.id.to_string(),
+                "phid": revision.phid.as_str(),
+                "authorPHID": revision.author_phid.as_ref().map(Phid::as_str),
+                "uri": format!("{}/D{}", base_uri.trim_end_matches('/'), revision.id),
+                "title": revision.title,
+                "status": legacy,
+                "statusName": name,
+                "summary": extra.summary,
+                "testPlan": extra.test_plan,
+                "lineCount": data
+                    .line_counts
+                    .get(&revision.id)
+                    .copied()
+                    .flatten()
+                    .map(|count| count.to_string()),
+                "reviewerPHIDs": reviewers,
+                "diffs": diff_dicts(request, revision.id).await?,
+                "commits": commit_dicts(request, &commits).await?,
+                "auxiliary": {
+                    "bugzilla.bug-id": custom(search::BUG_FIELD),
+                    "uplift.request": search::uplift_request(custom(search::UPLIFT_FIELD)),
+                    "phabricator:projects": data.auxiliary(revision, edges::OBJECT_HAS_PROJECT),
+                    "phabricator:depends-on": data.auxiliary(
+                        revision,
+                        edges::REVISION_DEPENDS_ON_REVISION,
+                    ),
+                },
+            }))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

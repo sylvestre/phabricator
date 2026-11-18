@@ -1,4 +1,5 @@
-//! `differential.query` against a test database.
+//! `differential.query` and `differential.getrevision` against a test
+//! database.
 
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
@@ -223,6 +224,116 @@ async fn filters_orders_and_pages() {
         query(&context, json!({"branches": ["main"]})).await,
         Response::Fallback(_)
     ));
+
+    test_db.drop_databases().await;
+}
+
+async fn get_revision(context: &Context, params: Value) -> Response {
+    let mut registry = Registry::default();
+    phab_app_differential::register(&mut registry);
+    let mut params = params;
+    params["__conduit__"] = json!({"token": TOKEN});
+    let body: String = form_urlencoded::Serializer::new(String::new())
+        .append_pair("params", &params.to_string())
+        .finish();
+    let http = HttpRequest {
+        body,
+        ..HttpRequest::default()
+    };
+    call::dispatch(
+        context,
+        &registry,
+        "differential.getrevision",
+        &http,
+        Mode::Shadow,
+        1_700_000_000,
+    )
+    .await
+    .response
+}
+
+#[tokio::test]
+async fn describes_one_revision() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+
+    let Response::Envelope(envelope) = get_revision(&context, json!({"revision_id": "2"})).await
+    else {
+        panic!("expected an answer");
+    };
+    let result = envelope.result;
+    assert_eq!(
+        result["diffs"]
+            .as_object()
+            .expect("a map")
+            .keys()
+            .collect::<Vec<_>>(),
+        ["3"]
+    );
+    assert_eq!(result["diffs"]["3"]["id"], "3");
+    let mut summary = result.clone();
+    summary["diffs"] = Value::Null;
+    assert_eq!(
+        summary,
+        json!({
+            "id": "2",
+            "phid": "PHID-DREV-2",
+            "authorPHID": "PHID-USER-alice",
+            "uri": "http://phabricator.test/D2",
+            "title": "R2",
+            "status": 2,
+            "statusName": "Accepted",
+            "summary": "S",
+            "testPlan": "T",
+            "lineCount": "7",
+            "reviewerPHIDs": {"PHID-USER-bob": "PHID-USER-bob"},
+            "diffs": null,
+            "commits": [],
+            "auxiliary": {
+                "bugzilla.bug-id": null,
+                "uplift.request": [],
+                "phabricator:projects": [],
+                "phabricator:depends-on": [],
+            },
+        })
+    );
+    let Response::Envelope(envelope) = get_revision(&context, json!({"revision_id": 99})).await
+    else {
+        panic!("expected an error");
+    };
+    assert_eq!(envelope.error_code.as_deref(), Some("ERR_BAD_REVISION"));
+    // Revision 1's commit doesn't exist: its handle is PHP's.
+    assert!(matches!(
+        get_revision(&context, json!({"revision_id": 1})).await,
+        Response::Fallback(_)
+    ));
+
+    // A rewritten commit is named after its new identifier.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_repository`.repository (id, phid, name, callsign, \
+               versionControlSystem, details, dateCreated, dateModified, viewPolicy, editPolicy, \
+               pushPolicy) VALUES \
+             (1, 'PHID-REPO-1', 'Repo', 'R', 'git', '{}', 1, 1, 'users', 'admin', 'admin'); \
+             INSERT INTO `{ns}_repository`.repository_commit (id, repositoryID, phid, \
+               commitIdentifier, epoch, auditStatus, importStatus, summary) VALUES \
+             (1, 1, 'PHID-CMIT-1', '1111111111111111111111111111111111111111', 500, 'none', \
+               3083, 'Fix it'); \
+             INSERT INTO `{ns}_repository`.repository_commithint (repositoryPHID, \
+               oldCommitIdentifier, newCommitIdentifier, hintType) VALUES \
+             ('PHID-REPO-1', '1111111111111111111111111111111111111111', \
+               '2222222222222222222222222222222222222222', 'rewritten')",
+        )
+        .await;
+    let Response::Envelope(envelope) = get_revision(&context, json!({"revision_id": 1})).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        envelope.result["commits"],
+        json!([{"fullname": "rR111111111111 \u{267B} rR222222222222: Fix it", "dateCommitted": "500"}])
+    );
 
     test_db.drop_databases().await;
 }
