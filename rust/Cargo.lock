@@ -1636,6 +1636,7 @@ dependencies = [
 name = "phab-app-project"
 version = "0.1.0"
 dependencies = [
+ "form_urlencoded",
  "phab-conduit",
  "phab-core",
  "phab-db",

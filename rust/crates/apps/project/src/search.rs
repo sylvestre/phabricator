@@ -57,7 +57,7 @@ const DESCRIPTION_FIELD: &str = "std:project:internal:description";
 /// The builtin orders of `PhabricatorProjectQuery`; `name` comes first, so
 /// it is the default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Order {
+pub(crate) enum Order {
     /// By increasing name.
     Name,
     /// By decreasing ID.
@@ -98,20 +98,24 @@ impl Order {
 /// The ported constraints, as `buildQueryFromParameters()` turns them into
 /// query conditions.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct Filters {
-    name_tokens: Vec<String>,
-    slugs: Vec<String>,
-    members: Option<Vec<String>>,
-    watchers: Option<Vec<String>>,
-    is_milestone: Option<bool>,
-    depth: (Option<i64>, Option<i64>),
-    subtypes: Option<Vec<String>>,
-    icons: Option<Vec<String>>,
-    colors: Option<Vec<String>>,
-    parents: Option<Vec<String>>,
-    ancestors: Option<Vec<String>>,
-    ids: Option<Vec<i64>>,
-    phids: Option<Vec<String>>,
+pub(crate) struct Filters {
+    pub(crate) name_tokens: Vec<String>,
+    pub(crate) slugs: Vec<String>,
+    pub(crate) members: Option<Vec<String>>,
+    pub(crate) watchers: Option<Vec<String>>,
+    pub(crate) is_milestone: Option<bool>,
+    pub(crate) depth: (Option<i64>, Option<i64>),
+    pub(crate) subtypes: Option<Vec<String>>,
+    pub(crate) icons: Option<Vec<String>>,
+    pub(crate) colors: Option<Vec<String>>,
+    pub(crate) parents: Option<Vec<String>>,
+    pub(crate) ancestors: Option<Vec<String>>,
+    pub(crate) ids: Option<Vec<i64>>,
+    pub(crate) phids: Option<Vec<String>>,
+    /// `withNames()`: exact names (`project.query`).
+    pub(crate) names: Option<Vec<String>>,
+    /// `withStatus()`: the stored statuses (`project.query`).
+    pub(crate) statuses: Option<Vec<String>>,
 }
 
 /// A list constraint: an empty list is no constraint.
@@ -236,7 +240,7 @@ fn tokenize(name: &str) -> Vec<String> {
 
 /// `PhabricatorSlug::normalizeProjectSlug()`, or `None` for slugs which
 /// `isValidProjectSlug()` refuses.
-fn valid_slug(slug: &str) -> Option<String> {
+pub(crate) fn valid_slug(slug: &str) -> Option<String> {
     const BANNED: &str = "#%&+=? \\<>{}[]'\"`~!@$^*,:;(|)/";
     let mut normal = String::with_capacity(slug.len());
     for character in slug.chars() {
@@ -264,12 +268,12 @@ fn valid_slug(slug: &str) -> Option<String> {
 }
 
 /// `PhabricatorProjectQuery` with the ported constraints.
-struct Projects<'a> {
-    request: &'a ApiRequest<'a>,
-    filters: Filters,
-    order: Order,
+pub(crate) struct Projects<'a> {
+    pub(crate) request: &'a ApiRequest<'a>,
+    pub(crate) filters: Filters,
+    pub(crate) order: Order,
     /// `projectPath` and `projectDepth` of the `ancestors` constraint.
-    ancestor_paths: Vec<(String, i64)>,
+    pub(crate) ancestor_paths: Vec<(String, i64)>,
 }
 
 impl Projects<'_> {
@@ -336,6 +340,8 @@ impl Projects<'_> {
         }
         for (column, values) in [
             ("p.phid", &filters.phids),
+            ("p.name", &filters.names),
+            ("p.status", &filters.statuses),
             ("p.icon", &filters.icons),
             ("p.color", &filters.colors),
             ("p.parentProjectPHID", &filters.parents),
@@ -466,13 +472,13 @@ impl PolicyAwareQuery for Projects<'_> {
 }
 
 /// `projects.icons` and `projects.colors`, or their defaults.
-struct IconSet {
+pub(crate) struct IconSet {
     icons: Vec<Value>,
     colors: Vec<Value>,
 }
 
 impl IconSet {
-    fn load(config: &Config) -> Self {
+    pub(crate) fn load(config: &Config) -> Self {
         static DEFAULTS: std::sync::LazyLock<Value> = std::sync::LazyLock::new(|| {
             serde_json::from_str(include_str!("../data/icon-defaults.json"))
                 .expect("valid icon defaults")
@@ -492,7 +498,7 @@ impl IconSet {
     }
 
     /// `getMilestoneIconKey()`.
-    fn milestone_key(&self) -> Value {
+    pub(crate) fn milestone_key(&self) -> Value {
         self.icons
             .iter()
             .find(|icon| icon["special"] == "milestone")
@@ -591,7 +597,7 @@ async fn load_descriptions(
 }
 
 /// The destinations of `sources`' edges of one type, by source.
-async fn load_edge_map(
+pub(crate) async fn load_edge_map(
     database: &Database,
     sources: &[Phid],
     edge_type: i64,

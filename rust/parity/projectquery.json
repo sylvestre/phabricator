@@ -1,0 +1,19 @@
+[
+  {"name": "project.query: everything", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "project.query: ids", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [1, 3, 99]}},
+  {"name": "project.query: names", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"names": ["Build Reviewers", "secure-revision", "nope"]}},
+  {"name": "project.query: phids", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-PROJ-fw4ppopw3mj73juscyek"]}},
+  {"name": "project.query: slugs", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"slugs": ["Build_Reviewers", "secure-revision", "nope"]}},
+  {"name": "project.query: slugs with spaces", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"slugs": ["build reviewers"]}},
+  {"name": "project.query: colors", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"colors": ["blue", "red"]}},
+  {"name": "project.query: members", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"members": ["PHID-USER-gjsswwcaxvzc2p3qhkkk"]}},
+  {"name": "project.query: status active", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "status-active"}},
+  {"name": "project.query: status archived", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "status-archived"}},
+  {"name": "project.query: status any", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "status-any"}},
+  {"name": "project.query: bad status", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "bogus"}},
+  {"name": "project.query: limit", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2}},
+  {"name": "project.query: after", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2, "after": "6"}},
+  {"name": "project.query: before", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2, "before": "6"}},
+  {"name": "project.query: icons, to PHP", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"icons": ["project"]}},
+  {"name": "project.query: offset, to PHP", "method": "project.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"offset": 2}}
+]
