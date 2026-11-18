@@ -26,6 +26,7 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(diff_search::DiffSearch);
     registry.register(changeset_search::ChangesetSearch);
     registry.register(query_diffs::QueryDiffs);
+    registry.register(query_diffs::GetAllDiffs);
     registry.register(get_raw_diff::GetRawDiff);
     registry.register(get_commit_paths::GetCommitPaths);
     registry.register(legacy_query::LegacyQuery);

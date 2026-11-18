@@ -1,0 +1,11 @@
+[
+  {"name": "getalldiffs: one", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_ids": [1]}},
+  {"name": "getalldiffs: all", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_ids": [1, 2, 3, 4, 5, 6, 7]}},
+  {"name": "getalldiffs: strings", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_ids": ["3", "6"]}},
+  {"name": "getalldiffs: unknown", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_ids": [99]}},
+  {"name": "getalldiffs: empty", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_ids": []}},
+  {"name": "getalldiffs: missing", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "getalldiffs: zero", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_ids": 0}},
+  {"name": "getalldiffs: scalar", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_ids": 3}},
+  {"name": "getalldiffs: floats", "method": "differential.getalldiffs", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_ids": [1.5]}}
+]

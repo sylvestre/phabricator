@@ -230,6 +230,53 @@ impl Method for QueryDiffs {
     }
 }
 
+/// `differential.getalldiffs` (`DifferentialGetAllDiffsConduitAPIMethod`,
+/// deprecated): the IDs of the diffs of revisions, newest first.
+pub struct GetAllDiffs;
+
+impl Method for GetAllDiffs {
+    fn name(&self) -> &'static str {
+        "differential.getalldiffs"
+    }
+
+    fn params(&self) -> &'static [&'static str] {
+        &["revision_ids"]
+    }
+
+    fn application(&self) -> Option<phab_conduit::Application> {
+        Some(crate::search::APPLICATION)
+    }
+
+    fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
+        Box::pin(async move {
+            let revision_ids = match request.value("revision_ids") {
+                Some(value) if php::is_truthy(value) => id_list(Some(value))?,
+                _ => return Ok(json!([])),
+            };
+            let diffs = diff_search::query_diffs(
+                request,
+                None,
+                Some(revision_ids),
+                IdOrder::Newest,
+                Direction::Forward,
+            )
+            .await?;
+            // Lisk keeps MySQL's strings.
+            Ok(Value::Array(
+                diffs
+                    .iter()
+                    .map(|diff| {
+                        json!({
+                            "revision_id": diff.revision_id.map(|id| id.to_string()),
+                            "diff_id": diff.id.to_string(),
+                        })
+                    })
+                    .collect(),
+            ))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,5 +1,6 @@
-//! `differential.querydiffs`, `differential.getrawdiff` and
-//! `differential.getcommitpaths` against a test database.
+//! `differential.querydiffs`, `differential.getrawdiff`,
+//! `differential.getcommitpaths` and `differential.getalldiffs` against a
+//! test database.
 
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
@@ -258,6 +259,56 @@ async fn lists_commit_paths() {
             Response::Fallback(_)
         ));
     }
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn lists_all_diffs() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_diff (id, phid, revisionID, \
+               authorPHID, lintStatus, unitStatus, lineCount, dateCreated, dateModified, \
+               viewPolicy, branch, creationMethod) VALUES \
+             (3, 'PHID-DIFF-3', 1, 'PHID-USER-alice', 0, 0, 1, 1, 1, 'no-one', NULL, 'arc')",
+        )
+        .await;
+
+    let all = |params: Value| {
+        let context = &context;
+        async move {
+            match call(context, "differential.getalldiffs", params.clone()).await {
+                Response::Envelope(Envelope {
+                    result,
+                    error_code: None,
+                    ..
+                }) => result,
+                other => panic!("{params}: expected an answer, got {other:?}"),
+            }
+        }
+    };
+    // Newest first, as strings; the hidden revision's diff is left out.
+    assert_eq!(
+        all(json!({"revision_ids": [1, "2"]})).await,
+        json!([
+            {"revision_id": "1", "diff_id": "3"},
+            {"revision_id": "1", "diff_id": "1"},
+        ])
+    );
+    assert_eq!(all(json!({"revision_ids": []})).await, json!([]));
+    assert_eq!(all(json!({})).await, json!([]));
+    assert!(matches!(
+        call(
+            &context,
+            "differential.getalldiffs",
+            json!({"revision_ids": 1})
+        )
+        .await,
+        Response::Fallback(_)
+    ));
 
     test_db.drop_databases().await;
 }
