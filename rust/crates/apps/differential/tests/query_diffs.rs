@@ -188,12 +188,27 @@ async fn renders_git_patches() {
         )
     );
     // The hidden revision's diff is not found.
-    let Response::Envelope(envelope) =
-        call(&context, "differential.getrawdiff", json!({"diffID": 2})).await
-    else {
-        panic!("expected an error");
-    };
-    assert_eq!(envelope.error_code.as_deref(), Some("ERR_NOT_FOUND"));
+    for id in [2, 99] {
+        let Response::Envelope(envelope) =
+            call(&context, "differential.getrawdiff", json!({"diffID": id})).await
+        else {
+            panic!("expected an error");
+        };
+        assert_eq!(envelope.error_code.as_deref(), Some("ERR_NOT_FOUND"));
+    }
+    // PHP raises a policy exception for a hidden diff without a revision.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_diff (id, phid, revisionID, \
+               authorPHID, lintStatus, unitStatus, lineCount, dateCreated, dateModified, \
+               viewPolicy, branch, creationMethod) VALUES \
+             (5, 'PHID-DIFF-5', NULL, 'PHID-USER-alice', 0, 0, 1, 1, 1, 'no-one', NULL, 'arc')",
+        )
+        .await;
+    assert!(matches!(
+        call(&context, "differential.getrawdiff", json!({"diffID": 5})).await,
+        Response::Fallback(_)
+    ));
 
     test_db.drop_databases().await;
 }

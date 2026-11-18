@@ -265,11 +265,15 @@ async fn describes_one_file() {
             "uri": "http://phabricator.test/F5",
         })
     );
-    // The hidden revision's file does not exist for Bob.
-    let Response::Envelope(envelope) = call(info(json!({"phid": "PHID-FILE-3"}))).await else {
+    let Response::Envelope(envelope) = call(info(json!({"phid": "PHID-FILE-99"}))).await else {
         panic!("expected an error");
     };
     assert_eq!(envelope.error_code.as_deref(), Some("ERR-NOT-FOUND"));
+    // PHP raises a policy exception for the hidden revision's file.
+    assert!(matches!(
+        call(info(json!({"phid": "PHID-FILE-3"}))).await,
+        Response::Fallback(_)
+    ));
 
     test_db.drop_databases().await;
 }

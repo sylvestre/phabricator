@@ -4,6 +4,7 @@
 use phab_conduit::pager::Direction;
 use phab_conduit::search::IdOrder;
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
+use phab_db::rows;
 use phab_diff::git_patch;
 use phab_diff::storage::{self as diff_storage, StorageError};
 use serde_json::{Value, json};
@@ -47,6 +48,22 @@ impl Method for GetRawDiff {
             )
             .await?;
             if found.is_empty() {
+                // willFilterPage() drops a diff whose revision the viewer
+                // can't see, but executeOne() raises a policy exception for
+                // a diff without a revision.
+                let database = &request.context.database;
+                let sql = format!(
+                    "SELECT revisionID FROM {} WHERE id = ?",
+                    database.table("differential", "differential_diff")
+                );
+                if let Some(row) = phab_db::sqlx::query(&sql)
+                    .bind(id)
+                    .fetch_optional(database.pool())
+                    .await?
+                    && rows::opt_int(&row, "revisionID")?.unwrap_or(0) == 0
+                {
+                    return Err(MethodError::Unsupported("a diff the viewer can't see"));
+                }
                 return Err(MethodError::Conduit {
                     code: "ERR_NOT_FOUND".to_owned(),
                     info: Some("Diff not found.".to_owned()),

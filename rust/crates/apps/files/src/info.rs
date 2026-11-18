@@ -48,14 +48,22 @@ impl Method for FileInfo {
                     Some(_) => return Err(MethodError::Unsupported("an unusual file PHID")),
                 },
             };
-            let file = search::visible_files(request, candidates)
+            let exists = !candidates.is_empty();
+            let Some(file) = search::visible_files(request, candidates)
                 .await?
                 .into_iter()
                 .next()
-                .ok_or_else(|| MethodError::Conduit {
+            else {
+                // executeOne() raises a policy exception for a file the
+                // viewer can't see.
+                if exists {
+                    return Err(MethodError::Unsupported("a file the viewer can't see"));
+                }
+                return Err(MethodError::Conduit {
                     code: "ERR-NOT-FOUND".to_owned(),
                     info: Some("No such file exists.".to_owned()),
-                })?;
+                });
+            };
             let sql = format!(
                 "SELECT dateCreated, dateModified FROM {} WHERE id = ?",
                 database.table("file", "file")

@@ -9,5 +9,6 @@
   {"name": "differential.getrawdiff: diff 8", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 8}},
   {"name": "differential.getrawdiff: diff 9", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 9}},
   {"name": "differential.getrawdiff: string ID", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": "9"}},
-  {"name": "differential.getrawdiff: unknown diff", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 999}}
+  {"name": "differential.getrawdiff: unknown diff", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 999}},
+  {"name": "differential.getrawdiff: hidden diff without a revision", "method": "differential.getrawdiff", "token": "$PHAB_REPLAY_TOKEN", "params": {"diffID": 901}}
 ]

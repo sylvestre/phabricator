@@ -9,5 +9,7 @@
   {"name": "file.info: unknown id", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 999}},
   {"name": "file.info: unknown phid", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"phid": "PHID-FILE-doesnotexist00000000"}},
   {"name": "file.info: nothing", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
-  {"name": "file.info: id 0 uses phid", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 0, "phid": "PHID-FILE-zbqo36grm6qt2qxxxq6r"}}
+  {"name": "file.info: id 0 uses phid", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 0, "phid": "PHID-FILE-zbqo36grm6qt2qxxxq6r"}},
+  {"name": "file.info: hidden by ID", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"id": 900}},
+  {"name": "file.info: hidden by PHID", "method": "file.info", "token": "$PHAB_REPLAY_TOKEN", "params": {"phid": "PHID-FILE-hiddenparity00"}}
 ]
