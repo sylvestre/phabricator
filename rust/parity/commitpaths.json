@@ -1,0 +1,15 @@
+[
+  {"name": "getcommitpaths: D1", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 1}},
+  {"name": "getcommitpaths: D2", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 2}},
+  {"name": "getcommitpaths: D3", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 3}},
+  {"name": "getcommitpaths: D4", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 4}},
+  {"name": "getcommitpaths: D5", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 5}},
+  {"name": "getcommitpaths: D6", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 6}},
+  {"name": "getcommitpaths: D7", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 7}},
+  {"name": "getcommitpaths: string", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": "3"}},
+  {"name": "getcommitpaths: unknown", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 99}},
+  {"name": "getcommitpaths: missing", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "getcommitpaths: float", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 1.5}},
+  {"name": "getcommitpaths: negative", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": -1}},
+  {"name": "getcommitpaths: zero", "method": "differential.getcommitpaths", "token": "$PHAB_REPLAY_TOKEN", "params": {"revision_id": 0}}
+]

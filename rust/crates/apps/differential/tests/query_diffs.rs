@@ -1,5 +1,5 @@
-//! `differential.querydiffs` and `differential.getrawdiff` against a test
-//! database.
+//! `differential.querydiffs`, `differential.getrawdiff` and
+//! `differential.getcommitpaths` against a test database.
 
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
@@ -194,6 +194,55 @@ async fn renders_git_patches() {
         panic!("expected an error");
     };
     assert_eq!(envelope.error_code.as_deref(), Some("ERR_NOT_FOUND"));
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn lists_commit_paths() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // A newer diff, without a revision visible to Bob, wins.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_diff (id, phid, revisionID, \
+               authorPHID, lintStatus, unitStatus, lineCount, dateCreated, dateModified, \
+               viewPolicy, branch, creationMethod) VALUES \
+             (3, 'PHID-DIFF-3', 1, 'PHID-USER-alice', 0, 0, 1, 1, 1, 'no-one', NULL, 'arc'); \
+             INSERT INTO `{ns}_differential`.differential_changeset (id, diffID, oldFile, \
+               filename, awayPaths, changeType, fileType, metadata, oldProperties, newProperties, \
+               addLines, delLines, dateCreated, dateModified, phid) VALUES \
+             (12, 3, NULL, 'z.txt', '[]', 1, 1, '{}', '{}', '{}', 1, 0, 1, 1, 'PHID-DCNG-12'), \
+             (11, 3, 'a.txt', 'b.txt', '[]', 6, 1, '{}', '{}', '{}', 0, 0, 1, 1, 'PHID-DCNG-11'); \
+             INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, \
+               summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+               viewPolicy, editPolicy, repositoryPHID, properties, activeDiffPHID) VALUES \
+             (4, 'Empty', 'PHID-DREV-empty', 'draft', '', '', 'PHID-USER-alice', 1, 1, '{}', \
+               'k', 'users', 'users', NULL, '{}', '')",
+        )
+        .await;
+
+    let paths = |params: Value| {
+        let context = &context;
+        async move { call(context, "differential.getcommitpaths", params).await }
+    };
+    let Response::Envelope(envelope) = paths(json!({"revision_id": "1"})).await else {
+        panic!("expected an answer");
+    };
+    assert_eq!(envelope.result, json!(["b.txt", "z.txt"]));
+    let Response::Envelope(envelope) = paths(json!({"revision_id": 99})).await else {
+        panic!("expected an error");
+    };
+    assert_eq!(envelope.error_code.as_deref(), Some("ERR_NOT_FOUND"));
+    // PHP raises a policy exception for the hidden revision, and fails on
+    // a revision without a diff.
+    for id in [2, 4] {
+        assert!(matches!(
+            paths(json!({"revision_id": id})).await,
+            Response::Fallback(_)
+        ));
+    }
 
     test_db.drop_databases().await;
 }
