@@ -2,6 +2,7 @@
 
 pub mod bugzilla;
 pub mod external_account;
+pub mod find;
 pub mod profile;
 pub mod profile_image;
 pub mod query;
@@ -20,6 +21,7 @@ pub const APPLICATION: Application = Application {
 pub fn register(registry: &mut Registry) {
     registry.register(bugzilla::BugzillaAccountSearch);
     registry.register(bugzilla::BmoExternalAccountSearch);
+    registry.register(find::UserFind);
     registry.register(query::UserQuery);
     registry.register(search::UserSearch);
     registry.register(whoami::UserWhoAmI);

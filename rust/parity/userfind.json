@@ -1,0 +1,11 @@
+[
+  {"name": "user.find: one", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {"aliases": ["alice"]}},
+  {"name": "user.find: several", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {"aliases": ["alice", "admin", "phab-bot"]}},
+  {"name": "user.find: case", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {"aliases": ["ALICE", "Admin"]}},
+  {"name": "user.find: unknown", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {"aliases": ["nobody"]}},
+  {"name": "user.find: duplicates", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {"aliases": ["alice", "alice"]}},
+  {"name": "user.find: empty", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {"aliases": []}},
+  {"name": "user.find: missing", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "user.find: string", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {"aliases": "alice"}},
+  {"name": "user.find: number", "method": "user.find", "token": "$PHAB_REPLAY_TOKEN", "params": {"aliases": [12]}}
+]
