@@ -1,0 +1,22 @@
+[
+  {"name": "querycommits: everything", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "querycommits: messages", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"needMessages": true}},
+  {"name": "querycommits: by ID", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [1]}},
+  {"name": "querycommits: by IDs", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [1, 3, 5]}},
+  {"name": "querycommits: string IDs", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": ["2"]}},
+  {"name": "querycommits: by PHID", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-CMIT-3eggks6trcbkxwbswzns"]}},
+  {"name": "querycommits: by name", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"names": ["rVCT152e0f67805823d528a774e975b081de4f64d19a"]}},
+  {"name": "querycommits: short names", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"names": ["rVCT504eed9c", "b50ab917138e", "R1:cd8254", "rVCT:53c3165"]}},
+  {"name": "querycommits: ambiguous and unknown names", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"names": ["deadbeef", "rVCTzzzzz"]}},
+  {"name": "querycommits: repository", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"repositoryPHID": "PHID-REPO-tk2tekowvewl4wfqh24m"}},
+  {"name": "querycommits: other repository", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"repositoryPHID": "PHID-REPO-paritygit000000"}},
+  {"name": "querycommits: unknown repository", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"repositoryPHID": "PHID-REPO-nope"}},
+  {"name": "querycommits: limit", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2}},
+  {"name": "querycommits: after", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2, "after": "4"}},
+  {"name": "querycommits: before", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2, "before": "2"}},
+  {"name": "querycommits: names with a limit", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"names": ["152e0f67805823d528a774e975b081de4f64d19a", "504eed9cbfad617bb9f226f7116a55bb11919e3c"], "limit": 1}},
+  {"name": "querycommits: empty", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": []}},
+  {"name": "querycommits: bypassCache", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"bypassCache": true, "ids": [1]}},
+  {"name": "querycommits: unknown ID", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [99]}},
+  {"name": "querycommits: ids not a list", "method": "diffusion.querycommits", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": 1}}
+]

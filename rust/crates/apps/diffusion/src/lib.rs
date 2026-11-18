@@ -2,6 +2,7 @@
 
 pub mod commit_search;
 pub mod legacy_query;
+pub mod query_commits;
 pub mod repository_search;
 
 use phab_conduit::{Application, Registry};
@@ -16,5 +17,6 @@ pub const APPLICATION: Application = Application {
 pub fn register(registry: &mut Registry) {
     registry.register(commit_search::CommitSearch);
     registry.register(legacy_query::LegacyQuery);
+    registry.register(query_commits::QueryCommits);
     registry.register(repository_search::RepositorySearch);
 }

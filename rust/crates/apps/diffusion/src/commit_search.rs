@@ -46,7 +46,7 @@ const VALID_CONSTRAINTS: &[&str] = &[
 const ATTACHMENTS: &[&str] = &["auditors"];
 
 /// `PhabricatorRepositoryCommit::IMPORTED_ALL`.
-const IMPORTED_ALL: i64 = 11;
+pub(crate) const IMPORTED_ALL: i64 = 11;
 /// `PhabricatorRepositoryCommit::IMPORTED_PERMANENT`.
 const IMPORTED_PERMANENT: i64 = 1024;
 /// `PhabricatorRepositoryCommit::IMPORTED_UNREACHABLE`.
@@ -57,7 +57,7 @@ const ID: Column = Column::new("id");
 
 /// The builtin orders of `DiffusionCommitQuery`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Order {
+pub(crate) enum Order {
     /// By decreasing commit date, then ID.
     Newest,
     /// By increasing commit date, then ID.
@@ -100,15 +100,15 @@ impl Order {
 
 /// The ported constraints.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct Filters {
-    ids: Option<Vec<i64>>,
-    phids: Option<Vec<String>>,
-    repositories: Option<Vec<String>>,
-    authors: Option<Vec<String>>,
-    statuses: Option<Vec<String>>,
-    unreachable: Option<bool>,
-    permanent: Option<bool>,
-    identifiers: Option<Vec<String>>,
+pub(crate) struct Filters {
+    pub(crate) ids: Option<Vec<i64>>,
+    pub(crate) phids: Option<Vec<String>>,
+    pub(crate) repositories: Option<Vec<String>>,
+    pub(crate) authors: Option<Vec<String>>,
+    pub(crate) statuses: Option<Vec<String>>,
+    pub(crate) unreachable: Option<bool>,
+    pub(crate) permanent: Option<bool>,
+    pub(crate) identifiers: Option<Vec<String>>,
 }
 
 /// `DiffusionCommitAuditStatus::newModernKeys()`: legacy numbers.
@@ -188,14 +188,14 @@ impl Filters {
 /// `DiffusionCommitQuery` with the ported constraints, which
 /// [`Commits::resolve()`] turned into conditions; `None` when nothing can
 /// match (`PhabricatorEmptyQueryException`).
-struct Commits<'a> {
+pub(crate) struct Commits<'a> {
     request: &'a ApiRequest<'a>,
     clauses: Option<Clauses>,
     order: Order,
 }
 
 impl<'a> Commits<'a> {
-    async fn resolve(
+    pub(crate) async fn resolve(
         request: &'a ApiRequest<'a>,
         filters: &Filters,
         order: Order,
@@ -309,17 +309,17 @@ impl<'a> Commits<'a> {
 
 /// A `repository_commit` row, with its repository.
 #[derive(Debug, Clone)]
-struct CommitRow {
-    id: i64,
-    phid: Phid,
+pub(crate) struct CommitRow {
+    pub(crate) id: i64,
+    pub(crate) phid: Phid,
     repository_id: i64,
-    identifier: String,
-    epoch: i64,
+    pub(crate) identifier: String,
+    pub(crate) epoch: i64,
     author_identity: Option<String>,
     committer_identity: Option<String>,
     audit_status: String,
     import_status: i64,
-    repository: Option<Repository>,
+    pub(crate) repository: Option<Repository>,
 }
 
 const COLUMNS: &str = "id, phid, repositoryID, commitIdentifier, epoch, authorIdentityPHID, \
@@ -342,7 +342,7 @@ impl CommitRow {
     }
 
     /// `isPartiallyImported()`.
-    fn has_flags(&self, flags: i64) -> bool {
+    pub(crate) fn has_flags(&self, flags: i64) -> bool {
         self.import_status & flags == flags
     }
 }
@@ -546,7 +546,7 @@ async fn load_data(
 
 /// `PhabricatorRepositoryCommitData::getAuthorEpoch()`: from the commit
 /// ref, or the details; falsy is `null`.
-fn author_epoch(details: &Value) -> Result<Option<i64>, MethodError> {
+pub(crate) fn author_epoch(details: &Value) -> Result<Option<i64>, MethodError> {
     let value = match details.get("ref") {
         Some(Value::Object(reference)) if reference.contains_key("authorEpoch") => {
             reference.get("authorEpoch")
