@@ -1,0 +1,6 @@
+[
+  {"name": "reject D3", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "reject", "value": true}]}},
+  {"name": "reject D7 (needs revision)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "comment", "value": "Please split this."}, {"type": "reject", "value": true}]}},
+  {"name": "reject D1 (own revision)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reject", "value": true}]}},
+  {"name": "accept and reject", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "accept", "value": true}, {"type": "reject", "value": true}]}}
+]

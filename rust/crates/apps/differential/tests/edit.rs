@@ -418,3 +418,36 @@ async fn comments_fix_a_stale_status() {
 
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn requests_changes() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(
+        &context,
+        json!({"objectIdentifier": "D1", "transactions": [{"type": "reject", "value": true}]}),
+    )
+    .await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        transaction_types(&test_db).await,
+        [
+            "differential.revision.reject",
+            "differential.revision.status"
+        ]
+    );
+    let (status, reviewers) = review_state(&test_db).await;
+    assert_eq!(status, "needs-revision");
+    assert_eq!(
+        reviewers[0].1,
+        "rejected PHID-DIFF-1 PHID-USER-bob {\"sticky\":null}"
+    );
+
+    test_db.drop_databases().await;
+}
