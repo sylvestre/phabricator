@@ -46,7 +46,7 @@ const CALLSIGN: Column = Column::new("r.callsign").ascending().nulls(Nulls::Tail
 /// The builtin orders of `PhabricatorRepositoryQuery`, in their order:
 /// the first is the default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Order {
+pub(crate) enum Order {
     Committed,
     Name,
     Callsign,
@@ -56,7 +56,7 @@ enum Order {
 }
 
 impl Order {
-    fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
+    pub(crate) fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
         let key = match value {
             None | Some(Value::Null) => return Ok(Self::Committed),
             Some(Value::String(key)) => key.as_str(),
@@ -99,13 +99,15 @@ impl Order {
 
 /// The ported constraints.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct Filters {
-    callsigns: Option<Vec<String>>,
-    short_names: Option<Vec<String>>,
-    types: Option<Vec<String>>,
-    services: Option<Vec<String>>,
-    ids: Option<Vec<i64>>,
-    phids: Option<Vec<String>>,
+pub(crate) struct Filters {
+    pub(crate) callsigns: Option<Vec<String>>,
+    pub(crate) short_names: Option<Vec<String>>,
+    pub(crate) types: Option<Vec<String>>,
+    pub(crate) services: Option<Vec<String>>,
+    pub(crate) ids: Option<Vec<i64>>,
+    pub(crate) phids: Option<Vec<String>>,
+    /// `withUUIDs()`, which only `repository.query` uses.
+    pub(crate) uuids: Option<Vec<String>>,
 }
 
 impl Filters {
@@ -154,6 +156,7 @@ impl Filters {
             ("r.versionControlSystem", &self.types),
             ("r.repositorySlug", &self.short_names),
             ("r.almanacServicePHID", &self.services),
+            ("r.uuid", &self.uuids),
         ] {
             if let Some(values) = values {
                 clauses.in_list(column, search::strings(values));
@@ -163,10 +166,10 @@ impl Filters {
 }
 
 /// `PhabricatorRepositoryQuery` with the ported constraints.
-struct Repositories<'a> {
-    request: &'a ApiRequest<'a>,
-    filters: Filters,
-    order: Order,
+pub(crate) struct Repositories<'a> {
+    pub(crate) request: &'a ApiRequest<'a>,
+    pub(crate) filters: Filters,
+    pub(crate) order: Order,
 }
 
 impl Repositories<'_> {
