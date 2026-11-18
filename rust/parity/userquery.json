@@ -1,0 +1,17 @@
+[
+  {"name": "user.query: everyone", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "user.query: usernames", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"usernames": ["alice", "bob", "nobody"]}},
+  {"name": "user.query: usernames in another case", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"usernames": ["ALICE"]}},
+  {"name": "user.query: emails", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"emails": ["carol@example.com", "dave@example.com"]}},
+  {"name": "user.query: realnames", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"realnames": ["Alice", "Bob"]}},
+  {"name": "user.query: phids", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-USER-smtgbo5evsea6efnaz7m", "PHID-USER-h4aqihzqsnytz7nsegsr"]}},
+  {"name": "user.query: ids", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [1, 2, 3]}},
+  {"name": "user.query: string ids", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": ["4"]}},
+  {"name": "user.query: limit", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2}},
+  {"name": "user.query: limit and offset", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2, "offset": 3}},
+  {"name": "user.query: offset only", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"offset": 5}},
+  {"name": "user.query: limit 0", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 0}},
+  {"name": "user.query: string limit", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": "3"}},
+  {"name": "user.query: combined", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"usernames": ["alice", "bob"], "emails": ["bob@example.com"]}},
+  {"name": "user.query: nothing found", "method": "user.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"usernames": ["nobody"]}}
+]
