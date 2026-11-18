@@ -1,7 +1,7 @@
 //! Methods of `PhabricatorConduitApplication`.
 
 use phab_conduit::{ApiRequest, Application, Method, MethodFuture, Registry};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// `PhabricatorConduitApplication`.
 pub const APPLICATION: Application = Application {
@@ -34,7 +34,41 @@ impl Method for ConduitPing {
     }
 }
 
+/// `ConduitGetCapabilitiesConduitAPIMethod`: the protocols and formats
+/// this server speaks.
+pub struct ConduitGetCapabilities;
+
+impl Method for ConduitGetCapabilities {
+    fn name(&self) -> &'static str {
+        "conduit.getcapabilities"
+    }
+
+    fn params(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    fn requires_authentication(&self) -> bool {
+        false
+    }
+
+    fn application(&self) -> Option<Application> {
+        Some(APPLICATION)
+    }
+
+    fn execute<'a>(&'a self, _request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
+        Box::pin(async move {
+            Ok(json!({
+                "authentication": ["token", "asymmetric", "session", "sessionless"],
+                "signatures": ["consign"],
+                "input": ["json", "urlencoded"],
+                "output": ["json", "human"],
+            }))
+        })
+    }
+}
+
 /// Registers the Conduit methods.
 pub fn register(registry: &mut Registry) {
+    registry.register(ConduitGetCapabilities);
     registry.register(ConduitPing);
 }

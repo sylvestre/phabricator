@@ -1,4 +1,7 @@
 [
   {"name": "ping", "method": "conduit.ping"},
-  {"name": "ping with an unknown parameter", "method": "conduit.ping", "params": {"nope": 1}}
+  {"name": "ping with an unknown parameter", "method": "conduit.ping", "params": {"nope": 1}},
+  {"name": "getcapabilities", "method": "conduit.getcapabilities"},
+  {"name": "getcapabilities with a token", "method": "conduit.getcapabilities", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "getcapabilities with an unknown parameter", "method": "conduit.getcapabilities", "params": {"nope": 1}}
 ]
