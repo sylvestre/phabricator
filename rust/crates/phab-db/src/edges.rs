@@ -21,6 +21,9 @@ pub const PROJECT_HAS_MEMBER: i64 = 13;
 pub const MEMBER_OF_PROJECT: i64 = 14;
 /// `PhabricatorObjectHasSubscriberEdgeType`.
 pub const OBJECT_HAS_SUBSCRIBER: i64 = 21;
+/// `PhabricatorObjectHasUnsubscriberEdgeType`: who unsubscribed from an
+/// object.
+pub const OBJECT_HAS_UNSUBSCRIBER: i64 = 23;
 /// `PhabricatorSubscribedToObjectEdgeType`.
 pub const SUBSCRIBED_TO_OBJECT: i64 = 22;
 /// `DifferentialRevisionHasCommitEdgeType`.

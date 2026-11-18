@@ -7,6 +7,7 @@ pub mod commit;
 pub mod details;
 pub mod diff_search;
 pub mod edge_search;
+pub mod edit;
 pub mod feed;
 pub mod get_commit_paths;
 pub mod get_raw_diff;
@@ -35,6 +36,7 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(legacy_query::LegacyQuery);
     registry.register(legacy_query::GetRevision);
     registry.register(edge_search::EdgeSearch);
+    registry.register(edit::RevisionEdit);
     registry.register(transaction_search::TransactionSearch);
     registry.register(revision_comments::GetRevisionComments);
     registry.register(visibility::RevisionVisibility);

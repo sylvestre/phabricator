@@ -16,6 +16,7 @@ pub mod rows;
 pub mod schema;
 #[cfg(feature = "test-support")]
 pub mod testing;
+pub mod worker;
 
 pub use database::{Database, bind_all, like_escape, placeholders};
 pub use error::DbError;

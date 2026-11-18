@@ -1,3 +1,13 @@
 [
-  {"name": "comment on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Looks good to me."}]}}
+  {"name": "comment on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Looks good to me."}]}},
+  {"name": "comment on D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "comment", "value": "Thanks, this reads well."}]}},
+  {"name": "comment on D3", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "comment", "value": "Thanks, this reads well."}]}},
+  {"name": "comment on D4", "method": "differential.revision.edit", "params": {"objectIdentifier": "D4", "transactions": [{"type": "comment", "value": "Thanks, this reads well."}]}},
+  {"name": "comment on D5", "method": "differential.revision.edit", "params": {"objectIdentifier": "D5", "transactions": [{"type": "comment", "value": "Thanks, this reads well."}]}},
+  {"name": "comment on D6", "method": "differential.revision.edit", "params": {"objectIdentifier": "D6", "transactions": [{"type": "comment", "value": "Thanks, this reads well."}]}},
+  {"name": "comment on D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "comment", "value": "Thanks, this reads well."}]}},
+  {"name": "comment on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "comment", "value": "Thanks, this reads well."}]}},
+  {"name": "comment on D51", "method": "differential.revision.edit", "params": {"objectIdentifier": "D51", "transactions": [{"type": "comment", "value": "Thanks, this reads well."}]}},
+  {"name": "comment by ID", "method": "differential.revision.edit", "params": {"objectIdentifier": "3", "transactions": [{"type": "comment", "value": "Multi\nline\n\ncomment."}]}},
+  {"name": "comment with a mention", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "cc @admin"}]}}
 ]

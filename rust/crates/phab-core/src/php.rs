@@ -2,6 +2,7 @@
 //! the Rust code must reproduce to answer like PHP.
 
 use std::borrow::Cow;
+use std::fmt::Write as _;
 
 use serde_json::Value;
 
@@ -34,6 +35,27 @@ pub fn string_cast(value: &Value) -> Cow<'_, str> {
     }
 }
 
+/// `json_encode()` with its default flags: like serde's encoding, but `/`
+/// is escaped and characters beyond ASCII are `\u` escapes (in UTF-16
+/// halves for characters beyond the BMP).
+pub fn json_encode(value: &Value) -> String {
+    let plain = value.to_string();
+    let mut output = String::with_capacity(plain.len());
+    for character in plain.chars() {
+        match character {
+            '/' => output.push_str("\\/"),
+            character if character.is_ascii() => output.push(character),
+            character => {
+                let mut units = [0u16; 2];
+                for unit in character.encode_utf16(&mut units) {
+                    let _ = write!(output, "\\u{unit:04x}");
+                }
+            }
+        }
+    }
+    output
+}
+
 /// A JSON value as `json_encode(json_decode($json, true))` gives it back: PHP decodes
 /// objects to arrays, so an empty object or one keyed `0..n` is a list.
 pub fn round_trip(value: &Value) -> Value {
@@ -62,6 +84,14 @@ pub fn round_trip(value: &Value) -> Value {
 mod tests {
     use rstest::rstest;
     use serde_json::json;
+
+    #[test]
+    fn json_encodes_like_php() {
+        assert_eq!(
+            json_encode(&json!({"a/b": ["é", "😀", null], "n": 1})),
+            r#"{"a\/b":["\u00e9","\ud83d\ude00",null],"n":1}"#
+        );
+    }
 
     use super::*;
 

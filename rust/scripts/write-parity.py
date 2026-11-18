@@ -54,6 +54,8 @@ PHID = re.compile(r"PHID-[A-Z]{4}(?:-[A-Z]{4})?-[a-z0-9]{10,24}")
 INTEGER = re.compile(r"(?<![\w.-])\d{9,10}(?![\w.])")
 # Timings inside serialized Herald transcripts.
 ELAPSED = re.compile(r'(elapsed\\?";d:)[0-9.Ee+-]+')
+# The host column of Herald transcripts, after the time.
+HOST = re.compile(r"^(\(\d+,_binary '[^']*',<now>,)'[^']*'")
 # Random keys: transaction groups.
 GROUP_ID = re.compile(r'(core\.groupID\\?":\\?")[a-z0-9]{32}')
 # How long something took, like a Herald transcript's duration.
@@ -127,9 +129,15 @@ def call(side, scenario, token):
             ["curl", "-s", "-o", "/dev/null", "-w", "%{url_effective}",
              "--get", "http://x/"] + data, capture_output=True,
             text=True).stdout.split("?", 1)[1]
-        out = sh(["docker", "exec", WEB, "wget", "-qO-",
-                  "--post-data", body,
-                  f"http://phab-rust:8080/api/{scenario['method']}"])
+        done = subprocess.run(
+            ["docker", "exec", WEB, "wget", "-S", "-qO-", "--post-data", body,
+             f"http://phab-rust:8080/api/{scenario['method']}"],
+            capture_output=True)
+        if b" 421 " in done.stderr:
+            # Rust leaves the call to PHP, and wrote nothing.
+            return None
+        done.check_returncode()
+        out = done.stdout
     else:
         raise ValueError(side)
     return json.loads(out)
@@ -157,6 +165,9 @@ def normalize(changes, known, started, finished):
         values = DURATION.sub("<duration>", values)
         values = GROUP_ID.sub(r"\1<group>", values)
         values = ELAPSED.sub(r"\1<duration>", values)
+        if table == "phabricator_herald.herald_transcript":
+            # The machine which evaluated the rules.
+            values = HOST.sub(r"\1'<host>'", values)
         normalized.add((table, values))
     return normalized
 
@@ -165,6 +176,8 @@ def run_side(side, scenario, token, saved, before, known):
     started = int(time.time())
     answer = call(side, scenario, token)
     finished = int(time.time())
+    if answer is None:
+        return None
     after = rows(dump())
     added = normalize(after - before, known, started, finished)
     removed = normalize(before - after, known, started, finished)
@@ -199,6 +212,9 @@ def main():
                 for scenario in json.load(scenarios):
                     results = [run_side(side, scenario, args.token, saved,
                                         before, known) for side in sides]
+                    if None in results:
+                        print(f"left to PHP: {scenario['name']}")
+                        continue
                     (answer_a, added_a, removed_a) = results[0]
                     (answer_b, added_b, removed_b) = results[1]
                     errors = (answer_a.get("error_code"),
