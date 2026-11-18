@@ -214,7 +214,11 @@ async fn filters_orders_and_pages() {
         ["1"]
     );
     assert_eq!(
-        ids(&context, json!({"vcsTypes": ["svn"]})).await,
+        ids(
+            &context,
+            json!({"vcsTypes": ["git"], "callsigns": ["HOST"]})
+        )
+        .await,
         Vec::<String>::new()
     );
     for params in [

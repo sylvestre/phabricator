@@ -253,7 +253,7 @@ mod tests {
         assert!(round_trips("https://hg.mozilla.org/mozilla-central"));
         assert!(round_trips("ssh://git.example.com:2222/repo.git"));
         assert!(round_trips("file:///repo/1"));
-        assert!(round_trips("svn+ssh://user@svn.example.com/repo"));
+        assert!(round_trips("ssh://user@hg.example.com/repo"));
         assert!(!round_trips("https://user:pass@example.com/repo"));
         assert!(!round_trips("https://us%20er@example.com/repo"));
         assert!(!round_trips("https://@example.com/repo"));

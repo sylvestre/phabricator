@@ -24,7 +24,7 @@ const IMPORTED_UNREACHABLE: i64 = 2048;
 pub struct Commit {
     /// The commit PHID.
     pub phid: Phid,
-    /// The hash, or the SVN revision.
+    /// The hash.
     pub identifier: String,
     /// The first line of the message.
     pub summary: String,
@@ -283,15 +283,7 @@ fn where_clauses(
         let Some(repository) = scopes.get(scope) else {
             continue;
         };
-        if repository.is_svn() {
-            let digits = !reference.hash.is_empty()
-                && reference.hash.bytes().all(|byte| byte.is_ascii_digit());
-            if digits {
-                clauses.push("(repositoryID = ? AND commitIdentifier = ?)");
-                values.push(repository.id.to_string());
-                values.push(reference.hash.trim_start_matches('0').to_owned());
-            }
-        } else if reference.hash.len() >= MINIMUM_QUALIFIED_HASH {
+        if reference.hash.len() >= MINIMUM_QUALIFIED_HASH {
             clauses.push("(repositoryID = ? AND commitIdentifier LIKE ?)");
             values.push(repository.id.to_string());
             values.push(format!("{}%", phab_db::like_escape(&reference.hash)));
@@ -314,12 +306,7 @@ fn identifier_map(
             prefixes.push(format!("r{callsign}"));
             prefixes.push(format!("r{callsign}:"));
         }
-        let lengths: Vec<usize> = if repository.is_svn() {
-            vec![commit.identifier.len()]
-        } else {
-            (MINIMUM_QUALIFIED_HASH..=commit.identifier.len()).collect()
-        };
-        for length in lengths {
+        for length in MINIMUM_QUALIFIED_HASH..=commit.identifier.len() {
             let part = &commit.identifier[..length];
             for prefix in &prefixes {
                 let key = format!("{prefix}{part}");

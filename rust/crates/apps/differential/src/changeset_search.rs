@@ -3,9 +3,8 @@
 //!
 //! Ported: the `diffPHIDs`, `ids` and `phids` constraints, the `newest`
 //! and `oldest` orders, paging and the fields. Left to PHP: changesets of
-//! diffs without a revision (PHP fails on them), of Subversion
-//! repositories and of diffs with a source control path, saved queries
-//! and order vectors.
+//! diffs without a revision (PHP fails on them) and of diffs with a
+//! source control path, saved queries and order vectors.
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -21,7 +20,6 @@ use phab_policy::{POLICY_PUBLIC, POLICY_USER};
 use serde_json::{Map, Value, json};
 
 use crate::diff_search::{self, DiffRow};
-use crate::{repository, storage};
 
 const QUERY_CLASS: &str = "DifferentialChangesetQuery";
 
@@ -175,8 +173,8 @@ async fn diff_ids(database: &Database, phids: &[String]) -> Result<Vec<i64>, Met
 }
 
 /// Fails over to PHP for what the page can't show like PHP: diffs without
-/// a revision (`getRevision()` is not attached and PHP fails), diffs with
-/// a source control path, and Subversion repositories.
+/// a revision (`getRevision()` is not attached and PHP fails) and diffs
+/// with a source control path.
 async fn check_page(database: &Database, changesets: &[ChangesetRow]) -> Result<(), MethodError> {
     let diffs: Vec<&DiffRow> = changesets
         .iter()
@@ -202,23 +200,6 @@ async fn check_page(database: &Database, changesets: &[ChangesetRow]) -> Result<
             .await?;
     if !with_paths.is_empty() {
         return Err(MethodError::Unsupported("diffs with a source control path"));
-    }
-    let mut revision_ids: Vec<i64> = diffs.iter().filter_map(|diff| diff.revision_id).collect();
-    revision_ids.sort_unstable();
-    revision_ids.dedup();
-    let repositories: Vec<Phid> = storage::load_revisions_by_id(database, &revision_ids)
-        .await?
-        .into_iter()
-        .filter_map(|revision| revision.repository_phid)
-        .collect();
-    if repository::load(database, &repositories)
-        .await?
-        .iter()
-        .any(repository::Repository::is_svn)
-    {
-        return Err(MethodError::Unsupported(
-            "changesets of Subversion repositories",
-        ));
     }
     Ok(())
 }

@@ -23,7 +23,7 @@ pub struct Repository {
     pub callsign: Option<String>,
     /// The short name (`repositorySlug`), if it has one.
     pub slug: Option<String>,
-    /// `versionControlSystem`: `git`, `hg` or `svn`.
+    /// `versionControlSystem`: `git` or `hg` (Subversion is not ported).
     pub vcs: String,
     subject: PolicySubject,
     details: serde_json::Map<String, serde_json::Value>,
@@ -62,17 +62,9 @@ impl Repository {
         self.details.get(key)
     }
 
-    /// `isSVN()`.
-    pub fn is_svn(&self) -> bool {
-        self.vcs == "svn"
-    }
-
     /// `getDefaultBranch()` of repositories with branches
     /// (`supportsRefs()`): the configured one, or Git's and Mercurial's.
     pub fn default_branch(&self) -> Option<String> {
-        if self.is_svn() {
-            return None;
-        }
         match self
             .details
             .get("default-branch")
