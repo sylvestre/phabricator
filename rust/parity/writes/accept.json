@@ -1,0 +1,7 @@
+[
+  {"name": "accept D3", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "accept", "value": true}]}},
+  {"name": "accept D7 (becomes accepted)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "accept", "value": true}]}},
+  {"name": "accept D6 (abandoned)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D6", "transactions": [{"type": "accept", "value": true}]}},
+  {"name": "accept D1 (own revision)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "accept", "value": true}]}},
+  {"name": "accept D3 with a comment", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "comment", "value": "Looks fine now."}, {"type": "accept", "value": true}]}}
+]

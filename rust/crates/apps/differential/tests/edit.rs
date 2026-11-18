@@ -220,18 +220,6 @@ async fn leaves_the_rest_to_php() {
             "{params}"
         );
     }
-    // A comment which would leave an accepting reviewer's revision in
-    // "needs review" changes the status: PHP does that.
-    test_db
-        .execute(
-            "UPDATE `{ns}_differential`.differential_reviewer SET reviewerStatus = 'accepted' \
-             WHERE reviewerPHID = 'PHID-USER-bob'",
-        )
-        .await;
-    assert!(matches!(
-        edit(&context, comment("Looks good.")).await,
-        Response::Fallback(_)
-    ));
     // Nothing was written.
     let sql = format!(
         "SELECT COUNT(*) AS n FROM `{}_differential`.differential_transaction",
@@ -299,6 +287,134 @@ async fn subscribes_who_comments() {
         data["state"]["mailCCPHIDs"],
         json!(["PHID-USER-bob", "PHID-USER-dave"])
     );
+
+    test_db.drop_databases().await;
+}
+
+/// The status and the reviewer rows of D1.
+async fn review_state(test_db: &TestDatabase) -> (String, Vec<(String, String)>) {
+    let pool = test_db.database().pool();
+    let namespace = test_db.database().namespace();
+    let row = phab_db::sqlx::query(&format!(
+        "SELECT status FROM `{namespace}_differential`.differential_revision WHERE id = 1"
+    ))
+    .fetch_one(pool)
+    .await
+    .expect("D1");
+    let reviewers = phab_db::sqlx::query(&format!(
+        "SELECT reviewerPHID, CONCAT(reviewerStatus, ' ', COALESCE(lastActionDiffPHID, '-'), \
+         ' ', COALESCE(lastActorPHID, '-'), ' ', options) AS state FROM \
+         `{namespace}_differential`.differential_reviewer ORDER BY id"
+    ))
+    .fetch_all(pool)
+    .await
+    .expect("reviewers")
+    .iter()
+    .map(|row| {
+        (
+            phab_db::rows::text(row, "reviewerPHID").expect("PHID"),
+            phab_db::rows::text(row, "state").expect("state"),
+        )
+    })
+    .collect();
+    (
+        phab_db::rows::text(&row, "status").expect("status"),
+        reviewers,
+    )
+}
+
+/// The transaction types written, in order.
+async fn transaction_types(test_db: &TestDatabase) -> Vec<String> {
+    phab_db::sqlx::query(&format!(
+        "SELECT transactionType FROM `{}_differential`.differential_transaction ORDER BY id",
+        test_db.database().namespace()
+    ))
+    .fetch_all(test_db.database().pool())
+    .await
+    .expect("transactions")
+    .iter()
+    .map(|row| phab_db::rows::text(row, "transactionType").expect("type"))
+    .collect()
+}
+
+#[tokio::test]
+async fn accepts_and_updates_the_status() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(
+        &context,
+        json!({"objectIdentifier": "D1", "transactions": [
+            {"type": "comment", "value": "Ship it."},
+            {"type": "accept", "value": true},
+        ]}),
+    )
+    .await
+    else {
+        panic!("expected an answer");
+    };
+    // The action, then the comment, then the status the accept caused.
+    assert_eq!(
+        transaction_types(&test_db).await,
+        [
+            "differential.revision.accept",
+            "core:comment",
+            "differential.revision.status"
+        ]
+    );
+    assert_eq!(
+        review_state(&test_db).await,
+        (
+            "accepted".to_owned(),
+            vec![
+                (
+                    "PHID-USER-bob".to_owned(),
+                    "accepted PHID-DIFF-1 PHID-USER-bob {\"sticky\":null}".to_owned()
+                ),
+                ("PHID-USER-carol".to_owned(), "resigned - - {}".to_owned()),
+            ]
+        )
+    );
+    // Accepting again is refused, by PHP.
+    assert!(matches!(
+        edit(
+            &context,
+            json!({"objectIdentifier": "D1", "transactions": [{"type": "accept", "value": true}]})
+        )
+        .await,
+        Response::Fallback(_)
+    ));
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn comments_fix_a_stale_status() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // Bob accepted, but the revision still needs review.
+    test_db
+        .execute(
+            "UPDATE `{ns}_differential`.differential_reviewer SET reviewerStatus = 'accepted' \
+             WHERE reviewerPHID = 'PHID-USER-bob'",
+        )
+        .await;
+
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, comment("Looks good.")).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        transaction_types(&test_db).await,
+        ["core:comment", "differential.revision.status"]
+    );
+    assert_eq!(review_state(&test_db).await.0, "accepted");
 
     test_db.drop_databases().await;
 }

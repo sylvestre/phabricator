@@ -9,10 +9,12 @@
 //! queues PHP's `PhabricatorApplicationTransactionPublishWorker`, so mail,
 //! feed stories and search indexing still come from PHP.
 //!
-//! Ported: one `comment` on an existing revision, without remarkup that
-//! mentions or references anything, by an actor who can see it, when
-//! Herald's rules are ones [`phab_app_herald::engine`] evaluates and the
-//! review status stays the same. A comment subscribes its author when
+//! Ported: a `comment` without remarkup that mentions or references
+//! anything, an `accept` as the defaults, or both, on an existing revision
+//! by an actor who can see it, with the review status change they cause,
+//! when
+//! Herald's rules are ones [`phab_app_herald::engine`] evaluates. A
+//! comment subscribes its author when
 //! nothing else does (`applyImplicitCC()`).
 
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
@@ -66,26 +68,44 @@ fn is_empty_comment(text: &str) -> bool {
         .is_empty()
 }
 
-/// The comment of the `transactions` parameter.
-fn comment(request: &ApiRequest<'_>) -> Result<String, MethodError> {
+/// What the `transactions` parameter asks for.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Wanted {
+    /// A comment's text.
+    comment: Option<String>,
+    /// "Accept", for the reviewers the actor has authority over.
+    accept: bool,
+}
+
+/// The ported transactions of the `transactions` parameter: a comment, an
+/// accept, or both.
+fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
     let Some(Value::Array(transactions)) = request.value("transactions") else {
         return Err(MethodError::Unsupported("unusual transaction lists"));
     };
-    let [transaction] = transactions.as_slice() else {
-        return Err(MethodError::Unsupported("several transactions"));
-    };
-    if transaction.get("type").and_then(Value::as_str) != Some("comment") {
-        return Err(MethodError::Unsupported("transactions other than comments"));
+    let mut wanted = Wanted::default();
+    for transaction in transactions {
+        match (
+            transaction.get("type").and_then(Value::as_str),
+            transaction.get("value"),
+        ) {
+            (Some("comment"), Some(Value::String(text))) if wanted.comment.is_none() => {
+                if is_empty_comment(text) || has_references(text) {
+                    return Err(MethodError::Unsupported(
+                        "empty comments and comments with references",
+                    ));
+                }
+                wanted.comment = Some(text.clone());
+            }
+            // Accepting as the defaults; a list of reviewers is left to PHP.
+            (Some("accept"), Some(Value::Bool(true))) if !wanted.accept => wanted.accept = true,
+            _ => return Err(MethodError::Unsupported("transactions not ported")),
+        }
     }
-    let Some(Value::String(text)) = transaction.get("value") else {
-        return Err(MethodError::Unsupported("unusual comments"));
-    };
-    if is_empty_comment(text) || has_references(text) {
-        return Err(MethodError::Unsupported(
-            "empty comments and comments with references",
-        ));
+    if wanted == Wanted::default() {
+        return Err(MethodError::Unsupported("empty transaction lists"));
     }
-    Ok(text.clone())
+    Ok(wanted)
 }
 
 /// `newObjectFromIdentifier()`: the revision, which the viewer must see.
@@ -178,26 +198,14 @@ impl Facts {
     }
 }
 
-/// Edits PHP's editor makes which Rust leaves to it: a review status
-/// change, draft inline comments to publish, build plans, and mail to
-/// project watchers.
+/// Edits PHP's editor makes which Rust leaves to it: draft inline comments
+/// to publish, build plans, and mail to project watchers.
 async fn check_side_effects(
     request: &ApiRequest<'_>,
     revision: &Revision,
     facts: &Facts,
 ) -> Result<(), MethodError> {
     let database = &request.context.database;
-    // `differential.sticky-accept` defaults to true.
-    let sticky = request
-        .context
-        .config
-        .value("differential.sticky-accept")
-        .is_none_or(php::is_truthy);
-    if new_review_status(revision, sticky).is_some_and(|status| status != revision.status) {
-        return Err(MethodError::Unsupported(
-            "comments which change the review status",
-        ));
-    }
     let sql = format!(
         "SELECT 1 FROM {} WHERE revisionPHID = ? AND fixedState IN ('draft', 'undraft') LIMIT 1",
         database.table("differential", "differential_transaction_comment")
@@ -348,16 +356,32 @@ fn new_review_status(revision: &Revision, sticky_accept: bool) -> Option<String>
     Some(status.to_owned())
 }
 
+/// A reviewer row an accept writes (`applyReviewerEffect()`).
+struct ReviewerUpdate {
+    reviewer: String,
+    /// Whether the status changes, which records the actor.
+    status_changed: bool,
+    /// The `options` with `sticky` unset.
+    options: String,
+}
+
 /// The planned edit.
 struct Plan {
+    /// The revision as the edit leaves it.
     revision: Revision,
-    text: String,
     actor: String,
     /// The `core:subscribers` transaction `applyImplicitCC()` adds: its
     /// PHID and the subscribers before.
     subscription: Option<(String, Vec<String>)>,
-    transaction_phid: String,
-    comment_phid: String,
+    /// The `differential.revision.accept` transaction and its reviewers.
+    accept: Option<(String, Vec<ReviewerUpdate>)>,
+    /// The comment: its text, transaction and comment PHIDs.
+    comment: Option<(String, String, String)>,
+    /// The `differential.revision.status` transaction `updateReviewStatus()`
+    /// adds, with the old status.
+    status: Option<(String, String)>,
+    /// Every transaction, in the order PHP applies them.
+    applied_phids: Vec<String>,
     group_id: String,
     rules: Vec<Rule>,
     transcript: engine::TranscriptRow,
@@ -551,9 +575,121 @@ async fn saved_header(database: &Database, phid: &Phid) -> Result<Option<String>
         .transpose()?)
 }
 
+/// `differential.sticky-accept`, true by default.
+fn sticky_accept(request: &ApiRequest<'_>) -> bool {
+    request
+        .context
+        .config
+        .value("differential.sticky-accept")
+        .is_none_or(php::is_truthy)
+}
+
+/// `DifferentialRevisionAcceptTransaction`: the reviewers an accept acts
+/// as, once PHP's validation passes; refusals are left to PHP, which
+/// explains them. Updates the reviewers of `revision` and `facts`.
+async fn plan_accept(
+    request: &ApiRequest<'_>,
+    revision: &mut Revision,
+    facts: &mut Facts,
+    actor: &str,
+) -> Result<Vec<ReviewerUpdate>, MethodError> {
+    let database = &request.context.database;
+    let is_author = revision
+        .author_phid
+        .as_ref()
+        .is_some_and(|author| author.as_str() == actor);
+    if revision.is_closed() || revision.status == "draft" || !facts.should_broadcast || is_author {
+        return Err(MethodError::Unsupported("accepts PHP refuses"));
+    }
+    // loadReviewerAuthority(): the actor, and the projects they belong to.
+    let mut authority: Vec<String> = Vec::new();
+    for reviewer in &facts.reviewers {
+        let phid = Phid::new(reviewer.reviewer.clone());
+        let member = phid.phid_type() == PhidType::PROJECT
+            && !edges::load_edges(
+                database,
+                std::slice::from_ref(&phid),
+                &[edges::PROJECT_MATERIALIZED_MEMBER],
+                Some(&[Phid::new(actor)]),
+            )
+            .await?
+            .is_empty();
+        if reviewer.reviewer == actor || member {
+            authority.push(reviewer.reviewer.clone());
+        }
+    }
+    if !authority.iter().any(|phid| phid == actor) {
+        return Err(MethodError::Unsupported(
+            "accepts by people who don't review",
+        ));
+    }
+    let active = revision.active_diff_phid.clone();
+    let sticky = sticky_accept(request);
+    let fully = revision
+        .reviewers
+        .iter()
+        .filter(|reviewer| authority.contains(&reviewer.phid.as_str().to_owned()))
+        .all(|reviewer| reviewer.is_accepted(active.as_ref(), sticky));
+    if fully {
+        return Err(MethodError::Unsupported("accepts PHP refuses"));
+    }
+    let sql = format!(
+        "SELECT reviewerPHID, options FROM {} WHERE revisionPHID = ? AND reviewerPHID IN ({})",
+        database.table("differential", "differential_reviewer"),
+        phab_db::placeholders(authority.len())
+    );
+    let found = phab_db::bind_all(
+        phab_db::sqlx::query(&sql).bind(revision.phid.as_str()),
+        authority.iter().map(String::as_str),
+    )
+    .fetch_all(database.pool())
+    .await?;
+    let mut updates = Vec::new();
+    for phid in &authority {
+        let row = found
+            .iter()
+            .find(|row| rows::text(row, "reviewerPHID").is_ok_and(|text| text == *phid))
+            .ok_or_else(|| MethodError::internal("reviewer row vanished"))?;
+        // setOption('sticky', null) on the stored options.
+        let options = match rows::json(row, "options")? {
+            Value::Object(mut options) => {
+                options.insert("sticky".to_owned(), Value::Null);
+                Value::Object(options)
+            }
+            Value::Array(list) if list.is_empty() => json!({"sticky": null}),
+            _ => return Err(MethodError::Unsupported("unusual reviewer options")),
+        };
+        let reviewer = revision
+            .reviewers
+            .iter_mut()
+            .find(|reviewer| reviewer.phid.as_str() == phid)
+            .ok_or_else(|| MethodError::internal("reviewer vanished"))?;
+        let status_changed = reviewer.status != "accepted";
+        "accepted".clone_into(&mut reviewer.status);
+        if active.is_some() {
+            reviewer.last_action_diff_phid.clone_from(&active);
+        }
+        reviewer.voided_phid = None;
+        if let Some(row) = facts.reviewers.iter_mut().find(|row| row.reviewer == *phid) {
+            "accepted".clone_into(&mut row.status);
+        }
+        updates.push(ReviewerUpdate {
+            reviewer: phid.clone(),
+            status_changed,
+            options: php::json_encode(&options),
+        });
+    }
+    Ok(updates)
+}
+
+/// A new transaction PHID of revisions.
+fn transaction_phid() -> String {
+    Phid::generate(PhidType::TRANSACTION, Some(PhidType::REVISION)).into_string()
+}
+
 async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
-    let text = comment(request)?;
-    let revision = load_revision(request).await?;
+    let wanted = wanted(request)?;
+    let mut revision = load_revision(request).await?;
     let actor = request
         .viewer
         .phid
@@ -562,27 +698,48 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .as_str()
         .to_owned();
     let database = &request.context.database;
-    let facts = Facts::load(database, &revision).await?;
+    let mut facts = Facts::load(database, &revision).await?;
     check_side_effects(request, &revision, &facts).await?;
-    let mut facts = facts;
-    let subscription = if implies_subscription(database, &revision, &facts, &actor).await? {
+    // shouldImplyCC(): only comments subscribe.
+    let subscription = if wanted.comment.is_some()
+        && implies_subscription(database, &revision, &facts, &actor).await?
+    {
         let old = facts.subscribers.clone();
         // The new edge is the newest: it comes first after the edit.
         facts.subscribers.insert(0, actor.clone());
-        Some((
-            Phid::generate(PhidType::TRANSACTION, Some(PhidType::REVISION)).into_string(),
-            old,
-        ))
+        Some((transaction_phid(), old))
     } else {
         None
     };
-    let transaction_phid =
-        Phid::generate(PhidType::TRANSACTION, Some(PhidType::REVISION)).into_string();
-    // The subscription comes first (array_unshift()).
+    let accept = if wanted.accept {
+        let updates = plan_accept(request, &mut revision, &mut facts, &actor).await?;
+        Some((transaction_phid(), updates))
+    } else {
+        None
+    };
+    let comment = wanted.comment.map(|text| {
+        (
+            text,
+            transaction_phid(),
+            Phid::generate(PhidType::TRANSACTION_COMMENT, None).into_string(),
+        )
+    });
+    // updateReviewStatus(), once the reviewers changed.
+    let status = match new_review_status(&revision, sticky_accept(request)) {
+        Some(status) if status != revision.status => {
+            let old = std::mem::replace(&mut revision.status, status);
+            Some((transaction_phid(), old))
+        }
+        _ => None,
+    };
+    // The subscription first (array_unshift()), the actions, the comment
+    // (sortTransactions()), then the status (applyFinalEffects()).
     let applied_phids: Vec<String> = subscription
         .iter()
         .map(|(phid, _)| phid.clone())
-        .chain([transaction_phid.clone()])
+        .chain(accept.iter().map(|(phid, _)| phid.clone()))
+        .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
+        .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
     let (rules, evaluation, applied, must_encrypt) =
         run_herald(database, &revision, &facts, &applied_phids).await?;
@@ -605,18 +762,49 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         "state": state,
     }));
     Ok(Plan {
-        text,
         actor,
-        comment_phid: Phid::generate(PhidType::TRANSACTION_COMMENT, None).into_string(),
         group_id: random::random_characters(32),
-        transaction_phid,
         subscription,
+        accept,
+        comment,
+        status,
+        applied_phids,
         rules,
         transcript,
         herald_header,
         worker_data,
         revision,
     })
+}
+
+/// Inserts a transaction without a comment.
+async fn insert_transaction(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+    (phid, kind, old, new, metadata): (&str, &str, &str, &str, &str),
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    phab_db::sqlx::query(&format!(
+        "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
+         commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
+         dateCreated, dateModified) VALUES (?, ?, ?, 'public', ?, NULL, 0, ?, ?, ?, ?, ?, ?, ?)",
+        database.table("differential", "differential_transaction")
+    ))
+    .bind(phid)
+    .bind(&plan.actor)
+    .bind(plan.revision.phid.as_str())
+    .bind(&plan.actor)
+    .bind(kind)
+    .bind(old)
+    .bind(new)
+    .bind(CONDUIT_SOURCE)
+    .bind(metadata)
+    .bind(request.now)
+    .bind(request.now)
+    .execute(&mut *connection)
+    .await?;
+    Ok(())
 }
 
 /// Writes the planned edit in one transaction.
@@ -627,9 +815,10 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     let connection = &mut *transaction;
     let revision = &plan.revision;
     phab_db::sqlx::query(&format!(
-        "UPDATE {} SET dateModified = ? WHERE id = ?",
+        "UPDATE {} SET status = ?, dateModified = ? WHERE id = ?",
         database.table("differential", "differential_revision")
     ))
+    .bind(&revision.status)
     .bind(now)
     .bind(revision.id)
     .execute(&mut *connection)
@@ -638,53 +827,41 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     if let Some((phid, old)) = &plan.subscription {
         write_subscription(request, plan, phid, old, &metadata, connection).await?;
     }
-    phab_db::sqlx::query(&format!(
-        "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
-         commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
-         dateCreated, dateModified) VALUES (?, ?, ?, 'public', ?, ?, 1, 'core:comment', 'null', \
-         'null', ?, ?, ?, ?)",
-        database.table("differential", "differential_transaction")
-    ))
-    .bind(&plan.transaction_phid)
-    .bind(&plan.actor)
-    .bind(revision.phid.as_str())
-    .bind(&plan.actor)
-    .bind(&plan.comment_phid)
-    .bind(CONDUIT_SOURCE)
-    .bind(&metadata)
-    .bind(now)
-    .bind(now)
-    .execute(&mut *connection)
-    .await?;
-    phab_db::sqlx::query(&format!(
-        "INSERT INTO {} (phid, transactionPHID, authorPHID, viewPolicy, editPolicy, \
-         commentVersion, content, contentSource, isDeleted, dateCreated, dateModified, \
-         revisionPHID, changesetID, isNewFile, lineNumber, lineLength, fixedState, hasReplies, \
-         replyToCommentPHID, attributes) VALUES (?, ?, ?, 'public', ?, 1, ?, ?, 0, ?, ?, NULL, \
-         NULL, 0, 0, 0, NULL, 0, NULL, '[]')",
-        database.table("differential", "differential_transaction_comment")
-    ))
-    .bind(&plan.comment_phid)
-    .bind(&plan.transaction_phid)
-    .bind(&plan.actor)
-    .bind(&plan.actor)
-    .bind(&plan.text)
-    .bind(CONDUIT_SOURCE)
-    .bind(now)
-    .bind(now)
-    .execute(&mut *connection)
-    .await?;
-    // markReviewerComments().
-    if let Some(diff) = &revision.active_diff_phid {
-        phab_db::sqlx::query(&format!(
-            "UPDATE {} SET lastCommentDiffPHID = ? WHERE revisionPHID = ? AND reviewerPHID = ?",
-            database.table("differential", "differential_reviewer")
-        ))
-        .bind(diff.as_str())
-        .bind(revision.phid.as_str())
-        .bind(&plan.actor)
-        .execute(&mut *connection)
+    if let Some((phid, updates)) = &plan.accept {
+        let row = (
+            phid.as_str(),
+            "differential.revision.accept",
+            "false",
+            "true",
+            &*metadata,
+        );
+        insert_transaction(request, plan, connection, row).await?;
+        write_reviewers(request, plan, updates, connection).await?;
+    }
+    if let Some((text, phid, comment_phid)) = &plan.comment {
+        write_comment(
+            request,
+            plan,
+            (text, phid, comment_phid),
+            &metadata,
+            connection,
+        )
         .await?;
+    }
+    if let Some((phid, old)) = &plan.status {
+        // populateTransaction() sets no group.
+        let (old, new) = (
+            php::json_encode(&json!(old)),
+            php::json_encode(&json!(revision.status)),
+        );
+        let row = (
+            phid.as_str(),
+            "differential.revision.status",
+            &*old,
+            &*new,
+            "[]",
+        );
+        insert_transaction(request, plan, connection, row).await?;
     }
     write_herald(request, plan, connection).await?;
     worker::schedule_task(
@@ -700,6 +877,97 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     )
     .await?;
     transaction.commit().await?;
+    Ok(())
+}
+
+/// The comment, its transaction, and `markReviewerComments()`.
+async fn write_comment(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    (text, phid, comment_phid): (&str, &str, &str),
+    metadata: &str,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let now = request.now;
+    let revision = &plan.revision;
+    phab_db::sqlx::query(&format!(
+        "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
+         commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
+         dateCreated, dateModified) VALUES (?, ?, ?, 'public', ?, ?, 1, 'core:comment', 'null', \
+         'null', ?, ?, ?, ?)",
+        database.table("differential", "differential_transaction")
+    ))
+    .bind(phid)
+    .bind(&plan.actor)
+    .bind(revision.phid.as_str())
+    .bind(&plan.actor)
+    .bind(comment_phid)
+    .bind(CONDUIT_SOURCE)
+    .bind(metadata)
+    .bind(now)
+    .bind(now)
+    .execute(&mut *connection)
+    .await?;
+    phab_db::sqlx::query(&format!(
+        "INSERT INTO {} (phid, transactionPHID, authorPHID, viewPolicy, editPolicy, \
+         commentVersion, content, contentSource, isDeleted, dateCreated, dateModified, \
+         revisionPHID, changesetID, isNewFile, lineNumber, lineLength, fixedState, hasReplies, \
+         replyToCommentPHID, attributes) VALUES (?, ?, ?, 'public', ?, 1, ?, ?, 0, ?, ?, NULL, \
+         NULL, 0, 0, 0, NULL, 0, NULL, '[]')",
+        database.table("differential", "differential_transaction_comment")
+    ))
+    .bind(comment_phid)
+    .bind(phid)
+    .bind(&plan.actor)
+    .bind(&plan.actor)
+    .bind(text)
+    .bind(CONDUIT_SOURCE)
+    .bind(now)
+    .bind(now)
+    .execute(&mut *connection)
+    .await?;
+    if let Some(diff) = &revision.active_diff_phid {
+        phab_db::sqlx::query(&format!(
+            "UPDATE {} SET lastCommentDiffPHID = ? WHERE revisionPHID = ? AND reviewerPHID = ?",
+            database.table("differential", "differential_reviewer")
+        ))
+        .bind(diff.as_str())
+        .bind(revision.phid.as_str())
+        .bind(&plan.actor)
+        .execute(&mut *connection)
+        .await?;
+    }
+    Ok(())
+}
+
+/// The reviewer rows an accept writes (`applyReviewerEffect()`).
+async fn write_reviewers(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    updates: &[ReviewerUpdate],
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let revision = &plan.revision;
+    for update in updates {
+        phab_db::sqlx::query(&format!(
+            "UPDATE {} SET reviewerStatus = 'accepted', dateModified = ?, \
+             lastActionDiffPHID = COALESCE(?, lastActionDiffPHID), \
+             lastActorPHID = IF(?, ?, lastActorPHID), voidedPHID = NULL, options = ? \
+             WHERE revisionPHID = ? AND reviewerPHID = ?",
+            database.table("differential", "differential_reviewer")
+        ))
+        .bind(request.now)
+        .bind(revision.active_diff_phid.as_ref().map(Phid::as_str))
+        .bind(update.status_changed)
+        .bind(&plan.actor)
+        .bind(&update.options)
+        .bind(revision.phid.as_str())
+        .bind(&update.reviewer)
+        .execute(&mut *connection)
+        .await?;
+    }
     Ok(())
 }
 
@@ -840,10 +1108,8 @@ impl Method for RevisionEdit {
             Ok(json!({
                 "object": {"id": plan.revision.id, "phid": plan.revision.phid.as_str()},
                 "transactions": plan
-                    .subscription
+                    .applied_phids
                     .iter()
-                    .map(|(phid, _)| phid.as_str())
-                    .chain([plan.transaction_phid.as_str()])
                     .map(|phid| json!({"phid": phid}))
                     .collect::<Vec<_>>(),
             }))
