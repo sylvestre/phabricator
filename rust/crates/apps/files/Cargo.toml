@@ -8,6 +8,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+phab-app-differential.workspace = true
+phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
 phab-policy.workspace = true
@@ -15,6 +17,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+form_urlencoded.workspace = true
 phab-db = { workspace = true, features = ["test-support"] }
 tokio.workspace = true
 

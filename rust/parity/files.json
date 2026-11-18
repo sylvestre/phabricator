@@ -1,0 +1,18 @@
+[
+  {"name": "file.search: all", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "file.search: limit", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 5}},
+  {"name": "file.search: second page", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 5, "after": "42"}},
+  {"name": "file.search: before", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 5, "before": "20"}},
+  {"name": "file.search: oldest", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "oldest", "limit": 10}},
+  {"name": "file.search: ids", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": [1, 12, 42, 999]}}},
+  {"name": "file.search: phids", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"phids": ["PHID-FILE-zbqo36grm6qt2qxxxq6r"]}}},
+  {"name": "file.search: explicit", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"explicit": true}}},
+  {"name": "file.search: not explicit", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"explicit": false}, "limit": 3}},
+  {"name": "file.search: created range", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"createdStart": 1794900000, "createdEnd": 1800000000}}},
+  {"name": "file.search: authors", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"authorPHIDs": ["PHID-USER-smtgbo5evsea6efnaz7m"]}}},
+  {"name": "file.search: empty authors", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"authorPHIDs": []}, "limit": 2}},
+  {"name": "file.search: bad constraint", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"bogus": 1}}},
+  {"name": "file.search: bad order", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "bogus"}},
+  {"name": "file.search: name, to PHP", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"name": "favicon"}}},
+  {"name": "file.search: author username, to PHP", "method": "file.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"authorPHIDs": ["alice"]}}}
+]

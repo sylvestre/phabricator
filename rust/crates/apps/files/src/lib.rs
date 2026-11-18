@@ -3,6 +3,8 @@
 //!
 //! The file contents are still served by PHP (`/file/data/...`).
 
+pub mod search;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::BuildHasher;
@@ -16,6 +18,11 @@ use phab_policy::{
     PolicySubject, Viewer,
 };
 use serde_json::Value;
+
+/// Registers the Files methods.
+pub fn register(registry: &mut phab_conduit::Registry) {
+    registry.register(search::FileSearch);
+}
 
 /// `PhabricatorFileAttachment::MODE_ATTACH`.
 const MODE_ATTACH: &str = "attach";
@@ -78,7 +85,8 @@ impl File {
         format!("F{}", self.id)
     }
 
-    fn metadata_truthy(&self, key: &str) -> bool {
+    /// Whether a metadata key is truthy, like `profile`.
+    pub fn metadata_truthy(&self, key: &str) -> bool {
         self.metadata.get(key).is_some_and(php::is_truthy)
     }
 
@@ -166,9 +174,14 @@ impl File {
         }
     }
 
+    /// `getCustomAltText()`: the `alt` metadata, as stored.
+    pub fn custom_alt_text(&self) -> Option<&Value> {
+        self.metadata.get("alt")
+    }
+
     /// `getDefaultAltText()`: "name (H×W px, size)". PHP swaps the width
     /// and the height.
-    fn default_alt_text(&self, config: &Config) -> String {
+    pub fn default_alt_text(&self, config: &Config) -> String {
         let mut parts = Vec::new();
         if !self.name.is_empty() {
             parts.push(self.name.clone());

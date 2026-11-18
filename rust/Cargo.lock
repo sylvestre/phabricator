@@ -1585,6 +1585,9 @@ dependencies = [
 name = "phab-app-files"
 version = "0.1.0"
 dependencies = [
+ "form_urlencoded",
+ "phab-app-differential",
+ "phab-conduit",
  "phab-core",
  "phab-db",
  "phab-policy",
@@ -1776,6 +1779,7 @@ dependencies = [
  "phab-app-differential",
  "phab-app-diffusion",
  "phab-app-feed",
+ "phab-app-files",
  "phab-app-people",
  "phab-app-phid",
  "phab-app-project",

@@ -11,7 +11,7 @@ services:
       - PHAB_CONFIG_DIR=/app/phabricator/conf/local
       - RUST_LOG=info
       # Methods answered by PHP and only compared by Rust (comma separated).
-      - PHAB_SHADOW_METHODS=${PHAB_SHADOW_METHODS:-user.whoami,feed.query_id,bugzilla.account.search,bmoexternalaccount.search,differential.revision.search,user.search,project.search,diffusion.repository.search,differential.diff.search,edge.search,transaction.search,phid.query,phid.info,phid.lookup,diffusion.commit.search,differential.changeset.search,differential.querydiffs,differential.getrawdiff,differential.query,user.query,project.query}
+      - PHAB_SHADOW_METHODS=${PHAB_SHADOW_METHODS:-user.whoami,feed.query_id,bugzilla.account.search,bmoexternalaccount.search,differential.revision.search,user.search,project.search,diffusion.repository.search,differential.diff.search,edge.search,transaction.search,phid.query,phid.info,phid.lookup,diffusion.commit.search,differential.changeset.search,differential.querydiffs,differential.getrawdiff,differential.query,user.query,project.query,file.search}
       - PHAB_PHP_URL=http://phabricator.test
       # Repositories (short name or callsign) whose files link to Searchfox.
       - PHAB_SEARCHFOX_TREES=${PHAB_SEARCHFOX_TREES:-mozilla-central=mozilla-central}
