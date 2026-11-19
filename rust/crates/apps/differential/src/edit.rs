@@ -56,21 +56,25 @@ fn has_references(text: &str) -> bool {
     {
         return true;
     }
-    // D123, T4, rXYZabc, F1, H2, and the like; `@user2` mentions a user.
+    // T4, rXYZabc, F1, H2, and the like; `@user2` mentions a user and
+    // `D123` a revision, which are ported.
     let mut previous = ' ';
+    let mut word = String::new();
     let mut word_start = ' ';
-    let mut in_word = false;
-    for character in text.chars() {
+    for character in text.chars().chain([' ']) {
         if character.is_ascii_alphanumeric() {
-            if !in_word {
+            if word.is_empty() {
                 word_start = previous;
-                in_word = true;
             }
-            if character.is_ascii_digit() && word_start != '@' {
+            word.push(character);
+        } else if !word.is_empty() {
+            let revision = word
+                .strip_prefix('D')
+                .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()));
+            if word.bytes().any(|b| b.is_ascii_digit()) && word_start != '@' && !revision {
                 return true;
             }
-        } else {
-            in_word = false;
+            word.clear();
         }
         previous = character;
     }
@@ -531,6 +535,97 @@ async fn plan_subscription(
     }))
 }
 
+/// A revision a comment mentions (`expandRemarkupBlockTransactions()`):
+/// the `core:edge` transaction of the "mentions" edge, and the inverse
+/// edit of the mentioned revision (`applyInverseEdgeTransactions()`), a
+/// sub-editor which runs no Herald.
+struct ObjectMention {
+    /// The edge transaction and the mentioned objects before.
+    phid: String,
+    old: Vec<String>,
+    /// The mentioned revision, its facts, its transaction and the objects
+    /// which mentioned it before.
+    target: Revision,
+    target_facts: Facts,
+    inverse_phid: String,
+    inverse_old: Vec<String>,
+}
+
+/// The revisions `text` references, as `D123`; other references are left
+/// to PHP, and so are several revisions.
+async fn plan_object_mention(
+    request: &ApiRequest<'_>,
+    revision: &Revision,
+    text: &str,
+) -> Result<Option<ObjectMention>, MethodError> {
+    let engine = phab_remarkup::phabricator::engine(phab_remarkup::phabricator::default_config());
+    let references = engine
+        .prepare(text.as_bytes(), phab_remarkup::Mode::Html)
+        .object_references();
+    if references.is_empty() {
+        return Ok(None);
+    }
+    let mut ids: Vec<i64> = Vec::new();
+    for (prefix, id) in references {
+        let id = std::str::from_utf8(&id).ok().and_then(|id| id.parse().ok());
+        match (prefix, id) {
+            ("D", Some(id)) if !ids.contains(&id) => ids.push(id),
+            ("D", Some(_)) => {}
+            _ => return Err(MethodError::Unsupported("references to other objects")),
+        }
+    }
+    let query = Revisions {
+        request,
+        constraints: Constraints {
+            ids: Some(ids),
+            ..Constraints::default()
+        },
+        order: Order::Updated,
+        memory: std::sync::Mutex::default(),
+    };
+    // Objects don't mention themselves.
+    let mut found: Vec<Revision> = phab_conduit::pager::execute(
+        &query,
+        None,
+        phab_conduit::pager::Direction::Forward,
+        usize::MAX,
+    )
+    .await?
+    .into_iter()
+    .filter(|found| found.phid != revision.phid)
+    .collect();
+    let target = match found.len() {
+        0 => return Ok(None),
+        1 => found.remove(0),
+        _ => return Err(MethodError::Unsupported("references to several revisions")),
+    };
+    let database = &request.context.database;
+    let old = destinations(database, &revision.phid, edges::OBJECT_MENTIONS_OBJECT).await?;
+    // Mentioning again has no effect.
+    if old.iter().any(|phid| phid == target.phid.as_str()) {
+        return Ok(None);
+    }
+    let target_facts = Facts::load(database, &target).await?;
+    check_side_effects(request, &target, &target_facts).await?;
+    if new_review_status(&target, sticky_accept(request))
+        .is_some_and(|status| status != target.status)
+    {
+        return Err(MethodError::Unsupported(
+            "mentioned revisions with a stale status",
+        ));
+    }
+    let inverse_old =
+        destinations(database, &target.phid, edges::OBJECT_MENTIONED_BY_OBJECT).await?;
+    Ok(Some(ObjectMention {
+        phid: transaction_phid(),
+        old,
+        target,
+        target_facts,
+        inverse_phid: transaction_phid(),
+        inverse_old,
+    }))
+}
+
 /// `applyImplicitCC()`: whether commenting subscribes the actor, who is
 /// neither the author, a reviewer, a subscriber, someone who unsubscribed,
 /// nor a bot.
@@ -628,6 +723,10 @@ fn new_review_status(revision: &Revision, sticky_accept: bool) -> Option<String>
 /// The reviewers a void affects: their row IDs and PHIDs.
 type Voided = Vec<(i64, String)>;
 
+/// The void transaction: its PHID, the reviewers it voids and the statuses
+/// it must void.
+type PlannedVoid = (String, Voided, Vec<&'static str>);
+
 /// A reviewer row a review writes (`applyReviewerEffect()`).
 struct ReviewerUpdate {
     reviewer: String,
@@ -653,12 +752,14 @@ struct Plan {
     title: Option<(String, String)>,
     /// The `differential.revision.void` transaction of "Request Review":
     /// its PHID, the reviewers it voids and the statuses it must void.
-    void: Option<(String, Voided, Vec<&'static str>)>,
+    void: Option<PlannedVoid>,
     /// The comment: its text, transaction and comment PHIDs.
     comment: Option<(String, String, String)>,
     /// The `differential.revision.status` transaction `updateReviewStatus()`
     /// adds, with the old status.
     status: Option<(String, String)>,
+    /// A revision the comment mentions, and its publish task.
+    object_mention: Option<(ObjectMention, String)>,
     /// Every transaction, in the order PHP applies them.
     applied_phids: Vec<String>,
     group_id: String,
@@ -1167,6 +1268,7 @@ fn transaction_phid() -> String {
 
 /// What Herald and the publish task need of the planned edit.
 struct Publication {
+    must_encrypt: Vec<String>,
     rules: Vec<Rule>,
     transcript: engine::TranscriptRow,
     herald_header: String,
@@ -1202,11 +1304,58 @@ async fn publication(
         "state": state,
     }));
     Ok(Publication {
+        must_encrypt,
         rules,
         transcript,
         herald_header,
         worker_data,
     })
+}
+
+/// The publish task of the mentioned revision, with the Herald outcome
+/// `mustEncrypt` its parent editor propagates.
+async fn mention_task(
+    database: &Database,
+    mention: &ObjectMention,
+    actor: &str,
+    must_encrypt: &[String],
+) -> Result<String, MethodError> {
+    let header = saved_header(database, &mention.target.phid)
+        .await?
+        .unwrap_or_else(|| "none".to_owned());
+    let state = worker_state(
+        &mention.target,
+        &mention.target_facts,
+        actor,
+        must_encrypt,
+        &header,
+    );
+    Ok(php::json_encode(&json!({
+        "objectPHID": mention.target.phid.as_str(),
+        "actorPHID": actor,
+        "xactionPHIDs": [mention.inverse_phid],
+        "state": state,
+    })))
+}
+
+/// An author action, with the void "Request Review" adds.
+async fn plan_author(
+    request: &ApiRequest<'_>,
+    action: AuthorAction,
+    revision: &mut Revision,
+    facts: &Facts,
+    actor: &str,
+) -> Result<(Option<(AuthorAction, String)>, Option<PlannedVoid>), MethodError> {
+    let old_status = revision.status.clone();
+    plan_author_action(request, action, revision, facts, actor)?;
+    let void = if action == AuthorAction::RequestReview {
+        plan_void(request, revision, &old_status, actor)
+            .await?
+            .map(|(reviewers, force)| (transaction_phid(), reviewers, force))
+    } else {
+        None
+    };
+    Ok((Some((action, transaction_phid())), void))
 }
 
 async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
@@ -1230,26 +1379,19 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         }
         None => None,
     };
-    let old_status = revision.status.clone();
-    let author_action = match wanted.author_action {
-        Some(action) => {
-            plan_author_action(request, action, &mut revision, &facts, &actor)?;
-            Some((action, transaction_phid()))
-        }
-        None => None,
-    };
-    let void = if wanted.author_action == Some(AuthorAction::RequestReview) {
-        plan_void(request, &mut revision, &old_status, &actor)
-            .await?
-            .map(|(reviewers, force)| (transaction_phid(), reviewers, force))
-    } else {
-        None
+    let (author_action, void) = match wanted.author_action {
+        Some(action) => plan_author(request, action, &mut revision, &facts, &actor).await?,
+        None => (None, None),
     };
     let title = match wanted.title {
         Some(title) => {
             let old = plan_title(request, &mut revision, title).await?;
             Some((transaction_phid(), old))
         }
+        None => None,
+    };
+    let object_mention = match &wanted.comment {
+        Some(text) => plan_object_mention(request, &revision, text).await?,
         None => None,
     };
     let comment = wanted.comment.map(|text| {
@@ -1282,10 +1424,18 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .chain(void.iter().map(|(phid, _, _)| phid.clone()))
         .chain(title.iter().map(|(phid, _)| phid.clone()))
         .chain(late)
+        .chain(object_mention.iter().map(|mention| mention.phid.clone()))
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
     let published = publication(database, &revision, &facts, &actor, &applied_phids).await?;
+    let object_mention = match object_mention {
+        Some(mention) => {
+            let data = mention_task(database, &mention, &actor, &published.must_encrypt).await?;
+            Some((mention, data))
+        }
+        None => None,
+    };
     Ok(Plan {
         actor,
         group_id: random::random_characters(32),
@@ -1294,6 +1444,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         author_action,
         void,
         title,
+        object_mention,
         comment,
         status,
         applied_phids,
@@ -1305,10 +1456,22 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     })
 }
 
-/// Inserts a transaction without a comment.
+/// Inserts a transaction without a comment on the edited revision.
 async fn insert_transaction(
     request: &ApiRequest<'_>,
     plan: &Plan,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+    row: (&str, &str, &str, &str, &str),
+) -> Result<(), MethodError> {
+    let object = plan.revision.phid.as_str();
+    insert_transaction_on(request, plan, object, connection, row).await
+}
+
+/// Inserts a transaction without a comment on `object`.
+async fn insert_transaction_on(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    object: &str,
     connection: &mut phab_db::sqlx::MySqlConnection,
     (phid, kind, old, new, metadata): (&str, &str, &str, &str, &str),
 ) -> Result<(), MethodError> {
@@ -1321,7 +1484,7 @@ async fn insert_transaction(
     ))
     .bind(phid)
     .bind(&plan.actor)
-    .bind(plan.revision.phid.as_str())
+    .bind(object)
     .bind(&plan.actor)
     .bind(kind)
     .bind(old)
@@ -1394,6 +1557,11 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     if let Some((phid, reviewers, force)) = &plan.void {
         write_void(request, plan, (phid, reviewers, force), connection).await?;
     }
+    // The edge transaction is saved with the others, before the comment;
+    // the edges and the inverse edit come with the external effects.
+    if let Some((mention, _)) = &plan.object_mention {
+        write_mention_transaction(request, plan, mention, connection).await?;
+    }
     if let Some((text, phid, comment_phid)) = &plan.comment {
         write_comment(
             request,
@@ -1403,6 +1571,9 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
             connection,
         )
         .await?;
+    }
+    if let Some((mention, _)) = &plan.object_mention {
+        write_object_mention(request, plan, mention, connection).await?;
     }
     if let Some((phid, old)) = &plan.status {
         // populateTransaction() sets no group.
@@ -1420,19 +1591,85 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
         insert_transaction(request, plan, connection, row).await?;
     }
     write_herald(request, plan, connection).await?;
-    worker::schedule_task(
-        connection,
-        database,
-        worker::Task {
-            class: "PhabricatorApplicationTransactionPublishWorker",
-            data: &plan.worker_data,
-            priority: worker::PRIORITY_ALERTS,
-            object_phid: Some(revision.phid.as_str()),
-        },
-        now,
-    )
-    .await?;
+    queue_publishing(request, plan, connection).await?;
     transaction.commit().await?;
+    Ok(())
+}
+
+/// The metadata of an edge transaction of the edit's group.
+fn edge_metadata(plan: &Plan, edge_type: i64) -> String {
+    php::json_encode(&json!({"edge:type": edge_type, "core.groupID": plan.group_id}))
+}
+
+/// The transaction of the "mentions" edge.
+async fn write_mention_transaction(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    mention: &ObjectMention,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let mut new = mention.old.clone();
+    new.push(mention.target.phid.as_str().to_owned());
+    let (old, new) = (
+        php::json_encode(&json!(mention.old)),
+        php::json_encode(&json!(new)),
+    );
+    let metadata = edge_metadata(plan, edges::OBJECT_MENTIONS_OBJECT);
+    let row = (mention.phid.as_str(), "core:edge", &*old, &*new, &*metadata);
+    insert_transaction(request, plan, connection, row).await
+}
+
+/// The "mentions" edges, and the inverse edit of the mentioned revision:
+/// its transaction and `dateModified`.
+async fn write_object_mention(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    mention: &ObjectMention,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let revision = plan.revision.phid.as_str();
+    let target = mention.target.phid.as_str();
+    for (src, edge_type, dst) in [
+        (revision, edges::OBJECT_MENTIONS_OBJECT, target),
+        (target, edges::OBJECT_MENTIONED_BY_OBJECT, revision),
+    ] {
+        phab_db::sqlx::query(&format!(
+            "INSERT INTO {} (src, type, dst, dateCreated, seq, dataID) VALUES (?, ?, ?, ?, 0, \
+             NULL) ON DUPLICATE KEY UPDATE dataID = VALUES(dataID)",
+            database.table("differential", "edge")
+        ))
+        .bind(src)
+        .bind(edge_type)
+        .bind(dst)
+        .bind(request.now)
+        .execute(&mut *connection)
+        .await?;
+    }
+    // The inverse edit: the edges after the write, newest first.
+    let mut after = vec![revision.to_owned()];
+    after.extend(mention.inverse_old.iter().cloned());
+    let (old, new) = (
+        php::json_encode(&json!(mention.inverse_old)),
+        php::json_encode(&json!(after)),
+    );
+    let inverse = edge_metadata(plan, edges::OBJECT_MENTIONED_BY_OBJECT);
+    let row = (
+        mention.inverse_phid.as_str(),
+        "core:edge",
+        &*old,
+        &*new,
+        &*inverse,
+    );
+    insert_transaction_on(request, plan, target, connection, row).await?;
+    phab_db::sqlx::query(&format!(
+        "UPDATE {} SET dateModified = ? WHERE id = ?",
+        database.table("differential", "differential_revision")
+    ))
+    .bind(request.now)
+    .bind(mention.target.id)
+    .execute(&mut *connection)
+    .await?;
     Ok(())
 }
 
@@ -1476,6 +1713,34 @@ async fn write_void(
     )
     .execute(&mut *connection)
     .await?;
+    Ok(())
+}
+
+/// The publish tasks: the revision's, then the sub-editors'.
+async fn queue_publishing(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let publish = |data, object_phid| worker::Task {
+        class: "PhabricatorApplicationTransactionPublishWorker",
+        data,
+        priority: worker::PRIORITY_ALERTS,
+        object_phid: Some(object_phid),
+    };
+    let revision = plan.revision.phid.as_str();
+    worker::schedule_task(
+        connection,
+        database,
+        publish(&plan.worker_data, revision),
+        request.now,
+    )
+    .await?;
+    if let Some((mention, data)) = &plan.object_mention {
+        let target = mention.target.phid.as_str();
+        worker::schedule_task(connection, database, publish(data, target), request.now).await?;
+    }
     Ok(())
 }
 
@@ -1731,10 +1996,11 @@ mod tests {
     #[test]
     fn finds_references() {
         assert!(!has_references("Looks good to me."));
-        assert!(has_references("See D123."));
+        assert!(!has_references("See D123."));
+        assert!(has_references("See T123."));
         // Mentions are fine, numbers in usernames too.
         assert!(!has_references("Thanks @alice and @bob2"));
-        assert!(has_references("Thanks @alice for D2"));
+        assert!(has_references("Thanks @alice for F2"));
         assert!(has_references("{F1}"));
         assert!(has_references("https://example.com"));
     }

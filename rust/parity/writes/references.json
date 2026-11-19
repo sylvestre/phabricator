@@ -1,0 +1,6 @@
+[
+  {"name": "reference D2 from D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "See D2."}]}},
+  {"name": "reference a hidden revision from D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Like D4 did."}]}},
+  {"name": "reference D1 from D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "As said in D1."}]}},
+  {"name": "reference a commit from D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Landed as rVCT152e0f678058."}]}}
+]

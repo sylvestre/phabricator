@@ -208,7 +208,7 @@ async fn leaves_the_rest_to_php() {
     };
 
     for params in [
-        comment("See D2."),
+        comment("See T2."),
         comment("   "),
         json!({"objectIdentifier": "D2", "transactions": [{"type": "comment", "value": "Hi"}]}),
         json!({"transactions": [{"type": "comment", "value": "New"}]}),
@@ -717,6 +717,95 @@ async fn subscribes_mentioned_users() {
             .keys()
             .collect::<Vec<_>>(),
         ["PHID-USER-alice", "PHID-USER-dave", "PHID-USER-erin"]
+    );
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn references_revisions() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, \
+               summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+               viewPolicy, editPolicy, repositoryPHID, properties, activeDiffPHID) VALUES \
+             (3, 'Other', 'PHID-DREV-3', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', \
+               'k', 'users', 'users', NULL, '{}', 'PHID-DIFF-3')",
+        )
+        .await;
+
+    // D2 is hidden and D1 can't mention itself: only D3 is mentioned.
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, comment("See D3, D2 and D1.")).await
+    else {
+        panic!("expected an answer");
+    };
+    let rows = phab_db::sqlx::query(&format!(
+        "SELECT objectPHID, transactionType, newValue, metadata FROM \
+         `{}_differential`.differential_transaction ORDER BY id",
+        test_db.database().namespace()
+    ))
+    .fetch_all(test_db.database().pool())
+    .await
+    .expect("transactions");
+    let found: Vec<(String, String, String)> = rows
+        .iter()
+        .map(|row| {
+            let metadata = phab_db::rows::text(row, "metadata").expect("metadata");
+            (
+                phab_db::rows::text(row, "objectPHID").expect("object"),
+                phab_db::rows::text(row, "transactionType").expect("type"),
+                format!(
+                    "{} {}",
+                    phab_db::rows::text(row, "newValue").expect("new"),
+                    metadata.split(",\"core").next().unwrap_or_default()
+                ),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (
+                "PHID-DREV-1".to_owned(),
+                "core:edge".to_owned(),
+                "[\"PHID-DREV-3\"] {\"edge:type\":52".to_owned()
+            ),
+            (
+                "PHID-DREV-1".to_owned(),
+                "core:comment".to_owned(),
+                "null {\"core.groupID\":\"".to_owned()
+                    + &found[1].2["null {\"core.groupID\":\"".len()..]
+            ),
+            (
+                "PHID-DREV-3".to_owned(),
+                "core:edge".to_owned(),
+                "[\"PHID-DREV-1\"] {\"edge:type\":51".to_owned()
+            ),
+        ]
+    );
+    // Both revisions get published, the mentioned one after.
+    assert_eq!(
+        one_value(
+            &test_db,
+            "SELECT GROUP_CONCAT(objectPHID ORDER BY id) AS value FROM \
+             `{ns}_worker`.worker_activetask"
+        )
+        .await,
+        "PHID-DREV-1,PHID-DREV-3"
+    );
+    assert_eq!(
+        one_value(
+            &test_db,
+            "SELECT CAST(dateModified AS CHAR) AS value FROM \
+             `{ns}_differential`.differential_revision WHERE id = 3"
+        )
+        .await,
+        "1700000000"
     );
 
     test_db.drop_databases().await;
