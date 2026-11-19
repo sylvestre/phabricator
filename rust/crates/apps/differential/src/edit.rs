@@ -52,13 +52,29 @@ impl Adapter for RevisionAdapter {
 fn has_references(text: &str) -> bool {
     if text
         .chars()
-        .any(|character| matches!(character, '@' | '{' | '#' | '[' | '<' | '/' | ':'))
+        .any(|character| matches!(character, '{' | '#' | '[' | '<' | '/' | ':'))
     {
         return true;
     }
-    // D123, T4, rXYZabc, F1, H2, and the like.
-    text.split(|character: char| !character.is_ascii_alphanumeric())
-        .any(|word| word.bytes().any(|byte| byte.is_ascii_digit()))
+    // D123, T4, rXYZabc, F1, H2, and the like; `@user2` mentions a user.
+    let mut previous = ' ';
+    let mut word_start = ' ';
+    let mut in_word = false;
+    for character in text.chars() {
+        if character.is_ascii_alphanumeric() {
+            if !in_word {
+                word_start = previous;
+                in_word = true;
+            }
+            if character.is_ascii_digit() && word_start != '@' {
+                return true;
+            }
+        } else {
+            in_word = false;
+        }
+        previous = character;
+    }
+    false
 }
 
 /// `isEmptyComment()`.
@@ -238,6 +254,8 @@ async fn load_revision(request: &ApiRequest<'_>) -> Result<Revision, MethodError
 
 /// The revision's facts the edit reads beyond [`Revision`].
 struct Facts {
+    /// The `mention` mail stamp: the users the text newly mentions.
+    mentioned: Value,
     should_broadcast: bool,
     reviewers: Vec<search::ReviewerRow>,
     projects: Vec<String>,
@@ -282,6 +300,7 @@ impl Facts {
             .remove(&revision.phid)
             .unwrap_or_default();
         Ok(Self {
+            mentioned: json!([]),
             should_broadcast,
             reviewers,
             projects: destinations(database, &revision.phid, edges::OBJECT_HAS_PROJECT).await?,
@@ -354,6 +373,162 @@ async fn check_side_effects(
         ));
     }
     Ok(())
+}
+
+/// The `core:subscribers` transaction of an edit: `applyImplicitCC()`'s
+/// and `buildSubscribeTransaction()`'s, which `combineTransactions()`
+/// merges.
+struct Subscription {
+    phid: String,
+    /// The subscribers before.
+    old: Vec<String>,
+    /// Who it subscribes, in order.
+    added: Vec<String>,
+    /// Whether it comes first: an implicit CC is unshifted, a subscription
+    /// of mentions alone is appended.
+    first: bool,
+}
+
+/// `extractPHIDsFromMentions()` of a comment: the mentioned users, as the
+/// people query returns them (newest first), with whether each is a bot,
+/// an administrator, and an active account.
+async fn mentioned_users(
+    database: &Database,
+    text: &str,
+) -> Result<Vec<(String, bool, bool, bool)>, MethodError> {
+    let engine = phab_remarkup::phabricator::engine(phab_remarkup::phabricator::default_config());
+    let usernames: Vec<String> = engine
+        .prepare(text.as_bytes(), phab_remarkup::Mode::Html)
+        .mentioned_usernames()
+        .into_iter()
+        .filter_map(|name| String::from_utf8(name).ok())
+        .collect();
+    if usernames.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!(
+        "SELECT phid, isSystemAgent, isAdmin, isDisabled, isApproved FROM {} \
+         WHERE userName IN ({}) ORDER BY id DESC",
+        database.table("user", "user"),
+        phab_db::placeholders(usernames.len())
+    );
+    phab_db::bind_all(
+        phab_db::sqlx::query(&sql),
+        usernames.iter().map(String::as_str),
+    )
+    .fetch_all(database.pool())
+    .await?
+    .iter()
+    .map(|row| {
+        Ok((
+            rows::text(row, "phid")?,
+            rows::flag(row, "isSystemAgent")?,
+            rows::flag(row, "isAdmin")?,
+            !rows::flag(row, "isDisabled")? && rows::flag(row, "isApproved")?,
+        ))
+    })
+    .collect::<Result<_, phab_db::DbError>>()
+    .map_err(Into::into)
+}
+
+/// The subscription a comment makes: its author (`applyImplicitCC()`) and
+/// the users it mentions who can see the revision and aren't subscribed
+/// (`buildSubscribeTransaction()`). Updates the subscribers of `facts` and
+/// sets its `mention` stamp.
+async fn plan_subscription(
+    request: &ApiRequest<'_>,
+    revision: &Revision,
+    facts: &mut Facts,
+    wanted: &Wanted,
+    actor: &str,
+) -> Result<Option<Subscription>, MethodError> {
+    let Some(text) = &wanted.comment else {
+        return Ok(None);
+    };
+    let context = request.context;
+    let database = &context.database;
+    let implicit = implies_subscription(database, revision, facts, actor).await?;
+    let mentioned = mentioned_users(database, text).await?;
+    facts.mentioned = if mentioned.is_empty() {
+        json!([])
+    } else {
+        // array_diff() keeps the PHID keys.
+        Value::Object(
+            mentioned
+                .iter()
+                .map(|(phid, ..)| (phid.clone(), json!(phid)))
+                .collect(),
+        )
+    };
+    let mut added: Vec<String> = Vec::new();
+    for (phid, bot, admin, active) in &mentioned {
+        let automatic = revision
+            .author_phid
+            .as_ref()
+            .is_some_and(|author| author.as_str() == phid)
+            || facts
+                .reviewers
+                .iter()
+                .any(|reviewer| reviewer.reviewer == *phid && reviewer.status != "resigned");
+        if *bot
+            || facts.subscribers.contains(phid)
+            || automatic
+            || added.contains(phid)
+            || (implicit && phid == actor)
+        {
+            continue;
+        }
+        if !active {
+            return Err(MethodError::Unsupported("mentions of inactive users"));
+        }
+        let viewer = phab_policy::Viewer::user(Phid::new(phid.clone()), *admin);
+        let visible = crate::storage::visible_revisions(
+            database,
+            &context.config,
+            &viewer,
+            vec![revision.clone()],
+            request.now,
+        )
+        .await
+        .map_err(MethodError::internal)?;
+        if !visible.is_empty() {
+            added.push(phid.clone());
+        }
+    }
+    // mergePHIDOrEdgeTransactions(): array_merge() puts the mentions
+    // before the implicit CC they merge into.
+    if implicit {
+        added.push(actor.to_owned());
+    }
+    if added.is_empty() {
+        return Ok(None);
+    }
+    // getLegacyRequiredCapabilities(): subscribing others needs CAN_EDIT,
+    // or else CAN_INTERACT, which revisions don't have: PHP throws.
+    if added.iter().any(|phid| phid != actor)
+        && !crate::storage::can_edit(
+            database,
+            &context.config,
+            &request.viewer,
+            revision,
+            request.now,
+        )
+        .await
+        .map_err(MethodError::internal)?
+    {
+        return Err(MethodError::Unsupported("subscriptions PHP refuses"));
+    }
+    let old = facts.subscribers.clone();
+    // The new edges are the newest, the last numbered first.
+    let mut after: Vec<String> = added.iter().rev().cloned().collect();
+    after.extend(old.iter().cloned());
+    facts.subscribers = after;
+    Ok(Some(Subscription {
+        phid: transaction_phid(),
+        old,
+        added,
+        first: implicit,
+    }))
 }
 
 /// `applyImplicitCC()`: whether commenting subscribes the actor, who is
@@ -469,7 +644,7 @@ struct Plan {
     actor: String,
     /// The `core:subscribers` transaction `applyImplicitCC()` adds: its
     /// PHID and the subscribers before.
-    subscription: Option<(String, Vec<String>)>,
+    subscription: Option<Subscription>,
     /// The review, its transaction and its reviewers.
     review: Option<(Review, String, Vec<ReviewerUpdate>)>,
     /// The author's action and its transaction.
@@ -630,7 +805,7 @@ fn worker_state(
         stamp("bool", "silent", Value::Null),
         stamp("bool", "encrypted", json!(must_encrypt)),
         stamp("bool", "new", json!(false)),
-        stamp("phid", "mention", json!([])),
+        stamp("phid", "mention", facts.mentioned.clone()),
         stamp("string", "herald", rule_monograms(herald_header)),
         stamp("phid", "removed", json!([])),
         stamp("phid", "tag", json!(facts.projects)),
@@ -1047,17 +1222,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     let database = &request.context.database;
     let mut facts = Facts::load(database, &revision).await?;
     check_side_effects(request, &revision, &facts).await?;
-    // shouldImplyCC(): only comments subscribe.
-    let subscription = if wanted.comment.is_some()
-        && implies_subscription(database, &revision, &facts, &actor).await?
-    {
-        let old = facts.subscribers.clone();
-        // The new edge is the newest: it comes first after the edit.
-        facts.subscribers.insert(0, actor.clone());
-        Some((transaction_phid(), old))
-    } else {
-        None
-    };
+    let subscription = plan_subscription(request, &revision, &mut facts, &wanted, &actor).await?;
     let review = match wanted.review {
         Some(review) => {
             let updates = plan_review(request, review, &mut revision, &mut facts, &actor).await?;
@@ -1104,13 +1269,19 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     };
     // The subscription first (array_unshift()), the actions, the comment
     // (sortTransactions()), then the status (applyFinalEffects()).
-    let applied_phids: Vec<String> = subscription
-        .iter()
-        .map(|(phid, _)| phid.clone())
+    // A subscription of mentions alone comes before the comment instead.
+    let (first, late) = match &subscription {
+        Some(subscription) if subscription.first => (Some(subscription.phid.clone()), None),
+        Some(subscription) => (None, Some(subscription.phid.clone())),
+        None => (None, None),
+    };
+    let applied_phids: Vec<String> = first
+        .into_iter()
         .chain(review.iter().map(|(_, phid, _)| phid.clone()))
         .chain(author_action.iter().map(|(_, phid)| phid.clone()))
         .chain(void.iter().map(|(phid, _, _)| phid.clone()))
         .chain(title.iter().map(|(phid, _)| phid.clone()))
+        .chain(late)
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
@@ -1182,8 +1353,8 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     .execute(&mut *connection)
     .await?;
     let metadata = php::json_encode(&json!({"core.groupID": plan.group_id}));
-    if let Some((phid, old)) = &plan.subscription {
-        write_subscription(request, plan, phid, old, &metadata, connection).await?;
+    if let Some(subscription) = &plan.subscription {
+        write_subscription(request, plan, subscription, &metadata, connection).await?;
     }
     if let Some((review, phid, updates)) = &plan.review {
         let row = (
@@ -1406,15 +1577,15 @@ async fn write_reviewers(
 async fn write_subscription(
     request: &ApiRequest<'_>,
     plan: &Plan,
-    phid: &str,
-    old: &[String],
+    subscription: &Subscription,
     metadata: &str,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
     let database = &request.context.database;
     let revision = plan.revision.phid.as_str();
-    let mut new = old.to_vec();
-    new.push(plan.actor.clone());
+    let (phid, old) = (&subscription.phid, &subscription.old);
+    let mut new = old.clone();
+    new.extend(subscription.added.iter().cloned());
     phab_db::sqlx::query(&format!(
         "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
          commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
@@ -1434,31 +1605,37 @@ async fn write_subscription(
     .bind(request.now)
     .execute(&mut *connection)
     .await?;
-    for (application, src, edge_type, dst) in [
-        (
-            "differential",
-            revision,
-            edges::OBJECT_HAS_SUBSCRIBER,
-            plan.actor.as_str(),
-        ),
-        (
-            "user",
-            plan.actor.as_str(),
-            edges::SUBSCRIBED_TO_OBJECT,
-            revision,
-        ),
-    ] {
-        phab_db::sqlx::query(&format!(
-            "INSERT INTO {} (src, type, dst, dateCreated, seq, dataID) VALUES (?, ?, ?, ?, 0, \
-             NULL) ON DUPLICATE KEY UPDATE dataID = VALUES(dataID)",
-            database.table(application, "edge")
-        ))
-        .bind(src)
-        .bind(edge_type)
-        .bind(dst)
-        .bind(request.now)
-        .execute(&mut *connection)
-        .await?;
+    // PhabricatorEdgeEditor numbers the new edges of each source.
+    for (seq, added) in (0_i64..).zip(&subscription.added) {
+        for (application, src, edge_type, dst, seq) in [
+            (
+                "differential",
+                revision,
+                edges::OBJECT_HAS_SUBSCRIBER,
+                added.as_str(),
+                seq,
+            ),
+            (
+                "user",
+                added.as_str(),
+                edges::SUBSCRIBED_TO_OBJECT,
+                revision,
+                0,
+            ),
+        ] {
+            phab_db::sqlx::query(&format!(
+                "INSERT INTO {} (src, type, dst, dateCreated, seq, dataID) VALUES (?, ?, ?, ?, ?, \
+                 NULL) ON DUPLICATE KEY UPDATE dataID = VALUES(dataID)",
+                database.table(application, "edge")
+            ))
+            .bind(src)
+            .bind(edge_type)
+            .bind(dst)
+            .bind(request.now)
+            .bind(seq)
+            .execute(&mut *connection)
+            .await?;
+        }
     }
     Ok(())
 }
@@ -1555,7 +1732,9 @@ mod tests {
     fn finds_references() {
         assert!(!has_references("Looks good to me."));
         assert!(has_references("See D123."));
-        assert!(has_references("Thanks @alice"));
+        // Mentions are fine, numbers in usernames too.
+        assert!(!has_references("Thanks @alice and @bob2"));
+        assert!(has_references("Thanks @alice for D2"));
         assert!(has_references("{F1}"));
         assert!(has_references("https://example.com"));
     }

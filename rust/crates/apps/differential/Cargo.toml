@@ -11,6 +11,7 @@ publish.workspace = true
 base64.workspace = true
 phab-app-herald.workspace = true
 phab-app-project.workspace = true
+phab-remarkup.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true

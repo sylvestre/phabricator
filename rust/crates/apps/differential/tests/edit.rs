@@ -208,12 +208,11 @@ async fn leaves_the_rest_to_php() {
     };
 
     for params in [
-        comment("Thanks @alice"),
         comment("See D2."),
         comment("   "),
         json!({"objectIdentifier": "D2", "transactions": [{"type": "comment", "value": "Hi"}]}),
         json!({"transactions": [{"type": "comment", "value": "New"}]}),
-        json!({"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "New"}]}),
+        json!({"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "New"}]}),
     ] {
         assert!(
             matches!(edit(&context, params.clone()).await, Response::Fallback(_)),
@@ -649,6 +648,76 @@ async fn retitles() {
             "{params}"
         );
     }
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn subscribes_mentioned_users() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // Bob doesn't review D1: commenting subscribes him, and the mentions
+    // subscribe Erin, not Dave (a subscriber) nor Alice (the author).
+    test_db
+        .execute(
+            "DELETE FROM `{ns}_differential`.differential_reviewer \
+             WHERE reviewerPHID = 'PHID-USER-bob'; \
+             INSERT INTO `{ns}_user`.user (id, phid, userName, realName, dateCreated, \
+               dateModified, conduitCertificate, isSystemAgent, isDisabled, isAdmin, \
+               isEmailVerified, isApproved, accountSecret, isEnrolledInMultiFactor, \
+               isMailingList) VALUES \
+             (10, 'PHID-USER-erin', 'erin', 'Erin', 1, 1, 'c', 0, 0, 0, 1, 1, 's', 0, 0), \
+             (11, 'PHID-USER-dave', 'dave', 'Dave', 1, 1, 'c', 0, 0, 0, 1, 1, 's', 0, 0), \
+             (12, 'PHID-USER-alice', 'alice', 'Alice', 1, 1, 'c', 0, 0, 0, 1, 1, 's', 0, 0)",
+        )
+        .await;
+
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, comment("Thanks @erin, @dave and @alice")).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        one_value(
+            &test_db,
+            "SELECT newValue AS value FROM `{ns}_differential`.differential_transaction \
+             WHERE transactionType = 'core:subscribers'"
+        )
+        .await,
+        "[\"PHID-USER-dave\",\"PHID-USER-erin\",\"PHID-USER-bob\"]"
+    );
+    let data = one_value(
+        &test_db,
+        "SELECT data AS value FROM `{ns}_worker`.worker_taskdata",
+    )
+    .await;
+    let data: Value = serde_json::from_str(data.as_str().expect("data")).expect("JSON");
+    let mention = data["state"]["mailStamps"]
+        .as_array()
+        .expect("stamps")
+        .iter()
+        .find(|stamp| stamp["key"] == "mention")
+        .expect("a mention stamp")["value"]
+        .clone();
+    // Newest users first, keyed by PHID.
+    assert_eq!(
+        mention,
+        json!({
+            "PHID-USER-alice": "PHID-USER-alice",
+            "PHID-USER-dave": "PHID-USER-dave",
+            "PHID-USER-erin": "PHID-USER-erin",
+        })
+    );
+    assert_eq!(
+        mention
+            .as_object()
+            .expect("a map")
+            .keys()
+            .collect::<Vec<_>>(),
+        ["PHID-USER-alice", "PHID-USER-dave", "PHID-USER-erin"]
+    );
 
     test_db.drop_databases().await;
 }

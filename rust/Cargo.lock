@@ -1545,6 +1545,7 @@ dependencies = [
  "phab-db",
  "phab-diff",
  "phab-policy",
+ "phab-remarkup",
  "rstest",
  "serde",
  "serde_json",

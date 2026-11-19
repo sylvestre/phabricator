@@ -1,0 +1,9 @@
+[
+  {"name": "mention a subscriber and a stranger on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "cc @dave and @carol"}]}},
+  {"name": "mention a reviewer on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "@bob thoughts?"}]}},
+  {"name": "mention admin on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "@admin please look, and @phab-bot too"}]}},
+  {"name": "mention nobody on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Thanks @nobody"}]}},
+  {"name": "mention on D50 (implicit CC too)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "comment", "value": "ping @dave and @admin"}]}},
+  {"name": "mention in code on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Use `@admin` literally."}]}},
+  {"name": "mention with an accept on D3", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "comment", "value": "LGTM, cc @carol"}, {"type": "accept", "value": true}]}}
+]
