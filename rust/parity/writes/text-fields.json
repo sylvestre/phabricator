@@ -2,6 +2,10 @@
   {"name": "new summary of D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "A shorter summary."}]}},
   {"name": "new test plan of D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "testPlan", "value": "Ran the tests."}]}},
   {"name": "summary mentioning admin on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Ask @admin about it."}]}},
-  {"name": "summary depending on D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Fix it.\n\nDepends on D2"}]}},
+  {"name": "summary depending on D2, which depends on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Fix it.\n\nDepends on D2"}]}},
+  {"name": "summary depending on D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Fix it.\n\nDepends on D7"}]}},
+  {"name": "summary depending on D7 and referencing D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Like D2.\n\nDepends on D7"}]}},
+  {"name": "summary depending on D7, asking @admin", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Ask @admin.\n\nDepends on D7"}]}},
+  {"name": "summary depending on D7 and D6", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Depends on D7 and D6"}]}},
   {"name": "summary referencing D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Like D2 did."}]}}
 ]

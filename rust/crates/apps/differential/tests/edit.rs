@@ -865,15 +865,18 @@ async fn edits_the_summary_and_test_plan() {
         .await,
         "[\"PHID-USER-dave\",\"PHID-USER-erin\"]"
     );
-    // Dependencies are PHP's.
-    assert!(matches!(
-        edit(
-            &context,
-            json!({"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Depends on D2"}]})
-        )
-        .await,
-        Response::Fallback(_)
-    ));
+    // A hidden revision is no dependency, nor a mention.
+    let params = json!({"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Depends on D2"}]});
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, params.clone()).await
+    else {
+        panic!("{params}: expected an answer");
+    };
+    assert_eq!(
+        transaction_types(&test_db).await.last().map(String::as_str),
+        Some("differential.revision.summary")
+    );
 
     test_db.drop_databases().await;
 }
@@ -1051,6 +1054,65 @@ async fn edits_subscribers_and_tags() {
             "{params}"
         );
     }
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn declares_dependencies() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, \
+               summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+               viewPolicy, editPolicy, repositoryPHID, properties, activeDiffPHID) VALUES \
+             (3, 'Parent', 'PHID-DREV-3', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', \
+               'k', 'users', 'users', NULL, '{}', 'PHID-DIFF-3')",
+        )
+        .await;
+    let summary = |text: &str| json!({"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": text}]});
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, summary("Depends on D3")).await
+    else {
+        panic!("expected an answer");
+    };
+    // The dependency, its inverse edit, and no mention.
+    let edges = one_value(
+        &test_db,
+        "SELECT GROUP_CONCAT(CONCAT(src, ' ', type, ' ', dst) ORDER BY type SEPARATOR ' / ') \
+         AS value FROM `{ns}_differential`.edge WHERE type IN (5, 6, 51, 52)",
+    )
+    .await;
+    assert_eq!(
+        edges,
+        "PHID-DREV-1 5 PHID-DREV-3 / PHID-DREV-3 6 PHID-DREV-1"
+    );
+    let edge_transactions = one_value(
+        &test_db,
+        "SELECT GROUP_CONCAT(CONCAT(objectPHID, ' ', oldValue, ' ', newValue) ORDER BY id \
+         SEPARATOR ' / ') AS value FROM `{ns}_differential`.differential_transaction \
+         WHERE transactionType = 'core:edge'",
+    )
+    .await;
+    assert_eq!(
+        edge_transactions,
+        "PHID-DREV-1 [] [\"PHID-DREV-3\"] / PHID-DREV-3 [] [\"PHID-DREV-1\"]"
+    );
+    // D3 depending on D1 already, D1 can't depend on it.
+    test_db
+        .execute(
+            "DELETE FROM `{ns}_differential`.edge; \
+             INSERT INTO `{ns}_differential`.edge (src, type, dst, dateCreated, seq) VALUES \
+             ('PHID-DREV-3', 5, 'PHID-DREV-1', 1, 0)",
+        )
+        .await;
+    assert!(matches!(
+        edit(&context, summary("Depends on D3, again")).await,
+        Response::Fallback(_)
+    ));
 
     test_db.drop_databases().await;
 }
