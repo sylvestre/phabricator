@@ -877,3 +877,79 @@ async fn edits_the_summary_and_test_plan() {
 
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn edits_reviewers() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_user`.user (id, phid, userName, realName, dateCreated, \
+               dateModified, conduitCertificate, isSystemAgent, isDisabled, isAdmin, \
+               isEmailVerified, isApproved, accountSecret, isEnrolledInMultiFactor, \
+               isMailingList) VALUES \
+             (10, 'PHID-USER-erin', 'erin', 'Erin', 1, 1, 'c', 0, 0, 0, 1, 1, 's', 0, 0)",
+        )
+        .await;
+    let reviewers = |kind: &str, value: Value| json!({"objectIdentifier": "D1", "transactions": [{"type": kind, "value": value}]});
+    for params in [
+        reviewers("reviewers.add", json!(["blocking(PHID-USER-erin)"])),
+        reviewers("reviewers.remove", json!(["PHID-USER-erin"])),
+    ] {
+        let Response::Envelope(Envelope {
+            error_code: None, ..
+        }) = edit(&context, params.clone()).await
+        else {
+            panic!("{params}: expected an answer");
+        };
+    }
+    assert_eq!(
+        one_value(
+            &test_db,
+            "SELECT GROUP_CONCAT(newValue ORDER BY id SEPARATOR ' / ') AS value FROM \
+             `{ns}_differential`.differential_transaction \
+             WHERE transactionType = 'differential.revision.reviewers'"
+        )
+        .await,
+        "{\"PHID-USER-bob\":\"added\",\"PHID-USER-carol\":\"resigned\",\
+         \"PHID-USER-erin\":\"blocking\"} / \
+         {\"PHID-USER-bob\":\"added\",\"PHID-USER-carol\":\"resigned\"}"
+    );
+    let (_, rows) = review_state(&test_db).await;
+    assert_eq!(rows.len(), 2);
+    // Erin still hears of her removal.
+    let data = one_value(
+        &test_db,
+        "SELECT data AS value FROM `{ns}_worker`.worker_taskdata ORDER BY id DESC LIMIT 1",
+    )
+    .await;
+    let data: Value = serde_json::from_str(data.as_str().expect("data")).expect("JSON");
+    assert_eq!(
+        data["state"]["mailToPHIDs"],
+        json!(["PHID-USER-alice", "PHID-USER-bob", "PHID-USER-erin"])
+    );
+    assert!(
+        data["state"]["mailStamps"]
+            .as_array()
+            .expect("stamps")
+            .contains(&json!({"type": "phid", "key": "removed", "value": ["PHID-USER-erin"]}))
+    );
+    // The author, unknown users and edits without effect are PHP's.
+    for value in [
+        json!(["PHID-USER-alice"]),
+        json!(["PHID-USER-nobody"]),
+        json!(["PHID-USER-bob"]),
+        json!(["erin"]),
+    ] {
+        assert!(
+            matches!(
+                edit(&context, reviewers("reviewers.add", value.clone())).await,
+                Response::Fallback(_)
+            ),
+            "{value}"
+        );
+    }
+
+    test_db.drop_databases().await;
+}

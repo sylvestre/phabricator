@@ -9,12 +9,15 @@
 //! queues PHP's `PhabricatorApplicationTransactionPublishWorker`, so mail,
 //! feed stories and search indexing still come from PHP.
 //!
-//! Ported, on an existing revision the actor can see: a `comment` without
-//! remarkup that mentions or references anything, one review or author
-//! action as the defaults or a new `title`, or a comment and one of those;
-//! with the review status change they cause, when Herald's rules are ones
+//! Ported, on an existing revision the actor can see: a `comment`, whose
+//! remarkup may mention users and reference one revision; one review or
+//! author action as the defaults, a new `title`, `summary` or `testPlan`,
+//! or a reviewer edit ([`reviewers`]); or a comment and one of those. With
+//! the review status change they cause, when Herald's rules are ones
 //! [`phab_app_herald::engine`] evaluates. A comment subscribes its author
 //! when nothing else does (`applyImplicitCC()`).
+
+mod reviewers;
 
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
@@ -196,6 +199,8 @@ struct Wanted {
     title: Option<String>,
     /// A new summary or test plan.
     text: Option<(TextField, String)>,
+    /// Reviewers added, removed or set.
+    reviewers: Option<reviewers::Wanted>,
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
@@ -256,6 +261,12 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
                 };
                 wanted.text = Some((field, text.clone()));
             }
+            (
+                Some(kind @ ("reviewers.add" | "reviewers.remove" | "reviewers.set")),
+                Some(value),
+            ) if wanted.reviewers.is_none() => {
+                wanted.reviewers = Some(reviewers::parse(kind, value)?);
+            }
             _ => return Err(MethodError::Unsupported("transactions not ported")),
         }
     }
@@ -266,7 +277,8 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
     let actions = usize::from(wanted.review.is_some())
         + usize::from(wanted.author_action.is_some())
         + usize::from(wanted.title.is_some())
-        + usize::from(wanted.text.is_some());
+        + usize::from(wanted.text.is_some())
+        + usize::from(wanted.reviewers.is_some());
     if actions > 1 {
         return Err(MethodError::Unsupported("several actions"));
     }
@@ -316,6 +328,8 @@ struct Facts {
     projects: Vec<String>,
     subscribers: Vec<String>,
     muted: Vec<String>,
+    /// `buildOldRecipientLists()`: the mail recipients before the edit.
+    old_recipients: (Vec<Value>, Vec<Value>),
 }
 
 async fn destinations(
@@ -354,7 +368,7 @@ impl Facts {
             .await?
             .remove(&revision.phid)
             .unwrap_or_default();
-        Ok(Self {
+        let mut facts = Self {
             mentioned: json!([]),
             should_broadcast,
             reviewers,
@@ -362,7 +376,10 @@ impl Facts {
             subscribers: destinations(database, &revision.phid, edges::OBJECT_HAS_SUBSCRIBER)
                 .await?,
             muted: destinations(database, &revision.phid, edges::MUTED_BY).await?,
-        })
+            old_recipients: (Vec::new(), Vec::new()),
+        };
+        facts.old_recipients = mail_recipients(revision, &facts);
+        Ok(facts)
     }
 }
 
@@ -820,6 +837,8 @@ struct Plan {
     /// The summary or test plan transaction: the field, its PHID, the old
     /// and the new text.
     text: Option<(TextField, String, String, String)>,
+    /// The `differential.revision.reviewers` transaction.
+    reviewer_edit: Option<reviewers::Planned>,
     /// The `differential.revision.void` transaction of "Request Review":
     /// its PHID, the reviewers it voids and the statuses it must void.
     void: Option<PlannedVoid>,
@@ -907,6 +926,45 @@ fn rule_monograms(header: &str) -> Value {
     )
 }
 
+/// `getMailTo()` and `getMailCC()`: the author and the reviewers who
+/// haven't resigned, and the subscribers; no one for drafts.
+fn mail_recipients(revision: &Revision, facts: &Facts) -> (Vec<Value>, Vec<Value>) {
+    if !facts.should_broadcast {
+        return (Vec::new(), Vec::new());
+    }
+    let mut to = vec![json!(revision.author_phid.as_ref().map(Phid::as_str))];
+    to.extend(
+        facts
+            .reviewers
+            .iter()
+            .filter(|reviewer| reviewer.status != "resigned")
+            .map(|reviewer| json!(reviewer.reviewer)),
+    );
+    let cc = facts.subscribers.iter().map(|phid| json!(phid)).collect();
+    (to, cc)
+}
+
+/// `applyOldRecipientLists()`: who the edit took off the recipient lists
+/// still gets its mail, unless they took themselves off. Returns them.
+fn add_old_recipients(
+    (to, cc): (&mut Vec<Value>, &mut Vec<Value>),
+    (old_to, old_cc): &(Vec<Value>, Vec<Value>),
+    actor: &str,
+) -> Vec<Value> {
+    let known: Vec<Value> = to.iter().chain(cc.iter()).cloned().collect();
+    let mut removed = Vec::new();
+    for (list, old) in [(to, old_to), (cc, old_cc)] {
+        for phid in old {
+            if phid.as_str() == Some(actor) || known.contains(phid) {
+                continue;
+            }
+            list.push(phid.clone());
+            removed.push(phid.clone());
+        }
+    }
+    removed
+}
+
 /// The `state` of the publish task (`getWorkerState()`).
 fn worker_state(
     revision: &Revision,
@@ -936,22 +994,15 @@ fn worker_state(
         .map(|reviewer| reviewer.reviewer.as_str())
         .collect();
     let author = revision.author_phid.as_ref().map(Phid::as_str);
-    let (to, cc): (Vec<Value>, Vec<Value>) = if facts.should_broadcast {
-        let mut to = vec![json!(author)];
-        to.extend(reviewers.iter().map(|phid| json!(phid)));
-        (
-            to,
-            facts.subscribers.iter().map(|phid| json!(phid)).collect(),
-        )
-    } else {
-        (Vec::new(), Vec::new())
-    };
+    let (mut to, mut cc) = mail_recipients(revision, facts);
+    // Feed notifications read the lists again, without the old recipients.
     let mut notify: Vec<Value> = Vec::new();
     for phid in to.iter().chain(&cc) {
         if !notify.contains(phid) {
             notify.push(phid.clone());
         }
     }
+    let removed = add_old_recipients((&mut to, &mut cc), &facts.old_recipients, actor);
     let mut related = vec![json!(revision.phid.as_str()), json!(actor)];
     related.extend(facts.projects.iter().map(|phid| json!(phid)));
     let stamp =
@@ -978,7 +1029,7 @@ fn worker_state(
         stamp("bool", "new", json!(false)),
         stamp("phid", "mention", facts.mentioned.clone()),
         stamp("string", "herald", rule_monograms(herald_header)),
-        stamp("phid", "removed", json!([])),
+        stamp("phid", "removed", json!(removed)),
         stamp("phid", "tag", json!(facts.projects)),
         stamp("phid", "subscriber", json!(facts.subscribers)),
     ];
@@ -1512,16 +1563,50 @@ async fn plan_fields(
     Ok((title, text))
 }
 
+/// The acting user.
+fn actor_phid(request: &ApiRequest<'_>) -> Result<String, MethodError> {
+    let phid = request.viewer.phid.as_ref();
+    let phid = phid.ok_or(MethodError::Unsupported("edits by the omnipotent user"))?;
+    Ok(phid.as_str().to_owned())
+}
+
+/// `updateReviewStatus()`, once the reviewers changed: the status
+/// transaction and the old status.
+fn plan_status(request: &ApiRequest<'_>, revision: &mut Revision) -> Option<(String, String)> {
+    let status = new_review_status(revision, sticky_accept(request))?;
+    if status == revision.status {
+        return None;
+    }
+    let old = std::mem::replace(&mut revision.status, status);
+    Some((transaction_phid(), old))
+}
+
+/// The reviewers added, removed or set, with their transaction.
+async fn plan_reviewer_edit(
+    request: &ApiRequest<'_>,
+    wanted: &Wanted,
+    subscription: Option<&Subscription>,
+    revision: &mut Revision,
+    facts: &mut Facts,
+) -> Result<Option<reviewers::Planned>, MethodError> {
+    let Some(edit) = &wanted.reviewers else {
+        return Ok(None);
+    };
+    // Who an edit subscribes depends on the reviewers before.
+    if subscription.is_some() {
+        return Err(MethodError::Unsupported(
+            "subscriptions with reviewer edits",
+        ));
+    }
+    Ok(Some(
+        reviewers::plan(request, edit, revision, &mut facts.reviewers).await?,
+    ))
+}
+
 async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     let wanted = wanted(request)?;
     let mut revision = load_revision(request).await?;
-    let actor = request
-        .viewer
-        .phid
-        .as_ref()
-        .ok_or(MethodError::Unsupported("edits by the omnipotent user"))?
-        .as_str()
-        .to_owned();
+    let actor = actor_phid(request)?;
     let database = &request.context.database;
     let mut facts = Facts::load(database, &revision).await?;
     check_side_effects(request, &revision, &facts).await?;
@@ -1549,6 +1634,14 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         None => (None, None),
     };
     let (title, text) = plan_fields(request, &wanted, &mut revision, old_text.as_ref()).await?;
+    let reviewer_edit = plan_reviewer_edit(
+        request,
+        &wanted,
+        subscription.as_ref(),
+        &mut revision,
+        &mut facts,
+    )
+    .await?;
     let object_mention = plan_object_mention(request, &revision, &new_texts(&wanted)).await?;
     let comment = wanted.comment.map(|text| {
         (
@@ -1557,14 +1650,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
             Phid::generate(PhidType::TRANSACTION_COMMENT, None).into_string(),
         )
     });
-    // updateReviewStatus(), once the reviewers changed.
-    let status = match new_review_status(&revision, sticky_accept(request)) {
-        Some(status) if status != revision.status => {
-            let old = std::mem::replace(&mut revision.status, status);
-            Some((transaction_phid(), old))
-        }
-        _ => None,
-    };
+    let status = plan_status(request, &mut revision);
     // The subscription first (array_unshift()), the actions, the comment
     // (sortTransactions()), then the status (applyFinalEffects()).
     // A subscription of mentions alone comes before the comment instead.
@@ -1580,6 +1666,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .chain(void.iter().map(|(phid, _, _)| phid.clone()))
         .chain(title.iter().map(|(phid, _)| phid.clone()))
         .chain(text.iter().map(|(_, phid, ..)| phid.clone()))
+        .chain(reviewer_edit.iter().map(|edit| edit.phid.clone()))
         .chain(late)
         .chain(object_mention.iter().map(|mention| mention.phid.clone()))
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
@@ -1602,6 +1689,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         void,
         title,
         text,
+        reviewer_edit,
         object_mention,
         comment,
         status,
@@ -1786,6 +1874,25 @@ async fn write_actions(
             metadata,
         );
         insert_transaction(request, plan, connection, row).await?;
+    }
+    if let Some(edit) = &plan.reviewer_edit {
+        let (old, new) = (reviewers::encode(&edit.old), reviewers::encode(&edit.new));
+        let row = (
+            edit.phid.as_str(),
+            "differential.revision.reviewers",
+            &*old,
+            &*new,
+            metadata,
+        );
+        insert_transaction(request, plan, connection, row).await?;
+        reviewers::write(
+            connection,
+            database,
+            revision.phid.as_str(),
+            edit,
+            request.now,
+        )
+        .await?;
     }
     if let Some((phid, reviewers, force)) = &plan.void {
         write_void(request, plan, (phid, reviewers, force), connection).await?;

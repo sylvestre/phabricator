@@ -567,6 +567,19 @@ pub(crate) struct ReviewerRow {
     last_action_diff: Option<String>,
 }
 
+impl ReviewerRow {
+    /// The row of a new reviewer, which has acted on nothing yet.
+    pub(crate) fn new(reviewer: String, status: String) -> Self {
+        Self {
+            reviewer,
+            status,
+            actor: None,
+            voided: None,
+            last_action_diff: None,
+        }
+    }
+}
+
 /// The reviewers of each revision, in the order `loadReviewers()` reads
 /// them.
 pub(crate) async fn load_reviewers(

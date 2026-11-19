@@ -1,0 +1,13 @@
+[
+  {"name": "add carol to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.add", "value": ["PHID-USER-qtho2qargwhzuh5wzjaj"]}]}},
+  {"name": "add carol and dave to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.add", "value": ["PHID-USER-qtho2qargwhzuh5wzjaj", "PHID-USER-5fhrwkaff4cbtd44svtw"]}]}},
+  {"name": "add carol as blocking to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.add", "value": ["blocking(PHID-USER-qtho2qargwhzuh5wzjaj)"]}]}},
+  {"name": "make bob blocking on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.add", "value": ["blocking(PHID-USER-gjsswwcaxvzc2p3qhkkk)"]}]}},
+  {"name": "remove bob from D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.remove", "value": ["PHID-USER-gjsswwcaxvzc2p3qhkkk"]}]}},
+  {"name": "set the reviewers of D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.set", "value": ["PHID-USER-qtho2qargwhzuh5wzjaj", "PHID-USER-gjsswwcaxvzc2p3qhkkk"]}]}},
+  {"name": "add a project to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.add", "value": ["PHID-PROJ-sv7lxylfx3dmjxbkjkt4"]}]}},
+  {"name": "add a blocking reviewer to accepted D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "reviewers.add", "value": ["blocking(PHID-USER-qtho2qargwhzuh5wzjaj)"]}]}},
+  {"name": "add the author to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.add", "value": ["PHID-USER-smtgbo5evsea6efnaz7m"]}]}},
+  {"name": "add bob again to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.add", "value": ["PHID-USER-gjsswwcaxvzc2p3qhkkk"]}]}},
+  {"name": "add carol with a comment to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "reviewers.add", "value": ["PHID-USER-qtho2qargwhzuh5wzjaj"]}, {"type": "comment", "value": "Carol, please look."}]}}
+]
