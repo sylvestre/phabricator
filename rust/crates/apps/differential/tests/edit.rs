@@ -212,7 +212,7 @@ async fn leaves_the_rest_to_php() {
         comment("   "),
         json!({"objectIdentifier": "D2", "transactions": [{"type": "comment", "value": "Hi"}]}),
         json!({"transactions": [{"type": "comment", "value": "New"}]}),
-        json!({"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "New"}]}),
+        json!({"objectIdentifier": "D1", "transactions": [{"type": "reviewers", "value": []}]}),
     ] {
         assert!(
             matches!(edit(&context, params.clone()).await, Response::Fallback(_)),
@@ -807,6 +807,73 @@ async fn references_revisions() {
         .await,
         "1700000000"
     );
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn edits_the_summary_and_test_plan() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_user`.user (id, phid, userName, realName, dateCreated, \
+               dateModified, conduitCertificate, isSystemAgent, isDisabled, isAdmin, \
+               isEmailVerified, isApproved, accountSecret, isEnrolledInMultiFactor, \
+               isMailingList) VALUES \
+             (10, 'PHID-USER-erin', 'erin', 'Erin', 1, 1, 'c', 0, 0, 0, 1, 1, 's', 0, 0); \
+             UPDATE `{ns}_differential`.differential_revision SET summary = 'Ask @dave' \
+             WHERE id = 1",
+        )
+        .await;
+
+    // Dave was mentioned already; Erin is new.
+    for (kind, text) in [("summary", "Ask @dave and @erin"), ("testPlan", "Ran it.")] {
+        let params =
+            json!({"objectIdentifier": "D1", "transactions": [{"type": kind, "value": text}]});
+        let Response::Envelope(Envelope {
+            error_code: None, ..
+        }) = edit(&context, params.clone()).await
+        else {
+            panic!("{params}: expected an answer");
+        };
+    }
+    assert_eq!(
+        transaction_types(&test_db).await,
+        [
+            "differential.revision.summary",
+            "core:subscribers",
+            "differential.revision.testplan"
+        ]
+    );
+    assert_eq!(
+        one_value(
+            &test_db,
+            "SELECT CONCAT(summary, ' / ', testPlan) AS value FROM \
+             `{ns}_differential`.differential_revision WHERE id = 1"
+        )
+        .await,
+        "Ask @dave and @erin / Ran it."
+    );
+    assert_eq!(
+        one_value(
+            &test_db,
+            "SELECT newValue AS value FROM `{ns}_differential`.differential_transaction \
+             WHERE transactionType = 'core:subscribers'"
+        )
+        .await,
+        "[\"PHID-USER-dave\",\"PHID-USER-erin\"]"
+    );
+    // Dependencies are PHP's.
+    assert!(matches!(
+        edit(
+            &context,
+            json!({"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Depends on D2"}]})
+        )
+        .await,
+        Response::Fallback(_)
+    ));
 
     test_db.drop_databases().await;
 }

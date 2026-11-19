@@ -116,6 +116,16 @@ def changed_databases(before, after):
     return {table.split(".")[0] for table, _ in before ^ after}
 
 
+def counters():
+    """The AUTO_INCREMENT of every table, by database: a call which fails
+    and rolls back still moves them."""
+    out = sh(["docker", "exec", DB, "sh", "-c",
+              f"{MYSQL} -N -e \"SELECT TABLE_SCHEMA, TABLE_NAME, AUTO_INCREMENT "
+              "FROM information_schema.tables WHERE TABLE_SCHEMA LIKE "
+              "'phabricator%'\" 2>/dev/null"]).decode()
+    return {tuple(line.split("\t")) for line in out.splitlines()}
+
+
 def call(side, scenario, token):
     params = dict(scenario.get("params", {}))
     params["__conduit__"] = {"token": token}
@@ -173,15 +183,18 @@ def normalize(changes, known, started, finished):
 
 
 def run_side(side, scenario, token, saved, before, known):
+    initial = counters()
     started = int(time.time())
     answer = call(side, scenario, token)
     finished = int(time.time())
+    moved = {row[0] for row in counters() ^ initial}
     if answer is None:
+        restore(saved, moved)
         return None
     after = rows(dump())
     added = normalize(after - before, known, started, finished)
     removed = normalize(before - after, known, started, finished)
-    restore(saved, changed_databases(before, after) | TOUCHED)
+    restore(saved, changed_databases(before, after) | TOUCHED | moved)
     return answer, added, removed
 
 

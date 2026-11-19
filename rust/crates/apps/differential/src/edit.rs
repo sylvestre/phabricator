@@ -148,6 +148,41 @@ impl AuthorAction {
     }
 }
 
+/// A remarkup field of revisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TextField {
+    Summary,
+    TestPlan,
+}
+
+impl TextField {
+    /// The column.
+    fn column(self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::TestPlan => "testPlan",
+        }
+    }
+
+    /// The transaction type.
+    fn transaction_type(self) -> &'static str {
+        match self {
+            Self::Summary => "differential.revision.summary",
+            Self::TestPlan => "differential.revision.testplan",
+        }
+    }
+}
+
+/// Whether a field's text could declare dependencies or reverts
+/// (`DifferentialCustomFieldDependsOnParser`, `...RevertsParser`), which
+/// are not ported.
+fn has_relationships(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    ["depend", "revert", "back", "undo"]
+        .iter()
+        .any(|word| lower.contains(word))
+}
+
 /// What the `transactions` parameter asks for.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Wanted {
@@ -159,6 +194,8 @@ struct Wanted {
     author_action: Option<AuthorAction>,
     /// A new title.
     title: Option<String>,
+    /// A new summary or test plan.
+    text: Option<(TextField, String)>,
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
@@ -206,6 +243,19 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
             (Some("title"), Some(Value::String(title))) if wanted.title.is_none() => {
                 wanted.title = Some(title.clone());
             }
+            (Some(kind @ ("summary" | "testPlan")), Some(Value::String(text)))
+                if wanted.text.is_none() =>
+            {
+                if has_references(text) || has_relationships(text) {
+                    return Err(MethodError::Unsupported("fields with references"));
+                }
+                let field = if kind == "summary" {
+                    TextField::Summary
+                } else {
+                    TextField::TestPlan
+                };
+                wanted.text = Some((field, text.clone()));
+            }
             _ => return Err(MethodError::Unsupported("transactions not ported")),
         }
     }
@@ -215,7 +265,8 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
     // The order of several actions is the request's; one is ported.
     let actions = usize::from(wanted.review.is_some())
         + usize::from(wanted.author_action.is_some())
-        + usize::from(wanted.title.is_some());
+        + usize::from(wanted.title.is_some())
+        + usize::from(wanted.text.is_some());
     if actions > 1 {
         return Err(MethodError::Unsupported("several actions"));
     }
@@ -443,16 +494,27 @@ async fn plan_subscription(
     request: &ApiRequest<'_>,
     revision: &Revision,
     facts: &mut Facts,
-    wanted: &Wanted,
+    (wanted, old_text): (&Wanted, Option<&(TextField, String)>),
     actor: &str,
 ) -> Result<Option<Subscription>, MethodError> {
-    let Some(text) = &wanted.comment else {
-        return Ok(None);
-    };
     let context = request.context;
     let database = &context.database;
-    let implicit = implies_subscription(database, revision, facts, actor).await?;
-    let mentioned = mentioned_users(database, text).await?;
+    // shouldImplyCC(): only comments subscribe their author.
+    let implicit =
+        wanted.comment.is_some() && implies_subscription(database, revision, facts, actor).await?;
+    // Only new mentions count: text a field had mentioned no one anew.
+    let mut mentioned: Vec<(String, bool, bool, bool)> = Vec::new();
+    for text in new_texts(wanted) {
+        for user in mentioned_users(database, text).await? {
+            if !mentioned.iter().any(|known| known.0 == user.0) {
+                mentioned.push(user);
+            }
+        }
+    }
+    if let Some((_, old)) = old_text {
+        let before = mentioned_users(database, old).await?;
+        mentioned.retain(|user| !before.iter().any(|known| known.0 == user.0));
+    }
     facts.mentioned = if mentioned.is_empty() {
         json!([])
     } else {
@@ -556,12 +618,17 @@ struct ObjectMention {
 async fn plan_object_mention(
     request: &ApiRequest<'_>,
     revision: &Revision,
-    text: &str,
+    texts: &[&str],
 ) -> Result<Option<ObjectMention>, MethodError> {
     let engine = phab_remarkup::phabricator::engine(phab_remarkup::phabricator::default_config());
-    let references = engine
-        .prepare(text.as_bytes(), phab_remarkup::Mode::Html)
-        .object_references();
+    let references: Vec<(&'static str, Vec<u8>)> = texts
+        .iter()
+        .flat_map(|text| {
+            engine
+                .prepare(text.as_bytes(), phab_remarkup::Mode::Html)
+                .object_references()
+        })
+        .collect();
     if references.is_empty() {
         return Ok(None);
     }
@@ -750,6 +817,9 @@ struct Plan {
     author_action: Option<(AuthorAction, String)>,
     /// The `differential.revision.title` transaction, with the old title.
     title: Option<(String, String)>,
+    /// The summary or test plan transaction: the field, its PHID, the old
+    /// and the new text.
+    text: Option<(TextField, String, String, String)>,
     /// The `differential.revision.void` transaction of "Request Review":
     /// its PHID, the reviewers it voids and the statuses it must void.
     void: Option<PlannedVoid>,
@@ -1261,6 +1331,56 @@ async fn plan_title(
     Ok(std::mem::replace(&mut revision.title, title))
 }
 
+/// The new remarkup texts of an edit: the field's, then the comment.
+fn new_texts(wanted: &Wanted) -> Vec<&str> {
+    wanted
+        .text
+        .iter()
+        .map(|(_, text)| text.as_str())
+        .chain(wanted.comment.as_deref())
+        .collect()
+}
+
+/// A new summary or test plan, which needs `CAN_EDIT`: the old text. An
+/// unchanged text is left to PHP, as an unchanged title is.
+async fn plan_text(
+    request: &ApiRequest<'_>,
+    revision: &Revision,
+    field: TextField,
+    new: &str,
+) -> Result<String, MethodError> {
+    let context = request.context;
+    let database = &context.database;
+    let sql = format!(
+        "SELECT {} AS text FROM {} WHERE id = ?",
+        field.column(),
+        database.table("differential", "differential_revision")
+    );
+    let old = rows::text(
+        &phab_db::sqlx::query(&sql)
+            .bind(revision.id)
+            .fetch_one(database.pool())
+            .await?,
+        "text",
+    )?;
+    if old == new {
+        return Err(MethodError::Unsupported("edits without effect"));
+    }
+    let can_edit = crate::storage::can_edit(
+        database,
+        &context.config,
+        &request.viewer,
+        revision,
+        request.now,
+    )
+    .await
+    .map_err(MethodError::internal)?;
+    if !can_edit {
+        return Err(MethodError::Unsupported("edits the actor may not make"));
+    }
+    Ok(old)
+}
+
 /// A new transaction PHID of revisions.
 fn transaction_phid() -> String {
     Phid::generate(PhidType::TRANSACTION, Some(PhidType::REVISION)).into_string()
@@ -1358,6 +1478,40 @@ async fn plan_author(
     Ok((Some((action, transaction_phid())), void))
 }
 
+/// The planned title and text field edits.
+type FieldEdits = (
+    Option<(String, String)>,
+    Option<(TextField, String, String, String)>,
+);
+
+/// The new title and the new summary or test plan, with their
+/// transactions.
+async fn plan_fields(
+    request: &ApiRequest<'_>,
+    wanted: &Wanted,
+    revision: &mut Revision,
+    old_text: Option<&(TextField, String)>,
+) -> Result<FieldEdits, MethodError> {
+    let text = match &wanted.text {
+        Some((field, new)) => {
+            let old = old_text
+                .as_ref()
+                .map(|(_, old)| old.clone())
+                .unwrap_or_default();
+            Some((*field, transaction_phid(), old, new.clone()))
+        }
+        None => None,
+    };
+    let title = match wanted.title.clone() {
+        Some(title) => {
+            let old = plan_title(request, revision, title).await?;
+            Some((transaction_phid(), old))
+        }
+        None => None,
+    };
+    Ok((title, text))
+}
+
 async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     let wanted = wanted(request)?;
     let mut revision = load_revision(request).await?;
@@ -1371,7 +1525,18 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     let database = &request.context.database;
     let mut facts = Facts::load(database, &revision).await?;
     check_side_effects(request, &revision, &facts).await?;
-    let subscription = plan_subscription(request, &revision, &mut facts, &wanted, &actor).await?;
+    let old_text = match &wanted.text {
+        Some((field, new)) => Some((*field, plan_text(request, &revision, *field, new).await?)),
+        None => None,
+    };
+    let subscription = plan_subscription(
+        request,
+        &revision,
+        &mut facts,
+        (&wanted, old_text.as_ref()),
+        &actor,
+    )
+    .await?;
     let review = match wanted.review {
         Some(review) => {
             let updates = plan_review(request, review, &mut revision, &mut facts, &actor).await?;
@@ -1383,17 +1548,8 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         Some(action) => plan_author(request, action, &mut revision, &facts, &actor).await?,
         None => (None, None),
     };
-    let title = match wanted.title {
-        Some(title) => {
-            let old = plan_title(request, &mut revision, title).await?;
-            Some((transaction_phid(), old))
-        }
-        None => None,
-    };
-    let object_mention = match &wanted.comment {
-        Some(text) => plan_object_mention(request, &revision, text).await?,
-        None => None,
-    };
+    let (title, text) = plan_fields(request, &wanted, &mut revision, old_text.as_ref()).await?;
+    let object_mention = plan_object_mention(request, &revision, &new_texts(&wanted)).await?;
     let comment = wanted.comment.map(|text| {
         (
             text,
@@ -1423,6 +1579,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .chain(author_action.iter().map(|(_, phid)| phid.clone()))
         .chain(void.iter().map(|(phid, _, _)| phid.clone()))
         .chain(title.iter().map(|(phid, _)| phid.clone()))
+        .chain(text.iter().map(|(_, phid, ..)| phid.clone()))
         .chain(late)
         .chain(object_mention.iter().map(|mention| mention.phid.clone()))
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
@@ -1444,6 +1601,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         author_action,
         void,
         title,
+        text,
         object_mention,
         comment,
         status,
@@ -1516,46 +1674,15 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     .execute(&mut *connection)
     .await?;
     let metadata = php::json_encode(&json!({"core.groupID": plan.group_id}));
-    if let Some(subscription) = &plan.subscription {
+    // In the order PHP saves them: an implicit CC first, the actions, then
+    // a subscription of mentions alone.
+    let subscription = plan.subscription.as_ref();
+    if let Some(subscription) = subscription.filter(|subscription| subscription.first) {
         write_subscription(request, plan, subscription, &metadata, connection).await?;
     }
-    if let Some((review, phid, updates)) = &plan.review {
-        let row = (
-            phid.as_str(),
-            review.transaction_type(),
-            "false",
-            "true",
-            &*metadata,
-        );
-        insert_transaction(request, plan, connection, row).await?;
-        write_reviewers(request, plan, *review, updates, connection).await?;
-    }
-    if let Some((action, phid)) = &plan.author_action {
-        let row = (
-            phid.as_str(),
-            action.transaction_type(),
-            "false",
-            "true",
-            &*metadata,
-        );
-        insert_transaction(request, plan, connection, row).await?;
-    }
-    if let Some((phid, old)) = &plan.title {
-        let (old, new) = (
-            php::json_encode(&json!(old)),
-            php::json_encode(&json!(revision.title)),
-        );
-        let row = (
-            phid.as_str(),
-            "differential.revision.title",
-            &*old,
-            &*new,
-            &*metadata,
-        );
-        insert_transaction(request, plan, connection, row).await?;
-    }
-    if let Some((phid, reviewers, force)) = &plan.void {
-        write_void(request, plan, (phid, reviewers, force), connection).await?;
+    write_actions(request, plan, &metadata, connection).await?;
+    if let Some(subscription) = subscription.filter(|subscription| !subscription.first) {
+        write_subscription(request, plan, subscription, &metadata, connection).await?;
     }
     // The edge transaction is saved with the others, before the comment;
     // the edges and the inverse edit come with the external effects.
@@ -1593,6 +1720,76 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     write_herald(request, plan, connection).await?;
     queue_publishing(request, plan, connection).await?;
     transaction.commit().await?;
+    Ok(())
+}
+
+/// The transactions of the actions and field edits, with their effects.
+async fn write_actions(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    metadata: &str,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let revision = &plan.revision;
+    if let Some((review, phid, updates)) = &plan.review {
+        let row = (
+            phid.as_str(),
+            review.transaction_type(),
+            "false",
+            "true",
+            metadata,
+        );
+        insert_transaction(request, plan, connection, row).await?;
+        write_reviewers(request, plan, *review, updates, connection).await?;
+    }
+    if let Some((action, phid)) = &plan.author_action {
+        let row = (
+            phid.as_str(),
+            action.transaction_type(),
+            "false",
+            "true",
+            metadata,
+        );
+        insert_transaction(request, plan, connection, row).await?;
+    }
+    if let Some((phid, old)) = &plan.title {
+        let (old, new) = (
+            php::json_encode(&json!(old)),
+            php::json_encode(&json!(revision.title)),
+        );
+        let row = (
+            phid.as_str(),
+            "differential.revision.title",
+            &*old,
+            &*new,
+            metadata,
+        );
+        insert_transaction(request, plan, connection, row).await?;
+    }
+    if let Some((field, phid, old, new)) = &plan.text {
+        phab_db::sqlx::query(&format!(
+            "UPDATE {} SET {} = ? WHERE id = ?",
+            database.table("differential", "differential_revision"),
+            field.column()
+        ))
+        .bind(new)
+        .bind(revision.id)
+        .execute(&mut *connection)
+        .await?;
+        let (old, new) = (php::json_encode(&json!(old)), php::json_encode(&json!(new)));
+        let row = (
+            phid.as_str(),
+            field.transaction_type(),
+            &*old,
+            &*new,
+            metadata,
+        );
+        insert_transaction(request, plan, connection, row).await?;
+    }
+    if let Some((phid, reviewers, force)) = &plan.void {
+        write_void(request, plan, (phid, reviewers, force), connection).await?;
+    }
     Ok(())
 }
 
