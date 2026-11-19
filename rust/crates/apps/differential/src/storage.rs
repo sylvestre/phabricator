@@ -574,6 +574,34 @@ pub async fn visible_subjects(
     )?)
 }
 
+/// Whether `viewer` can edit `revision` (`CAN_EDIT`), as the editor checks
+/// before applying most transactions.
+pub async fn can_edit(
+    database: &Database,
+    config: &phab_core::Config,
+    viewer: &phab_policy::Viewer,
+    revision: &Revision,
+    now: i64,
+) -> Result<bool, VisibilityError> {
+    let subject = revision.subject();
+    let refs = [&subject];
+    let facts = phab_policy::loader::load_facts(
+        database,
+        config,
+        viewer,
+        &refs,
+        &Repositories { database },
+        now,
+    )
+    .await?;
+    Ok(
+        phab_policy::filter(viewer, &refs, &[Capability::EDIT], &facts)?
+            .first()
+            .copied()
+            .unwrap_or(false),
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A `differential_transaction_comment` row.
 pub struct Comment {

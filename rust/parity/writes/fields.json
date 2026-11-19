@@ -1,0 +1,7 @@
+[
+  {"name": "retitle D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "Bug 1890001 - Throw InvalidCharacterError for empty names"}]}},
+  {"name": "retitle D1 with a comment", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Shorter title."}, {"type": "title", "value": "Bug 1890001 - Shorter"}]}},
+  {"name": "same title", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "Bug 1890001 - Throw InvalidCharacterError for empty attribute names"}]}},
+  {"name": "empty title", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": ""}]}},
+  {"name": "retitle D3 (not mine)", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "title", "value": "Bug 1890003 - Fail on unhandled objects"}]}}
+]

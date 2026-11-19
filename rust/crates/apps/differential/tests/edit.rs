@@ -607,3 +607,48 @@ async fn requests_review_again() {
 
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn retitles() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(
+        &context,
+        json!({"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "Better"}]}),
+    )
+    .await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        one_value(
+            &test_db,
+            "SELECT CONCAT(title, ' ', (SELECT CONCAT(oldValue, ' ', newValue) FROM \
+             `{ns}_differential`.differential_transaction)) AS value FROM \
+             `{ns}_differential`.differential_revision WHERE id = 1"
+        )
+        .await,
+        "Better \"Open\" \"Better\""
+    );
+    // The same title again, and a title of a revision Bob can't edit.
+    test_db
+        .execute(
+            "UPDATE `{ns}_differential`.differential_revision SET editPolicy = 'no-one' \
+             WHERE id = 1",
+        )
+        .await;
+    for title in ["Better", "Other"] {
+        let params =
+            json!({"objectIdentifier": "D1", "transactions": [{"type": "title", "value": title}]});
+        assert!(
+            matches!(edit(&context, params.clone()).await, Response::Fallback(_)),
+            "{params}"
+        );
+    }
+
+    test_db.drop_databases().await;
+}

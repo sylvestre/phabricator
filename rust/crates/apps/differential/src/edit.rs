@@ -1,6 +1,6 @@
 //! `differential.revision.edit` (`DifferentialRevisionEditEngine` through
 //! `PhabricatorEditEngine::buildConduitResponse()`): the transaction
-//! editor, for comments.
+//! editor.
 //!
 //! An edit is planned first: every read, check and Herald evaluation, and
 //! the state the publish worker gets. Anything not ported is
@@ -9,12 +9,12 @@
 //! queues PHP's `PhabricatorApplicationTransactionPublishWorker`, so mail,
 //! feed stories and search indexing still come from PHP.
 //!
-//! Ported: a `comment` without remarkup that mentions or references
-//! anything, an `accept` or a `reject` as the defaults, or a comment and a
-//! review, on an existing revision by an actor who can see it, with the
-//! review status change they cause, when Herald's rules are ones [`phab_app_herald::engine`] evaluates. A
-//! comment subscribes its author when
-//! nothing else does (`applyImplicitCC()`).
+//! Ported, on an existing revision the actor can see: a `comment` without
+//! remarkup that mentions or references anything, one review or author
+//! action as the defaults or a new `title`, or a comment and one of those;
+//! with the review status change they cause, when Herald's rules are ones
+//! [`phab_app_herald::engine`] evaluates. A comment subscribes its author
+//! when nothing else does (`applyImplicitCC()`).
 
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
@@ -137,6 +137,8 @@ struct Wanted {
     review: Option<Review>,
     /// An action of the author.
     author_action: Option<AuthorAction>,
+    /// A new title.
+    title: Option<String>,
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
@@ -181,13 +183,20 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
             (Some("reclaim"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
                 wanted.author_action = Some(AuthorAction::Reclaim);
             }
+            (Some("title"), Some(Value::String(title))) if wanted.title.is_none() => {
+                wanted.title = Some(title.clone());
+            }
             _ => return Err(MethodError::Unsupported("transactions not ported")),
         }
     }
     if wanted == Wanted::default() {
         return Err(MethodError::Unsupported("empty transaction lists"));
     }
-    if wanted.review.is_some() && wanted.author_action.is_some() {
+    // The order of several actions is the request's; one is ported.
+    let actions = usize::from(wanted.review.is_some())
+        + usize::from(wanted.author_action.is_some())
+        + usize::from(wanted.title.is_some());
+    if actions > 1 {
         return Err(MethodError::Unsupported("several actions"));
     }
     Ok(wanted)
@@ -465,6 +474,8 @@ struct Plan {
     review: Option<(Review, String, Vec<ReviewerUpdate>)>,
     /// The author's action and its transaction.
     author_action: Option<(AuthorAction, String)>,
+    /// The `differential.revision.title` transaction, with the old title.
+    title: Option<(String, String)>,
     /// The `differential.revision.void` transaction of "Request Review":
     /// its PHID, the reviewers it voids and the statuses it must void.
     void: Option<(String, Voided, Vec<&'static str>)>,
@@ -946,6 +957,34 @@ async fn plan_void(
     Ok(Some((voided, force)))
 }
 
+/// `DifferentialRevisionTitleTransaction`: the new title, which needs
+/// `CAN_EDIT` (PHP raises a policy exception otherwise). Returns the old
+/// title. An unchanged title has no effect, yet PHP still saves and
+/// publishes the revision; that is left to it.
+async fn plan_title(
+    request: &ApiRequest<'_>,
+    revision: &mut Revision,
+    title: String,
+) -> Result<String, MethodError> {
+    if title == revision.title {
+        return Err(MethodError::Unsupported("edits without effect"));
+    }
+    let context = request.context;
+    let can_edit = crate::storage::can_edit(
+        &context.database,
+        &context.config,
+        &request.viewer,
+        revision,
+        request.now,
+    )
+    .await
+    .map_err(MethodError::internal)?;
+    if !can_edit {
+        return Err(MethodError::Unsupported("edits the actor may not make"));
+    }
+    Ok(std::mem::replace(&mut revision.title, title))
+}
+
 /// A new transaction PHID of revisions.
 fn transaction_phid() -> String {
     Phid::generate(PhidType::TRANSACTION, Some(PhidType::REVISION)).into_string()
@@ -1041,6 +1080,13 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     } else {
         None
     };
+    let title = match wanted.title {
+        Some(title) => {
+            let old = plan_title(request, &mut revision, title).await?;
+            Some((transaction_phid(), old))
+        }
+        None => None,
+    };
     let comment = wanted.comment.map(|text| {
         (
             text,
@@ -1064,6 +1110,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .chain(review.iter().map(|(_, phid, _)| phid.clone()))
         .chain(author_action.iter().map(|(_, phid)| phid.clone()))
         .chain(void.iter().map(|(phid, _, _)| phid.clone()))
+        .chain(title.iter().map(|(phid, _)| phid.clone()))
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
@@ -1075,6 +1122,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         review,
         author_action,
         void,
+        title,
         comment,
         status,
         applied_phids,
@@ -1124,10 +1172,11 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     let connection = &mut *transaction;
     let revision = &plan.revision;
     phab_db::sqlx::query(&format!(
-        "UPDATE {} SET status = ?, dateModified = ? WHERE id = ?",
+        "UPDATE {} SET status = ?, title = ?, dateModified = ? WHERE id = ?",
         database.table("differential", "differential_revision")
     ))
     .bind(&revision.status)
+    .bind(&revision.title)
     .bind(now)
     .bind(revision.id)
     .execute(&mut *connection)
@@ -1153,6 +1202,20 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
             action.transaction_type(),
             "false",
             "true",
+            &*metadata,
+        );
+        insert_transaction(request, plan, connection, row).await?;
+    }
+    if let Some((phid, old)) = &plan.title {
+        let (old, new) = (
+            php::json_encode(&json!(old)),
+            php::json_encode(&json!(revision.title)),
+        );
+        let row = (
+            phid.as_str(),
+            "differential.revision.title",
+            &*old,
+            &*new,
             &*metadata,
         );
         insert_transaction(request, plan, connection, row).await?;
