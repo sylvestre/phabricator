@@ -17,7 +17,10 @@
 //! [`phab_app_herald::engine`] evaluates. A comment subscribes its author
 //! when nothing else does (`applyImplicitCC()`).
 
+mod lists;
 mod reviewers;
+mod subscribers;
+mod tags;
 
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
@@ -34,6 +37,9 @@ const CONDUIT_SOURCE: &str = r#"{"source":"conduit","params":[]}"#;
 
 /// `PhabricatorProjectObjectHasWatcherEdgeType`.
 const PROJECT_HAS_WATCHER: i64 = 47;
+
+/// `PhabricatorProjectProjectHasObjectEdgeType`.
+const PROJECT_HAS_OBJECT: i64 = 42;
 
 /// The Herald adapter of revisions (`HeraldDifferentialRevisionAdapter`),
 /// for the fields and actions Rust implements.
@@ -201,6 +207,10 @@ struct Wanted {
     text: Option<(TextField, String)>,
     /// Reviewers added, removed or set.
     reviewers: Option<reviewers::Wanted>,
+    /// Subscribers added, removed or set.
+    subscribers: Option<lists::Wanted>,
+    /// Tags added, removed or set.
+    projects: Option<lists::Wanted>,
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
@@ -267,6 +277,18 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
             ) if wanted.reviewers.is_none() => {
                 wanted.reviewers = Some(reviewers::parse(kind, value)?);
             }
+            (
+                Some(kind @ ("subscribers.add" | "subscribers.remove" | "subscribers.set")),
+                Some(value),
+            ) if wanted.subscribers.is_none() => {
+                let types = &["PHID-USER-", "PHID-PROJ-"];
+                wanted.subscribers = Some(lists::parse(kind, value, types)?);
+            }
+            (Some(kind @ ("projects.add" | "projects.remove" | "projects.set")), Some(value))
+                if wanted.projects.is_none() =>
+            {
+                wanted.projects = Some(lists::parse(kind, value, &["PHID-PROJ-"])?);
+            }
             _ => return Err(MethodError::Unsupported("transactions not ported")),
         }
     }
@@ -278,7 +300,9 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
         + usize::from(wanted.author_action.is_some())
         + usize::from(wanted.title.is_some())
         + usize::from(wanted.text.is_some())
-        + usize::from(wanted.reviewers.is_some());
+        + usize::from(wanted.reviewers.is_some())
+        + usize::from(wanted.subscribers.is_some())
+        + usize::from(wanted.projects.is_some());
     if actions > 1 {
         return Err(MethodError::Unsupported("several actions"));
     }
@@ -452,10 +476,9 @@ async fn check_side_effects(
 /// merges.
 struct Subscription {
     phid: String,
-    /// The subscribers before.
+    /// The subscribers before and after, in PHP's order.
     old: Vec<String>,
-    /// Who it subscribes, in order.
-    added: Vec<String>,
+    new: Vec<String>,
     /// Whether it comes first: an implicit CC is unshifted, a subscription
     /// of mentions alone is appended.
     first: bool,
@@ -606,10 +629,12 @@ async fn plan_subscription(
     let mut after: Vec<String> = added.iter().rev().cloned().collect();
     after.extend(old.iter().cloned());
     facts.subscribers = after;
+    let mut new = old.clone();
+    new.extend(added);
     Ok(Some(Subscription {
         phid: transaction_phid(),
         old,
-        added,
+        new,
         first: implicit,
     }))
 }
@@ -619,15 +644,12 @@ async fn plan_subscription(
 /// edit of the mentioned revision (`applyInverseEdgeTransactions()`), a
 /// sub-editor which runs no Herald.
 struct ObjectMention {
-    /// The edge transaction and the mentioned objects before.
+    /// The edge transaction.
     phid: String,
-    old: Vec<String>,
-    /// The mentioned revision, its facts, its transaction and the objects
-    /// which mentioned it before.
+    /// The mentioned revision, its facts and its transaction.
     target: Revision,
     target_facts: Facts,
     inverse_phid: String,
-    inverse_old: Vec<String>,
 }
 
 /// The revisions `text` references, as `D123`; other references are left
@@ -698,15 +720,11 @@ async fn plan_object_mention(
             "mentioned revisions with a stale status",
         ));
     }
-    let inverse_old =
-        destinations(database, &target.phid, edges::OBJECT_MENTIONED_BY_OBJECT).await?;
     Ok(Some(ObjectMention {
         phid: transaction_phid(),
-        old,
         target,
         target_facts,
         inverse_phid: transaction_phid(),
-        inverse_old,
     }))
 }
 
@@ -839,6 +857,10 @@ struct Plan {
     text: Option<(TextField, String, String, String)>,
     /// The `differential.revision.reviewers` transaction.
     reviewer_edit: Option<reviewers::Planned>,
+    /// The `core:subscribers` transaction of `subscribers.*`.
+    subscriber_edit: Option<Subscription>,
+    /// The `core:edge` transaction of `projects.*`.
+    tag_edit: Option<tags::Planned>,
     /// The `differential.revision.void` transaction of "Request Review":
     /// its PHID, the reviewers it voids and the statuses it must void.
     void: Option<PlannedVoid>,
@@ -1581,6 +1603,42 @@ fn plan_status(request: &ApiRequest<'_>, revision: &mut Revision) -> Option<(Str
     Some((transaction_phid(), old))
 }
 
+/// The planned reviewer, subscriber and tag edits.
+type ListEdits = (
+    Option<reviewers::Planned>,
+    Option<Subscription>,
+    Option<tags::Planned>,
+);
+
+/// The reviewers, the subscribers and the tags added, removed or set.
+async fn plan_lists(
+    request: &ApiRequest<'_>,
+    wanted: &Wanted,
+    subscription: Option<&Subscription>,
+    revision: &mut Revision,
+    facts: &mut Facts,
+) -> Result<ListEdits, MethodError> {
+    let reviewer_edit = plan_reviewer_edit(request, wanted, subscription, revision, facts).await?;
+    let subscriber_edit = match &wanted.subscribers {
+        // PHP merges the implicit subscriptions into it.
+        Some(_) if subscription.is_some() => {
+            return Err(MethodError::Unsupported(
+                "subscriber edits with implicit subscriptions",
+            ));
+        }
+        Some(edit) => {
+            let actor = actor_phid(request)?;
+            Some(subscribers::plan(request, edit, revision, facts, &actor).await?)
+        }
+        None => None,
+    };
+    let tag_edit = match &wanted.projects {
+        Some(edit) => Some(tags::plan(request, edit, revision, facts).await?),
+        None => None,
+    };
+    Ok((reviewer_edit, subscriber_edit, tag_edit))
+}
+
 /// The reviewers added, removed or set, with their transaction.
 async fn plan_reviewer_edit(
     request: &ApiRequest<'_>,
@@ -1634,7 +1692,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         None => (None, None),
     };
     let (title, text) = plan_fields(request, &wanted, &mut revision, old_text.as_ref()).await?;
-    let reviewer_edit = plan_reviewer_edit(
+    let (reviewer_edit, subscriber_edit, tag_edit) = plan_lists(
         request,
         &wanted,
         subscription.as_ref(),
@@ -1667,6 +1725,8 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .chain(title.iter().map(|(phid, _)| phid.clone()))
         .chain(text.iter().map(|(_, phid, ..)| phid.clone()))
         .chain(reviewer_edit.iter().map(|edit| edit.phid.clone()))
+        .chain(subscriber_edit.iter().map(|edit| edit.phid.clone()))
+        .chain(tag_edit.iter().map(|edit| edit.phid.clone()))
         .chain(late)
         .chain(object_mention.iter().map(|mention| mention.phid.clone()))
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
@@ -1690,6 +1750,8 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         title,
         text,
         reviewer_edit,
+        subscriber_edit,
+        tag_edit,
         object_mention,
         comment,
         status,
@@ -1894,6 +1956,12 @@ async fn write_actions(
         )
         .await?;
     }
+    if let Some(edit) = &plan.subscriber_edit {
+        write_subscription(request, plan, edit, metadata, connection).await?;
+    }
+    if let Some(edit) = &plan.tag_edit {
+        tags::write(request, plan, edit, connection).await?;
+    }
     if let Some((phid, reviewers, force)) = &plan.void {
         write_void(request, plan, (phid, reviewers, force), connection).await?;
     }
@@ -1905,21 +1973,17 @@ fn edge_metadata(plan: &Plan, edge_type: i64) -> String {
     php::json_encode(&json!({"edge:type": edge_type, "core.groupID": plan.group_id}))
 }
 
-/// The transaction of the "mentions" edge.
+/// The transaction of the "mentions" edge, in the slim format of edges:
+/// the removed and the added PHIDs (`getModernNewEdgeTransactionData()`).
 async fn write_mention_transaction(
     request: &ApiRequest<'_>,
     plan: &Plan,
     mention: &ObjectMention,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
-    let mut new = mention.old.clone();
-    new.push(mention.target.phid.as_str().to_owned());
-    let (old, new) = (
-        php::json_encode(&json!(mention.old)),
-        php::json_encode(&json!(new)),
-    );
+    let new = php::json_encode(&json!([mention.target.phid.as_str()]));
     let metadata = edge_metadata(plan, edges::OBJECT_MENTIONS_OBJECT);
-    let row = (mention.phid.as_str(), "core:edge", &*old, &*new, &*metadata);
+    let row = (mention.phid.as_str(), "core:edge", "[]", &*new, &*metadata);
     insert_transaction(request, plan, connection, row).await
 }
 
@@ -1934,34 +1998,14 @@ async fn write_object_mention(
     let database = &request.context.database;
     let revision = plan.revision.phid.as_str();
     let target = mention.target.phid.as_str();
-    for (src, edge_type, dst) in [
-        (revision, edges::OBJECT_MENTIONS_OBJECT, target),
-        (target, edges::OBJECT_MENTIONED_BY_OBJECT, revision),
-    ] {
-        phab_db::sqlx::query(&format!(
-            "INSERT INTO {} (src, type, dst, dateCreated, seq, dataID) VALUES (?, ?, ?, ?, 0, \
-             NULL) ON DUPLICATE KEY UPDATE dataID = VALUES(dataID)",
-            database.table("differential", "edge")
-        ))
-        .bind(src)
-        .bind(edge_type)
-        .bind(dst)
-        .bind(request.now)
-        .execute(&mut *connection)
-        .await?;
-    }
-    // The inverse edit: the edges after the write, newest first.
-    let mut after = vec![revision.to_owned()];
-    after.extend(mention.inverse_old.iter().cloned());
-    let (old, new) = (
-        php::json_encode(&json!(mention.inverse_old)),
-        php::json_encode(&json!(after)),
-    );
+    let edge = (revision, edges::OBJECT_MENTIONS_OBJECT, target);
+    insert_edge(database, connection, edge, 0, request.now).await?;
+    let new = php::json_encode(&json!([revision]));
     let inverse = edge_metadata(plan, edges::OBJECT_MENTIONED_BY_OBJECT);
     let row = (
         mention.inverse_phid.as_str(),
         "core:edge",
-        &*old,
+        "[]",
         &*new,
         &*inverse,
     );
@@ -1974,6 +2018,68 @@ async fn write_object_mention(
     .bind(mention.target.id)
     .execute(&mut *connection)
     .await?;
+    Ok(())
+}
+
+/// `PhabricatorUnsubscribedFromObjectEdgeType`.
+const UNSUBSCRIBED_FROM_OBJECT: i64 = 24;
+
+/// The inverse of an edge type the editor writes.
+fn inverse_edge_type(edge_type: i64) -> Result<i64, MethodError> {
+    match edge_type {
+        edges::OBJECT_HAS_SUBSCRIBER => Ok(edges::SUBSCRIBED_TO_OBJECT),
+        edges::OBJECT_HAS_UNSUBSCRIBER => Ok(UNSUBSCRIBED_FROM_OBJECT),
+        edges::OBJECT_HAS_PROJECT => Ok(PROJECT_HAS_OBJECT),
+        edges::OBJECT_MENTIONS_OBJECT => Ok(edges::OBJECT_MENTIONED_BY_OBJECT),
+        _ => Err(MethodError::internal("an edge type without inverse")),
+    }
+}
+
+/// `PhabricatorEdgeEditor::addEdge()`: the edge, numbered `seq` among its
+/// source's new edges, and its inverse, in its destination's database.
+async fn insert_edge(
+    database: &Database,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+    (src, edge_type, dst): (&str, i64, &str),
+    seq: i64,
+    now: i64,
+) -> Result<(), MethodError> {
+    let inverse = inverse_edge_type(edge_type)?;
+    for (src, edge_type, dst, seq) in [(src, edge_type, dst, seq), (dst, inverse, src, 0)] {
+        phab_db::sqlx::query(&format!(
+            "INSERT INTO {} (src, type, dst, dateCreated, seq, dataID) VALUES (?, ?, ?, ?, ?, \
+             NULL) ON DUPLICATE KEY UPDATE dataID = VALUES(dataID)",
+            database.table(lists::edge_database(src)?, "edge")
+        ))
+        .bind(src)
+        .bind(edge_type)
+        .bind(dst)
+        .bind(now)
+        .bind(seq)
+        .execute(&mut *connection)
+        .await?;
+    }
+    Ok(())
+}
+
+/// `PhabricatorEdgeEditor::removeEdge()`: the edge and its inverse.
+async fn delete_edge(
+    database: &Database,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+    (src, edge_type, dst): (&str, i64, &str),
+) -> Result<(), MethodError> {
+    let inverse = inverse_edge_type(edge_type)?;
+    for (src, edge_type, dst) in [(src, edge_type, dst), (dst, inverse, src)] {
+        phab_db::sqlx::query(&format!(
+            "DELETE FROM {} WHERE src = ? AND type = ? AND dst = ?",
+            database.table(lists::edge_database(src)?, "edge")
+        ))
+        .bind(src)
+        .bind(edge_type)
+        .bind(dst)
+        .execute(&mut *connection)
+        .await?;
+    }
     Ok(())
 }
 
@@ -2141,8 +2247,9 @@ async fn write_reviewers(
     Ok(())
 }
 
-/// The `core:subscribers` transaction of `applyImplicitCC()` and its edges
-/// (`PhabricatorEdgeEditor`, with the inverse edge).
+/// A `core:subscribers` transaction and its edges
+/// (`PhabricatorSubscriptionsEditor::save()`): who it subscribes loses
+/// their "unsubscribed" edge, who it unsubscribes gets one.
 async fn write_subscription(
     request: &ApiRequest<'_>,
     plan: &Plan,
@@ -2152,59 +2259,43 @@ async fn write_subscription(
 ) -> Result<(), MethodError> {
     let database = &request.context.database;
     let revision = plan.revision.phid.as_str();
-    let (phid, old) = (&subscription.phid, &subscription.old);
-    let mut new = old.clone();
-    new.extend(subscription.added.iter().cloned());
-    phab_db::sqlx::query(&format!(
-        "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
-         commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
-         dateCreated, dateModified) VALUES (?, ?, ?, 'public', ?, NULL, 0, 'core:subscribers', \
-         ?, ?, ?, ?, ?, ?)",
-        database.table("differential", "differential_transaction")
-    ))
-    .bind(phid)
-    .bind(&plan.actor)
-    .bind(revision)
-    .bind(&plan.actor)
-    .bind(php::json_encode(&json!(old)))
-    .bind(php::json_encode(&json!(new)))
-    .bind(CONDUIT_SOURCE)
-    .bind(metadata)
-    .bind(request.now)
-    .bind(request.now)
-    .execute(&mut *connection)
-    .await?;
+    let (old, new) = (&subscription.old, &subscription.new);
+    let (old_value, new_value) = (php::json_encode(&json!(old)), php::json_encode(&json!(new)));
+    let row = (
+        subscription.phid.as_str(),
+        "core:subscribers",
+        &*old_value,
+        &*new_value,
+        metadata,
+    );
+    insert_transaction(request, plan, connection, row).await?;
     // PhabricatorEdgeEditor numbers the new edges of each source.
-    for (seq, added) in (0_i64..).zip(&subscription.added) {
-        for (application, src, edge_type, dst, seq) in [
+    let changes = lists::minus(new, old)
+        .into_iter()
+        .map(|phid| {
             (
-                "differential",
-                revision,
+                phid,
+                edges::OBJECT_HAS_UNSUBSCRIBER,
                 edges::OBJECT_HAS_SUBSCRIBER,
-                added.as_str(),
-                seq,
-            ),
+            )
+        })
+        .chain(lists::minus(old, new).into_iter().map(|phid| {
             (
-                "user",
-                added.as_str(),
-                edges::SUBSCRIBED_TO_OBJECT,
-                revision,
-                0,
-            ),
-        ] {
-            phab_db::sqlx::query(&format!(
-                "INSERT INTO {} (src, type, dst, dateCreated, seq, dataID) VALUES (?, ?, ?, ?, ?, \
-                 NULL) ON DUPLICATE KEY UPDATE dataID = VALUES(dataID)",
-                database.table(application, "edge")
-            ))
-            .bind(src)
-            .bind(edge_type)
-            .bind(dst)
-            .bind(request.now)
-            .bind(seq)
-            .execute(&mut *connection)
-            .await?;
-        }
+                phid,
+                edges::OBJECT_HAS_SUBSCRIBER,
+                edges::OBJECT_HAS_UNSUBSCRIBER,
+            )
+        }));
+    for (seq, (phid, gone, added)) in (0_i64..).zip(changes) {
+        delete_edge(database, connection, (revision, gone, &phid)).await?;
+        insert_edge(
+            database,
+            connection,
+            (revision, added, &phid),
+            seq,
+            request.now,
+        )
+        .await?;
     }
     Ok(())
 }

@@ -953,3 +953,104 @@ async fn edits_reviewers() {
 
     test_db.drop_databases().await;
 }
+
+/// The edges of type `edge_type` in an application's database.
+async fn edges_of(test_db: &TestDatabase, application: &str, edge_type: i64) -> Vec<String> {
+    phab_db::sqlx::query(&format!(
+        "SELECT CONCAT(src, ' ', dst, ' ', seq) AS edge FROM `{}_{application}`.edge \
+         WHERE type = ? ORDER BY src, dst",
+        test_db.database().namespace()
+    ))
+    .bind(edge_type)
+    .fetch_all(test_db.database().pool())
+    .await
+    .expect("edges")
+    .iter()
+    .map(|row| phab_db::rows::text(row, "edge").expect("edge"))
+    .collect()
+}
+
+#[tokio::test]
+async fn edits_subscribers_and_tags() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_user`.user (id, phid, userName, realName, dateCreated, \
+               dateModified, conduitCertificate, isSystemAgent, isDisabled, isAdmin, \
+               isEmailVerified, isApproved, accountSecret, isEnrolledInMultiFactor, \
+               isMailingList) VALUES \
+             (10, 'PHID-USER-erin', 'erin', 'Erin', 1, 1, 'c', 0, 0, 0, 1, 1, 's', 0, 0); \
+             INSERT INTO `{ns}_differential`.edge (src, type, dst, dateCreated, seq) VALUES \
+             ('PHID-DREV-1', 23, 'PHID-USER-erin', 1, 0); \
+             INSERT INTO `{ns}_user`.edge (src, type, dst, dateCreated, seq) VALUES \
+             ('PHID-USER-erin', 24, 'PHID-DREV-1', 1, 0)",
+        )
+        .await;
+    let params = |kind: &str, value: Value| json!({"objectIdentifier": "D1", "transactions": [{"type": kind, "value": value}]});
+    // Erin unsubscribed once; Dave goes.
+    for params in [
+        params("subscribers.set", json!(["PHID-USER-erin"])),
+        params("projects.remove", json!(["PHID-PROJ-secure"])),
+    ] {
+        let Response::Envelope(Envelope {
+            error_code: None, ..
+        }) = edit(&context, params.clone()).await
+        else {
+            panic!("{params}: expected an answer");
+        };
+    }
+    assert_eq!(
+        one_value(
+            &test_db,
+            "SELECT GROUP_CONCAT(CONCAT(transactionType, ' ', oldValue, ' ', newValue) \
+             ORDER BY id SEPARATOR ' / ') AS value FROM \
+             `{ns}_differential`.differential_transaction"
+        )
+        .await,
+        "core:subscribers [\"PHID-USER-dave\"] [\"PHID-USER-erin\"] / \
+         core:edge [\"PHID-PROJ-secure\"] []"
+    );
+    assert_eq!(
+        edges_of(&test_db, "differential", 21).await,
+        ["PHID-DREV-1 PHID-USER-erin 0"]
+    );
+    assert_eq!(
+        edges_of(&test_db, "differential", 23).await,
+        ["PHID-DREV-1 PHID-USER-dave 1"]
+    );
+    assert_eq!(
+        edges_of(&test_db, "user", 22).await,
+        ["PHID-USER-erin PHID-DREV-1 0"]
+    );
+    assert_eq!(
+        edges_of(&test_db, "user", 24).await,
+        ["PHID-USER-dave PHID-DREV-1 0"]
+    );
+    assert_eq!(
+        edges_of(&test_db, "differential", 41).await,
+        Vec::<String>::new()
+    );
+    // Without the secure tag, Herald no longer encrypts the mail.
+    let data = one_value(
+        &test_db,
+        "SELECT data AS value FROM `{ns}_worker`.worker_taskdata ORDER BY id DESC LIMIT 1",
+    )
+    .await;
+    let data: Value = serde_json::from_str(data.as_str().expect("data")).expect("JSON");
+    assert_eq!(data["state"]["mustEncrypt"], json!([]));
+    // Unknown subscribers and edits without effect are PHP's.
+    for params in [
+        params("subscribers.add", json!(["PHID-USER-nobody"])),
+        params("subscribers.add", json!(["PHID-USER-erin"])),
+        params("projects.add", json!(["PHID-PROJ-nothing"])),
+    ] {
+        assert!(
+            matches!(edit(&context, params.clone()).await, Response::Fallback(_)),
+            "{params}"
+        );
+    }
+
+    test_db.drop_databases().await;
+}

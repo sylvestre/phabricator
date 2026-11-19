@@ -1,0 +1,13 @@
+[
+  {"name": "subscribe dave to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "subscribers.add", "value": ["PHID-USER-5fhrwkaff4cbtd44svtw"]}]}},
+  {"name": "subscribe myself to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "subscribers.add", "value": ["PHID-USER-smtgbo5evsea6efnaz7m"]}]}},
+  {"name": "unsubscribe carol from D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "subscribers.remove", "value": ["PHID-USER-qtho2qargwhzuh5wzjaj"]}]}},
+  {"name": "set the subscribers of D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "subscribers.set", "value": ["PHID-USER-5fhrwkaff4cbtd44svtw"]}]}},
+  {"name": "subscribe a project to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "subscribers.add", "value": ["PHID-PROJ-fw4ppopw3mj73juscyek"]}]}},
+  {"name": "subscribe carol again to D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "subscribers.add", "value": ["PHID-USER-qtho2qargwhzuh5wzjaj"]}]}},
+  {"name": "tag D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "projects.add", "value": ["PHID-PROJ-fw4ppopw3mj73juscyek"]}]}},
+  {"name": "tag D1 with a hidden project", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "projects.add", "value": ["PHID-PROJ-c4buil3zjvfypggcn24f"]}]}},
+  {"name": "untag D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "projects.remove", "value": ["PHID-PROJ-sv7lxylfx3dmjxbkjkt4"]}]}},
+  {"name": "set the tags of D1, without secure-revision", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "projects.set", "value": ["PHID-PROJ-fw4ppopw3mj73juscyek"]}]}},
+  {"name": "subscribe dave with a comment on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "subscribers.add", "value": ["PHID-USER-5fhrwkaff4cbtd44svtw"]}, {"type": "comment", "value": "Dave, FYI."}]}}
+]

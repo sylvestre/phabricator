@@ -2,20 +2,13 @@
 //! `reviewers.remove` and `reviewers.set` transactions of Conduit.
 
 use phab_conduit::{ApiRequest, MethodError};
-use phab_core::{Phid, PhidType, php};
+use phab_core::{Phid, php};
 use phab_db::Database;
 use serde_json::{Value, json};
 
+use super::lists::{self, Operation};
 use crate::search::ReviewerRow;
 use crate::storage::{Reviewer, Revision};
-
-/// What a transaction does to the reviewers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Operation {
-    Add,
-    Remove,
-    Set,
-}
 
 /// A reviewer transaction of the request: its reviewers, with the status
 /// each asks for (`added`, or `blocking` for `blocking(...)`).
@@ -38,23 +31,13 @@ fn token(text: &str) -> Option<(String, String)> {
         Some(inner) => (inner, "blocking"),
         None => (text, "added"),
     };
-    let random = phid
-        .strip_prefix("PHID-USER-")
-        .or_else(|| phid.strip_prefix("PHID-PROJ-"))?;
-    let plain = !random.is_empty()
-        && random
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit());
-    plain.then(|| (phid.to_owned(), status.to_owned()))
+    lists::is_phid_of(phid, &["PHID-USER-", "PHID-PROJ-"])
+        .then(|| (phid.to_owned(), status.to_owned()))
 }
 
 /// The reviewer transaction of type `kind` with `value`.
 pub(super) fn parse(kind: &str, value: &Value) -> Result<Wanted, MethodError> {
-    let operation = match kind {
-        "reviewers.add" => Operation::Add,
-        "reviewers.remove" => Operation::Remove,
-        _ => Operation::Set,
-    };
+    let operation = Operation::of(kind);
     let unsupported = || MethodError::Unsupported("reviewers other than user and project PHIDs");
     let Value::Array(items) = value else {
         return Err(unsupported());
@@ -150,7 +133,6 @@ async fn check_added(
     added: &[&str],
 ) -> Result<(), MethodError> {
     let context = request.context;
-    let database = &context.database;
     let refused = || MethodError::Unsupported("reviewers PHP refuses");
     let self_accept = context
         .config
@@ -164,46 +146,10 @@ async fn check_added(
     {
         return Err(refused());
     }
-    let (users, projects): (Vec<&str>, Vec<&str>) = added
-        .iter()
-        .partition(|phid| Phid::new(**phid).phid_type() == PhidType::USER);
-    if !users.is_empty() {
-        let found = count_users(database, &users).await?;
-        if found != users.len() {
-            return Err(refused());
-        }
-    }
-    if !projects.is_empty() {
-        let phids: Vec<Phid> = projects.iter().map(|phid| Phid::new(*phid)).collect();
-        let loaded = phab_app_project::storage::load_by_phid(database, &phids).await?;
-        let (visible, _) = phab_app_project::policy::visible_projects(
-            database,
-            &context.config,
-            &request.viewer,
-            loaded,
-            request.now,
-        )
-        .await
-        .map_err(MethodError::internal)?;
-        if visible.len() != projects.len() {
-            return Err(refused());
-        }
+    if !lists::all_valid(request, added).await? {
+        return Err(refused());
     }
     Ok(())
-}
-
-async fn count_users(database: &Database, users: &[&str]) -> Result<usize, MethodError> {
-    let sql = format!(
-        "SELECT phid FROM {} WHERE phid IN ({})",
-        database.table("user", "user"),
-        phab_db::placeholders(users.len())
-    );
-    Ok(
-        phab_db::bind_all(phab_db::sqlx::query(&sql), users.iter().copied())
-            .fetch_all(database.pool())
-            .await?
-            .len(),
-    )
 }
 
 /// Plans the transaction, which needs `CAN_EDIT`, and updates the
