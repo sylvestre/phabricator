@@ -163,8 +163,24 @@ fn has_relationships(text: &str) -> bool {
 }
 
 /// What the `transactions` parameter asks for.
+/// The actions of a request, whose order PHP keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Action {
+    Review,
+    Author,
+    Title,
+    Text,
+    Reviewers,
+    Subscribers,
+    Projects,
+    Stack,
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Wanted {
+    /// The actions, in the request's order: `sortTransactions()` only moves
+    /// the comment last.
+    order: Vec<Action>,
     /// A comment's text.
     comment: Option<String>,
     /// A review, for the reviewers the actor has authority over.
@@ -204,29 +220,31 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
                 wanted.comment = Some(text.clone());
             }
             // Reviewing as the defaults; a list of reviewers is left to PHP.
-            (Some("accept"), Some(Value::Bool(true))) if wanted.review.is_none() => {
-                wanted.review = Some(Review::Accept);
+            (Some(kind @ ("accept" | "reject" | "resign")), Some(Value::Bool(true)))
+                if wanted.review.is_none() =>
+            {
+                wanted.review = Some(match kind {
+                    "accept" => Review::Accept,
+                    "reject" => Review::Reject,
+                    _ => Review::Resign,
+                });
+                wanted.order.push(Action::Review);
             }
-            (Some("reject"), Some(Value::Bool(true))) if wanted.review.is_none() => {
-                wanted.review = Some(Review::Reject);
-            }
-            (Some("resign"), Some(Value::Bool(true))) if wanted.review.is_none() => {
-                wanted.review = Some(Review::Resign);
-            }
-            (Some("plan-changes"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
-                wanted.author_action = Some(AuthorAction::PlanChanges);
-            }
-            (Some("abandon"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
-                wanted.author_action = Some(AuthorAction::Abandon);
-            }
-            (Some("request-review"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
-                wanted.author_action = Some(AuthorAction::RequestReview);
-            }
-            (Some("reclaim"), Some(Value::Bool(true))) if wanted.author_action.is_none() => {
-                wanted.author_action = Some(AuthorAction::Reclaim);
+            (
+                Some(kind @ ("plan-changes" | "abandon" | "request-review" | "reclaim")),
+                Some(Value::Bool(true)),
+            ) if wanted.author_action.is_none() => {
+                wanted.author_action = Some(match kind {
+                    "plan-changes" => AuthorAction::PlanChanges,
+                    "abandon" => AuthorAction::Abandon,
+                    "request-review" => AuthorAction::RequestReview,
+                    _ => AuthorAction::Reclaim,
+                });
+                wanted.order.push(Action::Author);
             }
             (Some("title"), Some(Value::String(title))) if wanted.title.is_none() => {
                 wanted.title = Some(title.clone());
+                wanted.order.push(Action::Title);
             }
             (Some(kind @ ("summary" | "testPlan")), Some(Value::String(text)))
                 if wanted.text.is_none() =>
@@ -240,6 +258,7 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
                     TextField::TestPlan
                 };
                 wanted.text = Some((field, text.clone()));
+                wanted.order.push(Action::Text);
             }
             (Some(kind), Some(value)) if kind.contains('.') => {
                 wanted_list(&mut wanted, kind, value)?;
@@ -250,19 +269,25 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
     if wanted == Wanted::default() {
         return Err(MethodError::Unsupported("empty transaction lists"));
     }
-    // The order of several actions is the request's; one is ported.
-    let actions = usize::from(wanted.review.is_some())
-        + usize::from(wanted.author_action.is_some())
-        + usize::from(wanted.title.is_some())
-        + usize::from(wanted.text.is_some())
-        + usize::from(wanted.reviewers.is_some())
-        + usize::from(wanted.subscribers.is_some())
-        + usize::from(wanted.projects.is_some())
-        + usize::from(wanted.stack.is_some());
-    if actions > 1 {
+    check_combination(&wanted)?;
+    Ok(wanted)
+}
+
+/// Several actions, but those whose combination isn't ported: stack edits
+/// (written with the links), "Request Review" (whose void comes later), and
+/// reviews or author actions with a reviewer edit (both change reviewers).
+fn check_combination(wanted: &Wanted) -> Result<(), MethodError> {
+    if wanted.order.len() < 2 {
+        return Ok(());
+    }
+    let has = |action| wanted.order.contains(&action);
+    if has(Action::Stack)
+        || wanted.author_action == Some(AuthorAction::RequestReview)
+        || (has(Action::Reviewers) && (has(Action::Review) || has(Action::Author)))
+    {
         return Err(MethodError::Unsupported("several actions"));
     }
-    Ok(wanted)
+    Ok(())
 }
 
 /// A list transaction (`reviewers.add`, `parents.set`, ...): one of each
@@ -275,13 +300,16 @@ fn wanted_list(wanted: &mut Wanted, kind: &str, value: &Value) -> Result<(), Met
     match list {
         "reviewers" if wanted.reviewers.is_none() => {
             wanted.reviewers = Some(reviewers::parse(kind, value)?);
+            wanted.order.push(Action::Reviewers);
         }
         "subscribers" if wanted.subscribers.is_none() => {
             let types = &["PHID-USER-", "PHID-PROJ-"];
             wanted.subscribers = Some(lists::parse(kind, value, types)?);
+            wanted.order.push(Action::Subscribers);
         }
         "projects" if wanted.projects.is_none() => {
             wanted.projects = Some(lists::parse(kind, value, &["PHID-PROJ-"])?);
+            wanted.order.push(Action::Projects);
         }
         "parents" | "children" if wanted.stack.is_none() => {
             let edge_type = if list == "parents" {
@@ -290,6 +318,7 @@ fn wanted_list(wanted: &mut Wanted, kind: &str, value: &Value) -> Result<(), Met
                 edges::REVISION_DEPENDED_ON_BY_REVISION
             };
             wanted.stack = Some((edge_type, lists::parse(kind, value, &["PHID-DREV-"])?));
+            wanted.order.push(Action::Stack);
         }
         _ => return Err(unsupported()),
     }
@@ -474,6 +503,9 @@ struct Subscription {
     /// Whether it comes first: an implicit CC is unshifted, a subscription
     /// of mentions alone is appended.
     first: bool,
+    /// The `+` of its new value: the mentioned users, then the actor of an
+    /// implicit CC, which an explicit edit merges into.
+    added: Vec<String>,
 }
 
 /// `extractPHIDsFromMentions()` of a comment: the mentioned users, as the
@@ -624,12 +656,13 @@ async fn plan_subscription(
     after.extend(old.iter().cloned());
     facts.subscribers = after;
     let mut new = old.clone();
-    new.extend(added);
+    new.extend(added.iter().cloned());
     Ok(Some(Subscription {
         phid: transaction_phid(),
         old,
         new,
         first: implicit,
+        added,
     }))
 }
 
@@ -958,14 +991,10 @@ struct ReviewerUpdate {
     options: String,
 }
 
-/// The planned edit.
-struct Plan {
-    /// The revision as the edit leaves it.
-    revision: Revision,
-    actor: String,
-    /// The `core:subscribers` transaction `applyImplicitCC()` adds: its
-    /// PHID and the subscribers before.
-    subscription: Option<Subscription>,
+/// The planned actions of the edit.
+struct Actions {
+    /// Their order, the request's.
+    order: Vec<Action>,
     /// The review, its transaction and its reviewers.
     review: Option<(Review, String, Vec<ReviewerUpdate>)>,
     /// The author's action and its transaction.
@@ -984,6 +1013,43 @@ struct Plan {
     /// The `differential.revision.void` transaction of "Request Review":
     /// its PHID, the reviewers it voids and the statuses it must void.
     void: Option<PlannedVoid>,
+}
+
+impl Actions {
+    /// The transactions of the actions, in the order PHP applies them: an
+    /// author action's void follows it.
+    fn phids(&self) -> Vec<String> {
+        let mut phids = Vec::new();
+        for action in &self.order {
+            match action {
+                Action::Review => phids.extend(self.review.iter().map(|(_, phid, _)| phid)),
+                Action::Author => {
+                    phids.extend(self.author_action.iter().map(|(_, phid)| phid));
+                    phids.extend(self.void.iter().map(|(phid, _, _)| phid));
+                }
+                Action::Title => phids.extend(self.title.iter().map(|(phid, _)| phid)),
+                Action::Text => phids.extend(self.text.iter().map(|(_, phid, ..)| phid)),
+                Action::Reviewers => phids.extend(self.reviewer_edit.iter().map(|edit| &edit.phid)),
+                Action::Subscribers => {
+                    phids.extend(self.subscriber_edit.iter().map(|edit| &edit.phid));
+                }
+                Action::Projects => phids.extend(self.tag_edit.iter().map(|edit| &edit.phid)),
+                Action::Stack => {}
+            }
+        }
+        phids.into_iter().cloned().collect()
+    }
+}
+
+/// The planned edit.
+struct Plan {
+    /// The revision as the edit leaves it.
+    revision: Revision,
+    actor: String,
+    /// The `core:subscribers` transaction `applyImplicitCC()` adds: its
+    /// PHID and the subscribers before.
+    subscription: Option<Subscription>,
+    actions: Actions,
     /// The comment: its text, transaction and comment PHIDs.
     comment: Option<(String, String, String)>,
     /// The `differential.revision.status` transaction `updateReviewStatus()`
@@ -1778,24 +1844,23 @@ type ListEdits = (
 async fn plan_lists(
     request: &ApiRequest<'_>,
     wanted: &Wanted,
-    subscription: Option<&Subscription>,
+    subscription: &mut Option<Subscription>,
     revision: &mut Revision,
     facts: &mut Facts,
 ) -> Result<ListEdits, MethodError> {
-    let reviewer_edit = plan_reviewer_edit(request, wanted, subscription, revision, facts).await?;
-    let subscriber_edit = match &wanted.subscribers {
-        // PHP merges the implicit subscriptions into it.
-        Some(_) if subscription.is_some() => {
-            return Err(MethodError::Unsupported(
-                "subscriber edits with implicit subscriptions",
-            ));
-        }
+    let reviewer_edit = plan_reviewer_edit(request, wanted, revision, facts).await?;
+    let mut subscriber_edit = match &wanted.subscribers {
         Some(edit) => {
             let actor = actor_phid(request)?;
-            Some(subscribers::plan(request, edit, revision, facts, &actor).await?)
+            let implied = subscription.take();
+            Some(subscribers::plan(request, edit, implied, revision, facts, &actor).await?)
         }
         None => None,
     };
+    // An implicit CC merged with an explicit edit stays first.
+    if subscriber_edit.as_ref().is_some_and(|edit| edit.first) {
+        *subscription = subscriber_edit.take();
+    }
     let tag_edit = match &wanted.projects {
         Some(edit) => Some(tags::plan(request, edit, revision, facts).await?),
         None => None,
@@ -1807,19 +1872,14 @@ async fn plan_lists(
 async fn plan_reviewer_edit(
     request: &ApiRequest<'_>,
     wanted: &Wanted,
-    subscription: Option<&Subscription>,
     revision: &mut Revision,
     facts: &mut Facts,
 ) -> Result<Option<reviewers::Planned>, MethodError> {
+    // The subscription was planned with the reviewers before, as PHP's
+    // isAutomaticallySubscribed() sees them.
     let Some(edit) = &wanted.reviewers else {
         return Ok(None);
     };
-    // Who an edit subscribes depends on the reviewers before.
-    if subscription.is_some() {
-        return Err(MethodError::Unsupported(
-            "subscriptions with reviewer edits",
-        ));
-    }
     Ok(Some(
         reviewers::plan(request, edit, revision, &mut facts.reviewers).await?,
     ))
@@ -1836,7 +1896,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         Some((field, new)) => Some((*field, plan_text(request, &revision, *field, new).await?)),
         None => None,
     };
-    let subscription = plan_subscription(
+    let mut subscription = plan_subscription(
         request,
         &revision,
         &mut facts,
@@ -1859,7 +1919,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
     let (reviewer_edit, subscriber_edit, tag_edit) = plan_lists(
         request,
         &wanted,
-        subscription.as_ref(),
+        &mut subscription,
         &mut revision,
         &mut facts,
     )
@@ -1884,16 +1944,20 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         Some(subscription) => (None, Some(subscription.phid.clone())),
         None => (None, None),
     };
+    let actions = Actions {
+        order: wanted.order,
+        review,
+        author_action,
+        void,
+        title,
+        text,
+        reviewer_edit,
+        subscriber_edit,
+        tag_edit,
+    };
     let applied_phids: Vec<String> = first
         .into_iter()
-        .chain(review.iter().map(|(_, phid, _)| phid.clone()))
-        .chain(author_action.iter().map(|(_, phid)| phid.clone()))
-        .chain(void.iter().map(|(phid, _, _)| phid.clone()))
-        .chain(title.iter().map(|(phid, _)| phid.clone()))
-        .chain(text.iter().map(|(_, phid, ..)| phid.clone()))
-        .chain(reviewer_edit.iter().map(|edit| edit.phid.clone()))
-        .chain(subscriber_edit.iter().map(|edit| edit.phid.clone()))
-        .chain(tag_edit.iter().map(|edit| edit.phid.clone()))
+        .chain(actions.phids())
         .chain(late)
         .chain(links.iter().map(|link| link.phid.clone()))
         .chain(file_edit.iter().map(|edit| edit.phid.clone()))
@@ -1906,14 +1970,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         actor,
         group_id: random::random_characters(32),
         subscription,
-        review,
-        author_action,
-        void,
-        title,
-        text,
-        reviewer_edit,
-        subscriber_edit,
-        tag_edit,
+        actions,
         links: tasks,
         file_edit,
         comment,
@@ -2050,90 +2107,137 @@ async fn write_actions(
     metadata: &str,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
+    for action in &plan.actions.order {
+        write_action(request, plan, *action, metadata, connection).await?;
+    }
+    if let Some((phid, reviewers, force)) = &plan.actions.void {
+        write_void(request, plan, (phid, reviewers, force), connection).await?;
+    }
+    Ok(())
+}
+
+/// The summary or test plan, and its transaction.
+async fn write_text(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    (field, phid, old, new): &(TextField, String, String, String),
+    metadata: &str,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    phab_db::sqlx::query(&format!(
+        "UPDATE {} SET {} = ? WHERE id = ?",
+        request
+            .context
+            .database
+            .table("differential", "differential_revision"),
+        field.column()
+    ))
+    .bind(new)
+    .bind(plan.revision.id)
+    .execute(&mut *connection)
+    .await?;
+    let (old, new) = (php::json_encode(&json!(old)), php::json_encode(&json!(new)));
+    let row = (
+        phid.as_str(),
+        field.transaction_type(),
+        &*old,
+        &*new,
+        metadata,
+    );
+    insert_transaction(request, plan, connection, row).await
+}
+
+/// The transaction of one action, and its effect.
+async fn write_action(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    action: Action,
+    metadata: &str,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
     let database = &request.context.database;
     let revision = &plan.revision;
-    if let Some((review, phid, updates)) = &plan.review {
-        let row = (
-            phid.as_str(),
-            review.transaction_type(),
-            "false",
-            "true",
-            metadata,
-        );
-        insert_transaction(request, plan, connection, row).await?;
-        write_reviewers(request, plan, *review, updates, connection).await?;
-    }
-    if let Some((action, phid)) = &plan.author_action {
-        let row = (
-            phid.as_str(),
-            action.transaction_type(),
-            "false",
-            "true",
-            metadata,
-        );
-        insert_transaction(request, plan, connection, row).await?;
-    }
-    if let Some((phid, old)) = &plan.title {
-        let (old, new) = (
-            php::json_encode(&json!(old)),
-            php::json_encode(&json!(revision.title)),
-        );
-        let row = (
-            phid.as_str(),
-            "differential.revision.title",
-            &*old,
-            &*new,
-            metadata,
-        );
-        insert_transaction(request, plan, connection, row).await?;
-    }
-    if let Some((field, phid, old, new)) = &plan.text {
-        phab_db::sqlx::query(&format!(
-            "UPDATE {} SET {} = ? WHERE id = ?",
-            database.table("differential", "differential_revision"),
-            field.column()
-        ))
-        .bind(new)
-        .bind(revision.id)
-        .execute(&mut *connection)
-        .await?;
-        let (old, new) = (php::json_encode(&json!(old)), php::json_encode(&json!(new)));
-        let row = (
-            phid.as_str(),
-            field.transaction_type(),
-            &*old,
-            &*new,
-            metadata,
-        );
-        insert_transaction(request, plan, connection, row).await?;
-    }
-    if let Some(edit) = &plan.reviewer_edit {
-        let (old, new) = (reviewers::encode(&edit.old), reviewers::encode(&edit.new));
-        let row = (
-            edit.phid.as_str(),
-            "differential.revision.reviewers",
-            &*old,
-            &*new,
-            metadata,
-        );
-        insert_transaction(request, plan, connection, row).await?;
-        reviewers::write(
-            connection,
-            database,
-            revision.phid.as_str(),
-            edit,
-            request.now,
-        )
-        .await?;
-    }
-    if let Some(edit) = &plan.subscriber_edit {
-        write_subscription(request, plan, edit, metadata, connection).await?;
-    }
-    if let Some(edit) = &plan.tag_edit {
-        tags::write(request, plan, edit, connection).await?;
-    }
-    if let Some((phid, reviewers, force)) = &plan.void {
-        write_void(request, plan, (phid, reviewers, force), connection).await?;
+    let actions = &plan.actions;
+    match action {
+        Action::Review => {
+            if let Some((review, phid, updates)) = &actions.review {
+                let row = (
+                    phid.as_str(),
+                    review.transaction_type(),
+                    "false",
+                    "true",
+                    metadata,
+                );
+                insert_transaction(request, plan, connection, row).await?;
+                write_reviewers(request, plan, *review, updates, connection).await?;
+            }
+        }
+        Action::Author => {
+            if let Some((action, phid)) = &actions.author_action {
+                let row = (
+                    phid.as_str(),
+                    action.transaction_type(),
+                    "false",
+                    "true",
+                    metadata,
+                );
+                insert_transaction(request, plan, connection, row).await?;
+            }
+        }
+        Action::Title => {
+            if let Some((phid, old)) = &actions.title {
+                let (old, new) = (
+                    php::json_encode(&json!(old)),
+                    php::json_encode(&json!(revision.title)),
+                );
+                let row = (
+                    phid.as_str(),
+                    "differential.revision.title",
+                    &*old,
+                    &*new,
+                    metadata,
+                );
+                insert_transaction(request, plan, connection, row).await?;
+            }
+        }
+        Action::Text => {
+            if let Some(text) = &actions.text {
+                write_text(request, plan, text, metadata, connection).await?;
+            }
+        }
+        Action::Reviewers => {
+            if let Some(edit) = &actions.reviewer_edit {
+                let (old, new) = (reviewers::encode(&edit.old), reviewers::encode(&edit.new));
+                let row = (
+                    edit.phid.as_str(),
+                    "differential.revision.reviewers",
+                    &*old,
+                    &*new,
+                    metadata,
+                );
+                insert_transaction(request, plan, connection, row).await?;
+                reviewers::write(
+                    connection,
+                    database,
+                    revision.phid.as_str(),
+                    edit,
+                    request.now,
+                )
+                .await?;
+            }
+        }
+        Action::Subscribers => {
+            if let Some(edit) = &actions.subscriber_edit {
+                write_subscription(request, plan, edit, metadata, connection).await?;
+            }
+        }
+        Action::Projects => {
+            if let Some(edit) = &actions.tag_edit {
+                tags::write(request, plan, edit, connection).await?;
+            }
+        }
+        // Written with the links.
+        Action::Stack => {}
     }
     Ok(())
 }
