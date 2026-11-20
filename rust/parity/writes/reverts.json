@@ -1,0 +1,16 @@
+[
+  {"name": "summary reverting D2 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts D2."}]}},
+  {"name": "summary backing out D2 and D7 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Backs out D2 and D7."}]}},
+  {"name": "test plan undoing revision D6 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "testPlan", "value": "This undoes revision D6."}]}},
+  {"name": "summary reverting D1 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts D1."}]}},
+  {"name": "summary reverting a hidden revision on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts D4."}]}},
+  {"name": "summary reverting and depending on D2 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts D2.\n\nDepends on D7."}]}},
+  {"name": "summary backing out a typo on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Back out a typo."}]}},
+  {"name": "summary reverting a Git commit on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts commit 9f1c2e3d4b5a."}]}},
+  {"name": "summary with backward words on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Keeps backward compatibility; the undo stack is unchanged."}]}},
+  {"name": "comment reverting D2 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Reverts D2."}]}},
+  {"name": "summary reverting D2 and mentioning D7 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts D2, see D7."}]}},
+  {"name": "summary backing out D7 and D2 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Backs out D7 and D2."}]}},
+  {"name": "summary reverting D6 and D7 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts D6 and D7."}]}},
+  {"name": "summary reverting a Git commit and D2 on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts 9f1c2e3d4b5a and D2."}]}}
+]

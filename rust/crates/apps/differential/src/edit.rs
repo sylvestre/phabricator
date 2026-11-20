@@ -22,6 +22,8 @@ mod commits;
 mod dependencies;
 mod files;
 mod lists;
+mod monograms;
+mod reverts;
 mod reviewers;
 mod stack;
 mod subscribers;
@@ -152,16 +154,6 @@ impl TextField {
     }
 }
 
-/// Whether a field's text could declare dependencies or reverts
-/// (`DifferentialCustomFieldDependsOnParser`, `...RevertsParser`), which
-/// are not ported.
-fn has_relationships(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    ["revert", "back", "undo"]
-        .iter()
-        .any(|word| lower.contains(word))
-}
-
 /// What the `transactions` parameter asks for.
 /// The actions of a request, whose order PHP keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,9 +241,6 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
             (Some(kind @ ("summary" | "testPlan")), Some(Value::String(text)))
                 if wanted.text.is_none() =>
             {
-                if has_relationships(text) {
-                    return Err(MethodError::Unsupported("fields which may revert"));
-                }
                 let field = if kind == "summary" {
                     TextField::Summary
                 } else {
@@ -813,7 +802,8 @@ async fn plan_target(
 }
 
 /// The revisions `texts` reference, as `D123` or by URI, but the
-/// `unmentionable` ones (dependencies), or the commits they reference.
+/// `unmentionable` ones (dependencies and reverts), or the commits they
+/// reference.
 /// References to both are left to PHP, whose object query orders them.
 async fn plan_object_mention(
     request: &ApiRequest<'_>,
@@ -853,7 +843,8 @@ async fn plan_object_mention(
     // Objects don't mention themselves.
     let mut found = other_revisions(request, revision, ids).await?;
     found.retain(|found| !unmentionable.iter().any(|phid| phid == found.phid.as_str()));
-    let commits = commits::load(request, &hashes).await?;
+    let mut commits = commits::load(request, &hashes).await?;
+    commits.retain(|commit| !unmentionable.contains(&commit.phid));
     if commits.is_empty() {
         return plan_link(request, revision, edges::OBJECT_MENTIONS_OBJECT, found).await;
     }
@@ -862,23 +853,33 @@ async fn plan_object_mention(
             "references to revisions and commits",
         ));
     }
-    let old = destinations(
-        &request.context.database,
-        &revision.phid,
-        edges::OBJECT_MENTIONS_OBJECT,
-    )
-    .await?;
+    commit_link(request, revision, edges::OBJECT_MENTIONS_OBJECT, commits).await
+}
+
+/// The edges of `edge_type` from `revision` to `commits`, but those which
+/// exist already.
+async fn commit_link(
+    request: &ApiRequest<'_>,
+    revision: &Revision,
+    edge_type: i64,
+    commits: Vec<commits::Linked>,
+) -> Result<Option<Link>, MethodError> {
+    let old = destinations(&request.context.database, &revision.phid, edge_type).await?;
     let targets = commits
         .into_iter()
         .filter(|commit| !old.contains(&commit.phid))
-        .map(|commit| Target {
-            object: Linked::Commit(commit),
-            inverse_phid: Phid::generate(PhidType::TRANSACTION, Some(PhidType::COMMIT))
-                .into_string(),
-            added: true,
-        })
+        .map(commit_target)
         .collect();
-    Ok(new_link(edges::OBJECT_MENTIONS_OBJECT, targets))
+    Ok(new_link(edge_type, targets))
+}
+
+/// The inverse edit of a commit an edge is added to.
+fn commit_target(commit: commits::Linked) -> Target {
+    Target {
+        object: Linked::Commit(commit),
+        inverse_phid: Phid::generate(PhidType::TRANSACTION, Some(PhidType::COMMIT)).into_string(),
+        added: true,
+    }
 }
 
 /// `applyImplicitCC()`: whether commenting subscribes the actor, who is
@@ -1824,13 +1825,25 @@ async fn plan_links(
         Some((edge_type, edit)) => Some(stack::plan(request, revision, *edge_type, edit).await?),
         None => None,
     };
-    let (dependency, unmentionable) = match &wanted.text {
+    // expandCustomRemarkupBlockTransactions(): the dependencies, then the
+    // reverts, neither of which the texts then mention.
+    let (dependency, mut unmentionable) = match &wanted.text {
         Some((_, text)) => dependencies::plan(request, revision, text).await?,
         None => (None, Vec::new()),
     };
+    let (revert, reverted) = match &wanted.text {
+        Some((_, text)) => reverts::plan(request, revision, text).await?,
+        None => (None, Vec::new()),
+    };
+    unmentionable.extend(reverted);
     let mention =
         plan_object_mention(request, revision, &new_texts(wanted), &unmentionable).await?;
-    Ok(stack.into_iter().chain(dependency).chain(mention).collect())
+    Ok(stack
+        .into_iter()
+        .chain(dependency)
+        .chain(revert)
+        .chain(mention)
+        .collect())
 }
 
 /// The planned reviewer, subscriber and tag edits.
@@ -2327,6 +2340,8 @@ fn inverse_edge_type(edge_type: i64) -> Result<i64, MethodError> {
         edges::OBJECT_MENTIONS_OBJECT => Ok(edges::OBJECT_MENTIONED_BY_OBJECT),
         edges::REVISION_DEPENDS_ON_REVISION => Ok(edges::REVISION_DEPENDED_ON_BY_REVISION),
         edges::REVISION_DEPENDED_ON_BY_REVISION => Ok(edges::REVISION_DEPENDS_ON_REVISION),
+        reverts::REVERTS => Ok(reverts::REVERTED_BY),
+        reverts::REVERTED_BY => Ok(reverts::REVERTS),
         _ => Err(MethodError::internal("an edge type without inverse")),
     }
 }
