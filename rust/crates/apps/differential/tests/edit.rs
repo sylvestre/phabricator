@@ -9,6 +9,7 @@ const TOKEN: &str = "api-edededededededededededededed";
 
 const DATABASES: &[&str] = &[
     "differential",
+    "audit",
     "repository",
     "project",
     "user",
@@ -208,8 +209,7 @@ async fn leaves_the_rest_to_php() {
     };
 
     for params in [
-        // Commits and files are not ported yet.
-        comment("Landed as rVCT152e0f678058."),
+        // Files are the files application's.
         comment("See {F1}."),
         comment("   "),
         json!({"objectIdentifier": "D2", "transactions": [{"type": "comment", "value": "Hi"}]}),
@@ -231,6 +231,101 @@ async fn leaves_the_rest_to_php() {
         .await
         .expect("a count");
     assert_eq!(phab_db::rows::int(&row, "n").expect("n"), 0);
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn references_commits() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // Commits 1 and 2 publish; 3 has an audit, 4 is not on a permanent
+    // branch yet. Bob sees D2.
+    test_db
+        .execute(
+            "UPDATE `{ns}_differential`.differential_revision SET viewPolicy = 'users' \
+               WHERE id = 2; \
+             INSERT INTO `{ns}_repository`.repository (id, phid, name, callsign, \
+               versionControlSystem, details, dateCreated, dateModified, viewPolicy, editPolicy, \
+               pushPolicy) VALUES \
+             (1, 'PHID-REPO-vct', 'VCT', 'VCT', 'git', '{\"importing\":false}', 1, 1, 'users', \
+               'admin', 'admin'); \
+             INSERT INTO `{ns}_repository`.repository_commit (id, repositoryID, phid, \
+               commitIdentifier, epoch, auditStatus, summary, importStatus, authorPHID) VALUES \
+             (1, 1, 'PHID-CMIT-1', 'aaaaaaa111', 1, 'none', 'S1', 1035, 'PHID-USER-alice'), \
+             (2, 1, 'PHID-CMIT-2', 'bbbbbbb222', 1, 'none', 'S2', 1035, NULL), \
+             (3, 1, 'PHID-CMIT-3', 'ccccccc333', 1, 'needs-audit', 'S3', 1035, NULL), \
+             (4, 1, 'PHID-CMIT-4', 'ddddddd444', 1, 'none', 'S4', 11, NULL); \
+             INSERT INTO `{ns}_repository`.repository_auditrequest (auditorPHID, commitPHID, \
+               auditStatus, auditReasons) VALUES ('PHID-USER-bob', 'PHID-CMIT-3', 'audit-required', '[]')",
+        )
+        .await;
+    for text in [
+        "See rVCTccccccc333.",
+        "See rVCTddddddd444.",
+        "D2 and rVCTaaaaaaa111",
+    ] {
+        assert!(
+            matches!(edit(&context, comment(text)).await, Response::Fallback(_)),
+            "{text}"
+        );
+    }
+
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(
+        &context,
+        comment("Landed as rVCTaaaaaaa111 and rVCTbbbbbbb222."),
+    )
+    .await
+    else {
+        panic!("expected an answer");
+    };
+    let value = |sql: &'static str| one_value(&test_db, sql);
+    // Newest commit first.
+    assert_eq!(
+        value(
+            "SELECT GROUP_CONCAT(dst, ' ', seq ORDER BY seq) AS value FROM \
+             `{ns}_differential`.edge WHERE type = 52"
+        )
+        .await,
+        json!("PHID-CMIT-2 0,PHID-CMIT-1 1")
+    );
+    assert_eq!(
+        value(
+            "SELECT GROUP_CONCAT(src, ' ', type, ' ', dst ORDER BY src) AS value FROM \
+             `{ns}_repository`.edge"
+        )
+        .await,
+        json!("PHID-CMIT-1 51 PHID-DREV-1,PHID-CMIT-2 51 PHID-DREV-1")
+    );
+    assert_eq!(
+        value(
+            "SELECT GROUP_CONCAT(objectPHID, ' ', transactionType, ' ', oldValue, ' ', newValue \
+             ORDER BY id) AS value FROM `{ns}_audit`.audit_transaction"
+        )
+        .await,
+        json!(
+            "PHID-CMIT-2 core:edge [] [\"PHID-DREV-1\"],\
+             PHID-CMIT-1 core:edge [] [\"PHID-DREV-1\"]"
+        )
+    );
+    // The commits' publish tasks write to their authors and the actor.
+    let task = value(
+        "SELECT data AS value FROM `{ns}_worker`.worker_taskdata WHERE data LIKE \
+         '%\"objectPHID\":\"PHID-CMIT-1\"%'",
+    )
+    .await;
+    let task: Value = serde_json::from_str(task.as_str().expect("a task")).expect("JSON");
+    assert_eq!(
+        task["state"]["mailToPHIDs"],
+        json!(["PHID-USER-alice", "PHID-USER-bob"])
+    );
+    assert_eq!(
+        task["state"]["mailStamps"][1]["value"],
+        json!("rVCTaaaaaaa111")
+    );
 
     test_db.drop_databases().await;
 }

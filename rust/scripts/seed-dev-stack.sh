@@ -45,3 +45,6 @@ docker restart phabricator-phabricator.test-1 phabricator-phab-rust-1 >/dev/null
 echo "Adding users, projects and revisions..."
 docker cp "$repo/rust/scripts/seed-dev-stack.php" phabricator-phabricator-1:/tmp/seed-dev-stack.php
 docker exec phabricator-phabricator-1 sh -c 'cd /app/phabricator && php /tmp/seed-dev-stack.php'
+
+echo "Adding a Git repository and its commits..."
+docker exec -i phabricator-phabdb-1 sh -c "$mysql 2>/dev/null" < "$repo/rust/scripts/seed-dev-git.sql"

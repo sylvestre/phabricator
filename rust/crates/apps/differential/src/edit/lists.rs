@@ -105,6 +105,7 @@ pub(super) fn edge_database(phid: &str) -> Result<&'static str, MethodError> {
         PhidType::USER => Ok("user"),
         PhidType::PROJECT => Ok("project"),
         PhidType::REVISION => Ok("differential"),
+        PhidType::COMMIT => Ok("repository"),
         _ => Err(MethodError::Unsupported("edges of other objects")),
     }
 }

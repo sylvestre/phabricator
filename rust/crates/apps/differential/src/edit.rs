@@ -10,13 +10,15 @@
 //! feed stories and search indexing still come from PHP.
 //!
 //! Ported, on an existing revision the actor can see: a `comment`, whose
-//! remarkup may mention users and reference one revision; one review or
-//! author action as the defaults, a new `title`, `summary` or `testPlan`,
-//! or a reviewer edit ([`reviewers`]); or a comment and one of those. With
-//! the review status change they cause, when Herald's rules are ones
+//! remarkup may mention users and reference revisions, commits
+//! ([`commits`]) or files; one review or author action as the defaults, a
+//! new `title`, `summary` or `testPlan`, or a reviewer edit
+//! ([`reviewers`]); or a comment and one of those. With the review status
+//! change they cause, when Herald's rules are ones
 //! [`phab_app_herald::engine`] evaluates. A comment subscribes its author
 //! when nothing else does (`applyImplicitCC()`).
 
+mod commits;
 mod dependencies;
 mod files;
 mod lists;
@@ -428,7 +430,12 @@ async fn check_side_effects(
             return Err(MethodError::Unsupported("revisions with buildables"));
         }
     }
-    let projects: Vec<Phid> = facts.projects.iter().cloned().map(Phid::new).collect();
+    check_projects(database, &facts.projects).await
+}
+
+/// Projects whose watchers would get mail, which is left to PHP.
+async fn check_projects(database: &Database, projects: &[String]) -> Result<(), MethodError> {
+    let projects: Vec<Phid> = projects.iter().cloned().map(Phid::new).collect();
     if !edges::load_edges(database, &projects, &[PROJECT_HAS_WATCHER], None)
         .await?
         .is_empty()
@@ -643,13 +650,29 @@ struct Link {
     targets: Vec<Target>,
 }
 
-/// A revision an edge goes to, or went to: its facts and its inverse
-/// transaction.
+/// An object an edge goes to, or went to, and its inverse transaction.
 struct Target {
-    revision: Revision,
-    facts: Facts,
+    object: Linked,
     inverse_phid: String,
     added: bool,
+}
+
+/// The objects edges go to: revisions, with their facts, and commits.
+enum Linked {
+    Revision {
+        revision: Box<Revision>,
+        facts: Facts,
+    },
+    Commit(commits::Linked),
+}
+
+impl Target {
+    fn phid(&self) -> &str {
+        match &self.object {
+            Linked::Revision { revision, .. } => revision.phid.as_str(),
+            Linked::Commit(commit) => &commit.phid,
+        }
+    }
 }
 
 /// The revisions with these IDs the viewer can see, but `revision`.
@@ -711,19 +734,24 @@ async fn plan_link(
         }
         planned.push(plan_target(request, target, true).await?);
     }
-    if planned.is_empty() {
-        return Ok(None);
+    Ok(new_link(edge_type, planned))
+}
+
+/// The link adding edges to `targets`, if any.
+fn new_link(edge_type: i64, targets: Vec<Target>) -> Option<Link> {
+    if targets.is_empty() {
+        return None;
     }
-    Ok(Some(Link {
+    Some(Link {
         edge_type,
         phid: transaction_phid(),
         removed: Vec::new(),
-        added: planned
+        added: targets
             .iter()
-            .map(|target| target.revision.phid.as_str().to_owned())
+            .map(|target| target.phid().to_owned())
             .collect(),
-        targets: planned,
-    }))
+        targets,
+    })
 }
 
 /// The inverse edit of `target`, an edge to which is `added` or removed.
@@ -742,16 +770,18 @@ async fn plan_target(
         ));
     }
     Ok(Target {
-        revision: target,
-        facts,
+        object: Linked::Revision {
+            revision: Box::new(target),
+            facts,
+        },
         inverse_phid: transaction_phid(),
         added,
     })
 }
 
 /// The revisions `texts` reference, as `D123` or by URI, but the
-/// `unmentionable` ones (dependencies). References to commits are left to
-/// PHP.
+/// `unmentionable` ones (dependencies), or the commits they reference.
+/// References to both are left to PHP, whose object query orders them.
 async fn plan_object_mention(
     request: &ApiRequest<'_>,
     revision: &Revision,
@@ -772,21 +802,50 @@ async fn plan_object_mention(
         return Ok(None);
     }
     let mut ids: Vec<i64> = Vec::new();
+    let mut hashes: Vec<String> = Vec::new();
     for (prefix, id) in references {
-        let id = std::str::from_utf8(&id).ok().and_then(|id| id.parse().ok());
-        match (prefix, id) {
-            ("D", Some(id)) if !ids.contains(&id) => ids.push(id),
+        let Ok(id) = String::from_utf8(id) else {
+            continue;
+        };
+        match (prefix, id.parse()) {
+            ("D", Ok(id)) if !ids.contains(&id) => ids.push(id),
+            ("", _) if !hashes.contains(&id) => hashes.push(id),
             // Projects, Herald rules, Spaces, repositories and files are not
             // mentionable (`PhabricatorMentionableInterface`); files attach
             // (`files::plan()`).
-            ("D", Some(_)) | ("#" | "H" | "S" | "r" | "R" | "F", _) => {}
+            ("D", Ok(_)) | ("" | "#" | "H" | "S" | "r" | "R" | "F", _) => {}
             _ => return Err(MethodError::Unsupported("references to other objects")),
         }
     }
     // Objects don't mention themselves.
     let mut found = other_revisions(request, revision, ids).await?;
     found.retain(|found| !unmentionable.iter().any(|phid| phid == found.phid.as_str()));
-    plan_link(request, revision, edges::OBJECT_MENTIONS_OBJECT, found).await
+    let commits = commits::load(request, &hashes).await?;
+    if commits.is_empty() {
+        return plan_link(request, revision, edges::OBJECT_MENTIONS_OBJECT, found).await;
+    }
+    if !found.is_empty() {
+        return Err(MethodError::Unsupported(
+            "references to revisions and commits",
+        ));
+    }
+    let old = destinations(
+        &request.context.database,
+        &revision.phid,
+        edges::OBJECT_MENTIONS_OBJECT,
+    )
+    .await?;
+    let targets = commits
+        .into_iter()
+        .filter(|commit| !old.contains(&commit.phid))
+        .map(|commit| Target {
+            object: Linked::Commit(commit),
+            inverse_phid: Phid::generate(PhidType::TRANSACTION, Some(PhidType::COMMIT))
+                .into_string(),
+            added: true,
+        })
+        .collect();
+    Ok(new_link(edges::OBJECT_MENTIONS_OBJECT, targets))
 }
 
 /// `applyImplicitCC()`: whether commenting subscribes the actor, who is
@@ -1578,18 +1637,19 @@ async fn link_task(
     actor: &str,
     must_encrypt: &[String],
 ) -> Result<String, MethodError> {
-    let header = saved_header(database, &target.revision.phid)
-        .await?
-        .unwrap_or_else(|| "none".to_owned());
-    let state = worker_state(
-        &target.revision,
-        &target.facts,
-        actor,
-        must_encrypt,
-        &header,
-    );
+    // Sub-editors run no Herald: they load the saved header, null when the
+    // object has none.
+    let saved = saved_header(database, &Phid::new(target.phid())).await?;
+    let header = saved.as_deref().unwrap_or_default();
+    let mut state = match &target.object {
+        Linked::Revision { revision, facts } => {
+            worker_state(revision, facts, actor, must_encrypt, header)
+        }
+        Linked::Commit(commit) => commits::worker_state(commit, actor, must_encrypt, header),
+    };
+    state["heraldHeader"] = json!(saved);
     Ok(php::json_encode(&json!({
-        "objectPHID": target.revision.phid.as_str(),
+        "objectPHID": target.phid(),
         "actorPHID": actor,
         "xactionPHIDs": [target.inverse_phid],
         "state": state,
@@ -1887,11 +1947,15 @@ async fn insert_transaction_on(
     (phid, kind, old, new, metadata): (&str, &str, &str, &str, &str),
 ) -> Result<(), MethodError> {
     let database = &request.context.database;
+    let table = match Phid::new(object).phid_type() {
+        PhidType::COMMIT => database.table("audit", "audit_transaction"),
+        _ => database.table("differential", "differential_transaction"),
+    };
     phab_db::sqlx::query(&format!(
-        "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
-         commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
-         dateCreated, dateModified) VALUES (?, ?, ?, 'public', ?, NULL, 0, ?, ?, ?, ?, ?, ?, ?)",
-        database.table("differential", "differential_transaction")
+        "INSERT INTO {table} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, \
+         commentPHID, commentVersion, transactionType, oldValue, newValue, contentSource, \
+         metadata, dateCreated, dateModified) VALUES (?, ?, ?, 'public', ?, NULL, 0, ?, ?, ?, \
+         ?, ?, ?, ?)"
     ))
     .bind(phid)
     .bind(&plan.actor)
@@ -2117,7 +2181,7 @@ async fn write_link(
     let source = php::json_encode(&json!([revision]));
     let inverse = edge_metadata(plan, inverse_edge_type(link.edge_type)?);
     for target in &link.targets {
-        let phid = target.revision.phid.as_str();
+        let phid = target.phid();
         let (old, new) = if target.added {
             ("[]", &*source)
         } else {
@@ -2131,12 +2195,16 @@ async fn write_link(
             &*inverse,
         );
         insert_transaction_on(request, plan, phid, connection, row).await?;
+        // The audit editor saves commits as they are.
+        let Linked::Revision { revision, .. } = &target.object else {
+            continue;
+        };
         phab_db::sqlx::query(&format!(
             "UPDATE {} SET dateModified = ? WHERE id = ?",
             database.table("differential", "differential_revision")
         ))
         .bind(request.now)
-        .bind(target.revision.id)
+        .bind(revision.id)
         .execute(&mut *connection)
         .await?;
     }
@@ -2273,7 +2341,7 @@ async fn queue_publishing(
     .await?;
     for (link, data) in &plan.links {
         for (target, data) in link.targets.iter().zip(data) {
-            let target = target.revision.phid.as_str();
+            let target = target.phid();
             worker::schedule_task(connection, database, publish(data, target), request.now).await?;
         }
     }

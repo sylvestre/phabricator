@@ -3,7 +3,7 @@
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
-use serde_json::{Value, json};
+use serde_json::json;
 
 const TOKEN: &str = "api-fafafafafafafafafafafafafafa";
 

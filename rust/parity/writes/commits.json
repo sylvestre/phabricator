@@ -1,0 +1,12 @@
+[
+  {"name": "reference a Git commit from D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Landed as R2:9f1c2e3d4b5a."}]}},
+  {"name": "reference two Git commits from D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "comment", "value": "See R2:9f1c2e3d4b5a and R2:a0b1c2d3e4f5."}]}},
+  {"name": "reference a Git commit without author", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "See R2:a0b1c2d3e4f5."}]}},
+  {"name": "reference a Git commit by its bare hash", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "See 9f1c2e3d4b5a6978."}]}},
+  {"name": "reference a Git commit twice", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "R2:9f1c2e3d4b5a, again 9f1c2e3d4b5a69788796."}]}},
+  {"name": "reference a Git commit from the summary", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Fixes what R2:a0b1c2d3e4f5 broke."}]}},
+  {"name": "reference a Git commit with a title edit", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "title", "value": "Bug 1890003 - Retitled"}, {"type": "comment", "value": "Follows R2:9f1c2e3d4b5a."}]}},
+  {"name": "reference a Git commit not on a permanent ref", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "See R2:b1c2d3e4f5a6."}]}},
+  {"name": "reference a Git commit and a revision", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "D2 and R2:9f1c2e3d4b5a."}]}},
+  {"name": "reference a Mercurial commit", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Backed out in rVCTb50ab917138e."}]}}
+]
