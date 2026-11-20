@@ -37,7 +37,7 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(legacy_query::LegacyQuery);
     registry.register(legacy_query::GetRevision);
     registry.register(edge_search::EdgeSearch);
-    registry.register(edit::RevisionEdit);
+    registry.register(edit::RevisionEdit::default());
     registry.register(transaction_search::TransactionSearch);
     registry.register(revision_comments::GetRevisionComments);
     registry.register(visibility::RevisionVisibility);

@@ -385,6 +385,19 @@ impl Prepared<'_> {
         usernames
     }
 
+    /// The IDs of the files the text references or embeds outside quotes
+    /// (`F123`, `{F123}`), which `PhabricatorEmbedFileRemarkupRule` takes
+    /// as an intent to attach them, in order.
+    pub fn file_attach_intent_ids(&self) -> Vec<Vec<u8>> {
+        let mut ids: Vec<Vec<u8>> = Vec::new();
+        for mention in &self.context.metadata.objects {
+            if mention.prefix == "F" && mention.quote_depth == 0 && !ids.contains(&mention.id) {
+                ids.push(mention.id.clone());
+            }
+        }
+        ids
+    }
+
     /// The PHIDs of `{PHID-...}` handles.
     pub fn handle_phids(&self) -> Vec<String> {
         self.context.metadata.handles.keys().cloned().collect()

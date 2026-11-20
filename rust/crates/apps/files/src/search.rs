@@ -190,6 +190,23 @@ async fn visible_by_attachment(
     .map_err(MethodError::internal)
 }
 
+/// `PhabricatorEmbedFileRemarkupRule::loadObjects()` for the editor: the
+/// files with these IDs the actor can see, deleted ones included (its query
+/// doesn't call `withIsDeleted()`).
+pub fn embedded_files<'a>(
+    request: &'a ApiRequest<'a>,
+    ids: Vec<i64>,
+) -> phab_app_differential::edit::FilesFuture<'a> {
+    Box::pin(async move {
+        let files = crate::load_by_ids(&request.context.database, &ids).await?;
+        Ok(visible_files(request, files)
+            .await?
+            .into_iter()
+            .map(|file| (file.id, file.phid.as_str().to_owned()))
+            .collect())
+    })
+}
+
 /// `PhabricatorFileQuery::loadPage()` and the policy filter: a file is
 /// visible through its policy, its author, an attached object the viewer
 /// can see, or its original when it is a thumbnail (which also needs the

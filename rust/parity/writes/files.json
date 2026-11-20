@@ -1,0 +1,10 @@
+[
+  {"name": "embed F1 in a comment on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Screenshot: {F1}"}]}},
+  {"name": "embed F1 and F12 in a comment on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Before {F12}, after {F1}."}]}},
+  {"name": "embed F1 in D1's summary", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "As shown:\n\n{F1}"}]}},
+  {"name": "embed F1 with a mention of D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "{F1} like D2."}]}},
+  {"name": "embed a missing file", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "See {F999999}."}]}},
+  {"name": "name F1 without embedding it", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "See F1."}]}},
+  {"name": "reference commit rVCT152e0f678058 from D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "comment", "value": "Landed as rVCT152e0f678058."}]}},
+  {"name": "reference two commits from D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "See rVCT152e0f678058 and rVCT504eed9cbfad."}]}}
+]

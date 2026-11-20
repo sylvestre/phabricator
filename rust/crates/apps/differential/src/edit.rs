@@ -18,6 +18,7 @@
 //! when nothing else does (`applyImplicitCC()`).
 
 mod dependencies;
+mod files;
 mod lists;
 mod reviewers;
 mod stack;
@@ -749,8 +750,8 @@ async fn plan_target(
 }
 
 /// The revisions `texts` reference, as `D123` or by URI, but the
-/// `unmentionable` ones (dependencies). References to commits and files are
-/// left to PHP.
+/// `unmentionable` ones (dependencies). References to commits are left to
+/// PHP.
 async fn plan_object_mention(
     request: &ApiRequest<'_>,
     revision: &Revision,
@@ -775,9 +776,10 @@ async fn plan_object_mention(
         let id = std::str::from_utf8(&id).ok().and_then(|id| id.parse().ok());
         match (prefix, id) {
             ("D", Some(id)) if !ids.contains(&id) => ids.push(id),
-            // Projects, Herald rules, Spaces and repositories are not
-            // mentionable (`PhabricatorMentionableInterface`).
-            ("D", Some(_)) | ("#" | "H" | "S" | "r" | "R", _) => {}
+            // Projects, Herald rules, Spaces, repositories and files are not
+            // mentionable (`PhabricatorMentionableInterface`); files attach
+            // (`files::plan()`).
+            ("D", Some(_)) | ("#" | "H" | "S" | "r" | "R" | "F", _) => {}
             _ => return Err(MethodError::Unsupported("references to other objects")),
         }
     }
@@ -931,6 +933,9 @@ struct Plan {
     /// The revisions the edit links to, dependencies then mentions, and
     /// the publish tasks of their targets.
     links: Vec<(Link, Vec<String>)>,
+    /// The implicit `core:file` transaction of the files the texts
+    /// reference.
+    file_edit: Option<files::Planned>,
     /// Every transaction, in the order PHP applies them.
     applied_phids: Vec<String>,
     group_id: String,
@@ -1760,7 +1765,7 @@ async fn plan_reviewer_edit(
     ))
 }
 
-async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
+async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Plan, MethodError> {
     let wanted = wanted(request)?;
     let mut revision = load_revision(request).await?;
     let actor = actor_phid(request)?;
@@ -1800,6 +1805,9 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
     )
     .await?;
     let links = plan_links(request, &wanted, &revision).await?;
+    let old = old_text.as_ref().map(|(_, old)| old.as_str());
+    let texts = (&new_texts(&wanted)[..], old);
+    let file_edit = files::plan(request, finder, revision.phid.as_str(), texts).await?;
     let comment = wanted.comment.map(|text| {
         (
             text,
@@ -1828,6 +1836,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .chain(tag_edit.iter().map(|edit| edit.phid.clone()))
         .chain(late)
         .chain(links.iter().map(|link| link.phid.clone()))
+        .chain(file_edit.iter().map(|edit| edit.phid.clone()))
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
@@ -1846,6 +1855,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         subscriber_edit,
         tag_edit,
         links: tasks,
+        file_edit,
         comment,
         status,
         applied_phids,
@@ -1931,6 +1941,9 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     // the edges and the inverse edit come with the external effects.
     for (link, _) in &plan.links {
         write_link_transaction(request, plan, link, connection).await?;
+    }
+    if let Some(edit) = &plan.file_edit {
+        files::write(request, plan, edit, connection).await?;
     }
     if let Some((text, phid, comment_phid)) = &plan.comment {
         write_comment(
@@ -2465,8 +2478,21 @@ async fn write_herald(
     Ok(())
 }
 
-/// `differential.revision.edit`.
-pub struct RevisionEdit;
+pub use files::{FileFinder, FilesFuture};
+
+/// `differential.revision.edit`. Without a [`FileFinder`], references to
+/// files are left to PHP.
+#[derive(Default)]
+pub struct RevisionEdit {
+    files: Option<FileFinder>,
+}
+
+impl RevisionEdit {
+    /// The method, which finds referenced files with `files`.
+    pub fn with_files(files: FileFinder) -> Self {
+        Self { files: Some(files) }
+    }
+}
 
 impl Method for RevisionEdit {
     fn name(&self) -> &'static str {
@@ -2483,7 +2509,7 @@ impl Method for RevisionEdit {
 
     fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
         Box::pin(async move {
-            let plan = plan(request).await?;
+            let plan = plan(request, self.files).await?;
             write(request, &plan).await?;
             Ok(json!({
                 "object": {"id": plan.revision.id, "phid": plan.revision.phid.as_str()},

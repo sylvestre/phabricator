@@ -24,6 +24,11 @@ use serde_json::Value;
 pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(info::FileInfo);
     registry.register(search::FileSearch);
+    // The editor finds the files remarkup references through this
+    // application, which depends on it.
+    registry.register(phab_app_differential::edit::RevisionEdit::with_files(
+        search::embedded_files,
+    ));
 }
 
 /// `PhabricatorFileAttachment::MODE_ATTACH`.
