@@ -20,6 +20,7 @@
 mod dependencies;
 mod lists;
 mod reviewers;
+mod stack;
 mod subscribers;
 mod tags;
 
@@ -54,41 +55,6 @@ impl Adapter for RevisionAdapter {
     fn has_action(&self, action: &str) -> bool {
         matches!(action, "email.must-encrypt" | "projects.add")
     }
-}
-
-/// Whether remarkup could expand into other transactions: mentions,
-/// object references, files, projects. Only text without any of their
-/// markers is ported.
-fn has_references(text: &str) -> bool {
-    if text
-        .chars()
-        .any(|character| matches!(character, '{' | '#' | '[' | '<' | '/' | ':'))
-    {
-        return true;
-    }
-    // T4, rXYZabc, F1, H2, and the like; `@user2` mentions a user and
-    // `D123` a revision, which are ported.
-    let mut previous = ' ';
-    let mut word = String::new();
-    let mut word_start = ' ';
-    for character in text.chars().chain([' ']) {
-        if character.is_ascii_alphanumeric() {
-            if word.is_empty() {
-                word_start = previous;
-            }
-            word.push(character);
-        } else if !word.is_empty() {
-            let revision = word
-                .strip_prefix('D')
-                .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()));
-            if word.bytes().any(|b| b.is_ascii_digit()) && word_start != '@' && !revision {
-                return true;
-            }
-            word.clear();
-        }
-        previous = character;
-    }
-    false
 }
 
 /// `isEmptyComment()`.
@@ -212,6 +178,8 @@ struct Wanted {
     subscribers: Option<lists::Wanted>,
     /// Tags added, removed or set.
     projects: Option<lists::Wanted>,
+    /// Parent or child revisions added, removed or set, with the edge type.
+    stack: Option<(i64, lists::Wanted)>,
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
@@ -227,10 +195,8 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
             transaction.get("value"),
         ) {
             (Some("comment"), Some(Value::String(text))) if wanted.comment.is_none() => {
-                if is_empty_comment(text) || has_references(text) {
-                    return Err(MethodError::Unsupported(
-                        "empty comments and comments with references",
-                    ));
+                if is_empty_comment(text) {
+                    return Err(MethodError::Unsupported("empty comments"));
                 }
                 wanted.comment = Some(text.clone());
             }
@@ -262,8 +228,8 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
             (Some(kind @ ("summary" | "testPlan")), Some(Value::String(text)))
                 if wanted.text.is_none() =>
             {
-                if has_references(text) || has_relationships(text) {
-                    return Err(MethodError::Unsupported("fields with references"));
+                if has_relationships(text) {
+                    return Err(MethodError::Unsupported("fields which may revert"));
                 }
                 let field = if kind == "summary" {
                     TextField::Summary
@@ -272,23 +238,8 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
                 };
                 wanted.text = Some((field, text.clone()));
             }
-            (
-                Some(kind @ ("reviewers.add" | "reviewers.remove" | "reviewers.set")),
-                Some(value),
-            ) if wanted.reviewers.is_none() => {
-                wanted.reviewers = Some(reviewers::parse(kind, value)?);
-            }
-            (
-                Some(kind @ ("subscribers.add" | "subscribers.remove" | "subscribers.set")),
-                Some(value),
-            ) if wanted.subscribers.is_none() => {
-                let types = &["PHID-USER-", "PHID-PROJ-"];
-                wanted.subscribers = Some(lists::parse(kind, value, types)?);
-            }
-            (Some(kind @ ("projects.add" | "projects.remove" | "projects.set")), Some(value))
-                if wanted.projects.is_none() =>
-            {
-                wanted.projects = Some(lists::parse(kind, value, &["PHID-PROJ-"])?);
+            (Some(kind), Some(value)) if kind.contains('.') => {
+                wanted_list(&mut wanted, kind, value)?;
             }
             _ => return Err(MethodError::Unsupported("transactions not ported")),
         }
@@ -303,11 +254,43 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
         + usize::from(wanted.text.is_some())
         + usize::from(wanted.reviewers.is_some())
         + usize::from(wanted.subscribers.is_some())
-        + usize::from(wanted.projects.is_some());
+        + usize::from(wanted.projects.is_some())
+        + usize::from(wanted.stack.is_some());
     if actions > 1 {
         return Err(MethodError::Unsupported("several actions"));
     }
     Ok(wanted)
+}
+
+/// A list transaction (`reviewers.add`, `parents.set`, ...): one of each
+/// list is ported.
+fn wanted_list(wanted: &mut Wanted, kind: &str, value: &Value) -> Result<(), MethodError> {
+    let unsupported = || MethodError::Unsupported("transactions not ported");
+    let Some((list, "add" | "remove" | "set")) = kind.split_once('.') else {
+        return Err(unsupported());
+    };
+    match list {
+        "reviewers" if wanted.reviewers.is_none() => {
+            wanted.reviewers = Some(reviewers::parse(kind, value)?);
+        }
+        "subscribers" if wanted.subscribers.is_none() => {
+            let types = &["PHID-USER-", "PHID-PROJ-"];
+            wanted.subscribers = Some(lists::parse(kind, value, types)?);
+        }
+        "projects" if wanted.projects.is_none() => {
+            wanted.projects = Some(lists::parse(kind, value, &["PHID-PROJ-"])?);
+        }
+        "parents" | "children" if wanted.stack.is_none() => {
+            let edge_type = if list == "parents" {
+                edges::REVISION_DEPENDS_ON_REVISION
+            } else {
+                edges::REVISION_DEPENDED_ON_BY_REVISION
+            };
+            wanted.stack = Some((edge_type, lists::parse(kind, value, &["PHID-DREV-"])?));
+        }
+        _ => return Err(unsupported()),
+    }
+    Ok(())
 }
 
 /// `newObjectFromIdentifier()`: the revision, which the viewer must see.
@@ -489,10 +472,12 @@ struct Subscription {
 /// people query returns them (newest first), with whether each is a bot,
 /// an administrator, and an active account.
 async fn mentioned_users(
-    database: &Database,
+    request: &ApiRequest<'_>,
     text: &str,
 ) -> Result<Vec<(String, bool, bool, bool)>, MethodError> {
-    let engine = phab_remarkup::phabricator::engine(phab_remarkup::phabricator::default_config());
+    let database = &request.context.database;
+    let engine =
+        phab_remarkup::phabricator::engine(crate::markup::engine_config(&request.context.config));
     let usernames: Vec<String> = engine
         .prepare(text.as_bytes(), phab_remarkup::Mode::Html)
         .mentioned_usernames()
@@ -546,14 +531,14 @@ async fn plan_subscription(
     // Only new mentions count: text a field had mentioned no one anew.
     let mut mentioned: Vec<(String, bool, bool, bool)> = Vec::new();
     for text in new_texts(wanted) {
-        for user in mentioned_users(database, text).await? {
+        for user in mentioned_users(request, text).await? {
             if !mentioned.iter().any(|known| known.0 == user.0) {
                 mentioned.push(user);
             }
         }
     }
     if let Some((_, old)) = old_text {
-        let before = mentioned_users(database, old).await?;
+        let before = mentioned_users(request, old).await?;
         mentioned.retain(|user| !before.iter().any(|known| known.0 == user.0));
     }
     facts.mentioned = if mentioned.is_empty() {
@@ -640,18 +625,30 @@ async fn plan_subscription(
     }))
 }
 
-/// An edge to another revision an edit adds, a mention
-/// (`expandRemarkupBlockTransactions()`) or a dependency: its `core:edge`
-/// transaction, and the inverse edit of the other revision
+/// The edges to other revisions an edit adds, mentions
+/// (`expandRemarkupBlockTransactions()`) or dependencies: their `core:edge`
+/// transaction, and the inverse edit of each other revision
 /// (`applyInverseEdgeTransactions()`), a sub-editor which runs no Herald.
 struct Link {
     edge_type: i64,
     /// The edge transaction.
     phid: String,
-    /// The other revision, its facts and its transaction.
-    target: Revision,
-    target_facts: Facts,
+    /// The revisions the edges are removed from, which the viewer may not
+    /// see, and those they are added to, in the order of the edit.
+    removed: Vec<String>,
+    added: Vec<String>,
+    /// The other revisions the viewer can see, edges added or removed, in
+    /// the order of `DifferentialRevisionQuery`.
+    targets: Vec<Target>,
+}
+
+/// A revision an edge goes to, or went to: its facts and its inverse
+/// transaction.
+struct Target {
+    revision: Revision,
+    facts: Facts,
     inverse_phid: String,
+    added: bool,
 }
 
 /// The revisions with these IDs the viewer can see, but `revision`.
@@ -660,12 +657,26 @@ async fn other_revisions(
     revision: &Revision,
     ids: Vec<i64>,
 ) -> Result<Vec<Revision>, MethodError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let constraints = Constraints {
+        ids: Some(ids),
+        ..Constraints::default()
+    };
+    visible_revisions(request, revision, constraints).await
+}
+
+/// The revisions matching `constraints` the viewer can see, but
+/// `revision`, in the order of `DifferentialRevisionQuery`.
+async fn visible_revisions(
+    request: &ApiRequest<'_>,
+    revision: &Revision,
+    constraints: Constraints,
+) -> Result<Vec<Revision>, MethodError> {
     let query = Revisions {
         request,
-        constraints: Constraints {
-            ids: Some(ids),
-            ..Constraints::default()
-        },
+        constraints,
         order: Order::Updated,
         memory: std::sync::Mutex::default(),
     };
@@ -681,22 +692,47 @@ async fn other_revisions(
     .collect())
 }
 
-/// The edge of `edge_type` from `revision` to `target`, unless it exists
-/// already (no effect). Targets whose inverse edit would do more than PHP's
-/// ported editor does are left to PHP.
+/// The edges of `edge_type` from `revision` to `targets`, but those which
+/// exist already (no effect). Targets whose inverse edit would do more than
+/// PHP's ported editor does are left to PHP.
 async fn plan_link(
     request: &ApiRequest<'_>,
     revision: &Revision,
     edge_type: i64,
-    target: Revision,
+    targets: Vec<Revision>,
 ) -> Result<Option<Link>, MethodError> {
     let database = &request.context.database;
     let old = destinations(database, &revision.phid, edge_type).await?;
-    if old.iter().any(|phid| phid == target.phid.as_str()) {
+    let mut planned = Vec::new();
+    for target in targets {
+        if old.iter().any(|phid| phid == target.phid.as_str()) {
+            continue;
+        }
+        planned.push(plan_target(request, target, true).await?);
+    }
+    if planned.is_empty() {
         return Ok(None);
     }
-    let target_facts = Facts::load(database, &target).await?;
-    check_side_effects(request, &target, &target_facts).await?;
+    Ok(Some(Link {
+        edge_type,
+        phid: transaction_phid(),
+        removed: Vec::new(),
+        added: planned
+            .iter()
+            .map(|target| target.revision.phid.as_str().to_owned())
+            .collect(),
+        targets: planned,
+    }))
+}
+
+/// The inverse edit of `target`, an edge to which is `added` or removed.
+async fn plan_target(
+    request: &ApiRequest<'_>,
+    target: Revision,
+    added: bool,
+) -> Result<Target, MethodError> {
+    let facts = Facts::load(&request.context.database, &target).await?;
+    check_side_effects(request, &target, &facts).await?;
     if new_review_status(&target, sticky_accept(request))
         .is_some_and(|status| status != target.status)
     {
@@ -704,25 +740,25 @@ async fn plan_link(
             "linked revisions with a stale status",
         ));
     }
-    Ok(Some(Link {
-        edge_type,
-        phid: transaction_phid(),
-        target,
-        target_facts,
+    Ok(Target {
+        revision: target,
+        facts,
         inverse_phid: transaction_phid(),
-    }))
+        added,
+    })
 }
 
-/// The revisions `texts` reference, as `D123`, but the `unmentionable`
-/// ones (dependencies); other references are left to PHP, and so are
-/// several revisions.
+/// The revisions `texts` reference, as `D123` or by URI, but the
+/// `unmentionable` ones (dependencies). References to commits and files are
+/// left to PHP.
 async fn plan_object_mention(
     request: &ApiRequest<'_>,
     revision: &Revision,
     texts: &[&str],
     unmentionable: &[String],
 ) -> Result<Option<Link>, MethodError> {
-    let engine = phab_remarkup::phabricator::engine(phab_remarkup::phabricator::default_config());
+    let engine =
+        phab_remarkup::phabricator::engine(crate::markup::engine_config(&request.context.config));
     let references: Vec<(&'static str, Vec<u8>)> = texts
         .iter()
         .flat_map(|text| {
@@ -739,19 +775,16 @@ async fn plan_object_mention(
         let id = std::str::from_utf8(&id).ok().and_then(|id| id.parse().ok());
         match (prefix, id) {
             ("D", Some(id)) if !ids.contains(&id) => ids.push(id),
-            ("D", Some(_)) => {}
+            // Projects, Herald rules, Spaces and repositories are not
+            // mentionable (`PhabricatorMentionableInterface`).
+            ("D", Some(_)) | ("#" | "H" | "S" | "r" | "R", _) => {}
             _ => return Err(MethodError::Unsupported("references to other objects")),
         }
     }
     // Objects don't mention themselves.
     let mut found = other_revisions(request, revision, ids).await?;
     found.retain(|found| !unmentionable.iter().any(|phid| phid == found.phid.as_str()));
-    let target = match found.len() {
-        0 => return Ok(None),
-        1 => found.remove(0),
-        _ => return Err(MethodError::Unsupported("references to several revisions")),
-    };
-    plan_link(request, revision, edges::OBJECT_MENTIONS_OBJECT, target).await
+    plan_link(request, revision, edges::OBJECT_MENTIONS_OBJECT, found).await
 }
 
 /// `applyImplicitCC()`: whether commenting subscribes the actor, who is
@@ -896,8 +929,8 @@ struct Plan {
     /// adds, with the old status.
     status: Option<(String, String)>,
     /// The revisions the edit links to, dependencies then mentions, and
-    /// their publish tasks.
-    links: Vec<(Link, String)>,
+    /// the publish tasks of their targets.
+    links: Vec<(Link, Vec<String>)>,
     /// Every transaction, in the order PHP applies them.
     applied_phids: Vec<String>,
     group_id: String,
@@ -1536,26 +1569,44 @@ async fn publication(
 /// `mustEncrypt` its parent editor propagates.
 async fn link_task(
     database: &Database,
-    mention: &Link,
+    target: &Target,
     actor: &str,
     must_encrypt: &[String],
 ) -> Result<String, MethodError> {
-    let header = saved_header(database, &mention.target.phid)
+    let header = saved_header(database, &target.revision.phid)
         .await?
         .unwrap_or_else(|| "none".to_owned());
     let state = worker_state(
-        &mention.target,
-        &mention.target_facts,
+        &target.revision,
+        &target.facts,
         actor,
         must_encrypt,
         &header,
     );
     Ok(php::json_encode(&json!({
-        "objectPHID": mention.target.phid.as_str(),
+        "objectPHID": target.revision.phid.as_str(),
         "actorPHID": actor,
-        "xactionPHIDs": [mention.inverse_phid],
+        "xactionPHIDs": [target.inverse_phid],
         "state": state,
     })))
+}
+
+/// The links with the publish tasks of their targets.
+async fn link_tasks(
+    database: &Database,
+    links: Vec<Link>,
+    actor: &str,
+    must_encrypt: &[String],
+) -> Result<Vec<(Link, Vec<String>)>, MethodError> {
+    let mut tasks = Vec::new();
+    for link in links {
+        let mut data = Vec::new();
+        for target in &link.targets {
+            data.push(link_task(database, target, actor, must_encrypt).await?);
+        }
+        tasks.push((link, data));
+    }
+    Ok(tasks)
 }
 
 /// An author action, with the void "Request Review" adds.
@@ -1630,20 +1681,25 @@ fn plan_status(request: &ApiRequest<'_>, revision: &mut Revision) -> Option<(Str
     Some((transaction_phid(), old))
 }
 
-/// The revisions the edit links to: the dependency its summary or test
-/// plan declares, then the revision it mentions.
+/// The revisions the edit links to: the parents or children it edits,
+/// the dependencies its summary or test plan declares, then the revisions
+/// it mentions.
 async fn plan_links(
     request: &ApiRequest<'_>,
     wanted: &Wanted,
     revision: &Revision,
 ) -> Result<Vec<Link>, MethodError> {
+    let stack = match &wanted.stack {
+        Some((edge_type, edit)) => Some(stack::plan(request, revision, *edge_type, edit).await?),
+        None => None,
+    };
     let (dependency, unmentionable) = match &wanted.text {
         Some((_, text)) => dependencies::plan(request, revision, text).await?,
         None => (None, Vec::new()),
     };
     let mention =
         plan_object_mention(request, revision, &new_texts(wanted), &unmentionable).await?;
-    Ok(dependency.into_iter().chain(mention).collect())
+    Ok(stack.into_iter().chain(dependency).chain(mention).collect())
 }
 
 /// The planned reviewer, subscriber and tag edits.
@@ -1776,11 +1832,7 @@ async fn plan(request: &ApiRequest<'_>) -> Result<Plan, MethodError> {
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
     let published = publication(database, &revision, &facts, &actor, &applied_phids).await?;
-    let mut tasks = Vec::new();
-    for link in links {
-        let data = link_task(database, &link, &actor, &published.must_encrypt).await?;
-        tasks.push((link, data));
-    }
+    let tasks = link_tasks(database, links, &actor, &published.must_encrypt).await?;
     Ok(Plan {
         actor,
         group_id: random::random_characters(32),
@@ -2022,43 +2074,59 @@ async fn write_link_transaction(
     link: &Link,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
-    let new = php::json_encode(&json!([link.target.phid.as_str()]));
+    let (old, new) = (
+        php::json_encode(&json!(link.removed)),
+        php::json_encode(&json!(link.added)),
+    );
     let metadata = edge_metadata(plan, link.edge_type);
-    let row = (link.phid.as_str(), "core:edge", "[]", &*new, &*metadata);
+    let row = (link.phid.as_str(), "core:edge", &*old, &*new, &*metadata);
     insert_transaction(request, plan, connection, row).await
 }
 
-/// A link's edges, and the inverse edit of the other revision: its
-/// transaction and `dateModified`.
+/// A link's edges, the new ones numbered in the order of their targets,
+/// and the inverse edit of each other revision: its transaction and
+/// `dateModified`.
 async fn write_link(
     request: &ApiRequest<'_>,
     plan: &Plan,
-    mention: &Link,
+    link: &Link,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
     let database = &request.context.database;
     let revision = plan.revision.phid.as_str();
-    let target = mention.target.phid.as_str();
-    let edge = (revision, mention.edge_type, target);
-    insert_edge(database, connection, edge, 0, request.now).await?;
-    let new = php::json_encode(&json!([revision]));
-    let inverse = edge_metadata(plan, inverse_edge_type(mention.edge_type)?);
-    let row = (
-        mention.inverse_phid.as_str(),
-        "core:edge",
-        "[]",
-        &*new,
-        &*inverse,
-    );
-    insert_transaction_on(request, plan, target, connection, row).await?;
-    phab_db::sqlx::query(&format!(
-        "UPDATE {} SET dateModified = ? WHERE id = ?",
-        database.table("differential", "differential_revision")
-    ))
-    .bind(request.now)
-    .bind(mention.target.id)
-    .execute(&mut *connection)
-    .await?;
+    for removed in &link.removed {
+        delete_edge(database, connection, (revision, link.edge_type, removed)).await?;
+    }
+    for (seq, added) in (0..).zip(&link.added) {
+        let edge = (revision, link.edge_type, added.as_str());
+        insert_edge(database, connection, edge, seq, request.now).await?;
+    }
+    let source = php::json_encode(&json!([revision]));
+    let inverse = edge_metadata(plan, inverse_edge_type(link.edge_type)?);
+    for target in &link.targets {
+        let phid = target.revision.phid.as_str();
+        let (old, new) = if target.added {
+            ("[]", &*source)
+        } else {
+            (&*source, "[]")
+        };
+        let row = (
+            target.inverse_phid.as_str(),
+            "core:edge",
+            old,
+            new,
+            &*inverse,
+        );
+        insert_transaction_on(request, plan, phid, connection, row).await?;
+        phab_db::sqlx::query(&format!(
+            "UPDATE {} SET dateModified = ? WHERE id = ?",
+            database.table("differential", "differential_revision")
+        ))
+        .bind(request.now)
+        .bind(target.revision.id)
+        .execute(&mut *connection)
+        .await?;
+    }
     Ok(())
 }
 
@@ -2073,6 +2141,7 @@ fn inverse_edge_type(edge_type: i64) -> Result<i64, MethodError> {
         edges::OBJECT_HAS_PROJECT => Ok(PROJECT_HAS_OBJECT),
         edges::OBJECT_MENTIONS_OBJECT => Ok(edges::OBJECT_MENTIONED_BY_OBJECT),
         edges::REVISION_DEPENDS_ON_REVISION => Ok(edges::REVISION_DEPENDED_ON_BY_REVISION),
+        edges::REVISION_DEPENDED_ON_BY_REVISION => Ok(edges::REVISION_DEPENDS_ON_REVISION),
         _ => Err(MethodError::internal("an edge type without inverse")),
     }
 }
@@ -2190,8 +2259,10 @@ async fn queue_publishing(
     )
     .await?;
     for (link, data) in &plan.links {
-        let target = link.target.phid.as_str();
-        worker::schedule_task(connection, database, publish(data, target), request.now).await?;
+        for (target, data) in link.targets.iter().zip(data) {
+            let target = target.revision.phid.as_str();
+            worker::schedule_task(connection, database, publish(data, target), request.now).await?;
+        }
     }
     Ok(())
 }
@@ -2429,18 +2500,6 @@ impl Method for RevisionEdit {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn finds_references() {
-        assert!(!has_references("Looks good to me."));
-        assert!(!has_references("See D123."));
-        assert!(has_references("See T123."));
-        // Mentions are fine, numbers in usernames too.
-        assert!(!has_references("Thanks @alice and @bob2"));
-        assert!(has_references("Thanks @alice for F2"));
-        assert!(has_references("{F1}"));
-        assert!(has_references("https://example.com"));
-    }
 
     #[test]
     fn rule_monograms_like_php() {

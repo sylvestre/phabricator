@@ -1,0 +1,14 @@
+[
+  {"name": "D7 gets the parent D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "parents.add", "value": ["PHID-DREV-pw4eh5zhfr66pkgngvgf"]}]}},
+  {"name": "D7 gets the parents D2 and D6", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "parents.add", "value": ["PHID-DREV-shlou4tossmnyewccrq2", "PHID-DREV-pw4eh5zhfr66pkgngvgf"]}]}},
+  {"name": "D5 loses its hidden parent D4", "method": "differential.revision.edit", "params": {"objectIdentifier": "D5", "transactions": [{"type": "parents.remove", "value": ["PHID-DREV-jdmyrhgge3owijdnl6yr"]}]}},
+  {"name": "D5's parents set to D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D5", "transactions": [{"type": "parents.set", "value": ["PHID-DREV-pw4eh5zhfr66pkgngvgf"]}]}},
+  {"name": "D1 gets the child D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "children.add", "value": ["PHID-DREV-kfjm6nxt3s47z5w747zx"]}]}},
+  {"name": "D1 loses its child D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "children.remove", "value": ["PHID-DREV-pw4eh5zhfr66pkgngvgf"]}]}},
+  {"name": "D5 gets the parent D4 it has", "method": "differential.revision.edit", "params": {"objectIdentifier": "D5", "transactions": [{"type": "parents.add", "value": ["PHID-DREV-jdmyrhgge3owijdnl6yr"]}]}},
+  {"name": "D7 gets the hidden parent D4", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "parents.add", "value": ["PHID-DREV-jdmyrhgge3owijdnl6yr"]}]}},
+  {"name": "D1 gets the parent D2, a cycle", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "parents.add", "value": ["PHID-DREV-pw4eh5zhfr66pkgngvgf"]}]}},
+  {"name": "D7 gets itself as a parent", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "parents.add", "value": ["PHID-DREV-kfjm6nxt3s47z5w747zx"]}]}},
+  {"name": "D7 gets the parent D2 by monogram", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "parents.add", "value": ["D2"]}]}},
+  {"name": "D7 gets the parent D2 with a comment", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "parents.add", "value": ["PHID-DREV-pw4eh5zhfr66pkgngvgf"]}, {"type": "comment", "value": "Stacked."}]}}
+]

@@ -1,0 +1,9 @@
+[
+  {"name": "comment with colons and code", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Note: this fixes the `foo::bar()` call."}]}},
+  {"name": "comment with a project tag and a link", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Ping #build_reviewers, see https://example.com/x?y=1."}]}},
+  {"name": "comment linking D2 by its URI", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Like http://phabricator.test/D2 said."}]}},
+  {"name": "comment quoting D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "> As D2 does\n\nAgreed."}]}},
+  {"name": "comment with D2 in a code block", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "```\nD2\n```\nDone."}]}},
+  {"name": "comment naming H1 and rVCT", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Rule H1 fired for rVCT [[ wiki ]] <b>."}]}},
+  {"name": "comment with a summary-like revert word", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Let's back out this change."}]}}
+]

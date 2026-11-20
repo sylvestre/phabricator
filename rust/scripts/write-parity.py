@@ -58,6 +58,10 @@ ELAPSED = re.compile(r'(elapsed\\?";d:)[0-9.Ee+-]+')
 HOST = re.compile(r"^(\(\d+,_binary '[^']*',<now>,)'[^']*'")
 # Random keys: transaction groups.
 GROUP_ID = re.compile(r'(core\.groupID\\?":\\?")[a-z0-9]{32}')
+# A user's availability cache and its TTL: PHP rebuilds a stale one
+# whenever it loads the user (`rebuildAvailabilityCache()`), whatever the
+# edit; Calendar is not ported, so it holds no availability.
+AVAILABILITY = re.compile(r"'\{\\\"until\\\":[^']*\}',(?:\d+|NULL)")
 # How long something took, like a Herald transcript's duration.
 DURATION = re.compile(r"(?<![\w.])\d+\.\d{5,}(?![\w.])")
 
@@ -108,7 +112,10 @@ def rows(snapshot):
             table = line[13:line.index("`", 13)]
             name = f"{database}.{table}"
             if name not in IGNORED:
-                found.add((name, line[line.index(" VALUES ") + 8:]))
+                values = line[line.index(" VALUES ") + 8:]
+                if name == "phabricator_user.user":
+                    values = AVAILABILITY.sub("<availability>", values)
+                found.add((name, values))
     return found
 
 

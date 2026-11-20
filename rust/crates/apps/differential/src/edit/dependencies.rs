@@ -127,7 +127,11 @@ pub(super) fn depends_on(corpus: &str) -> Vec<i64> {
 }
 
 /// Whether `from` depends on `to`, directly or not.
-async fn depends(request: &ApiRequest<'_>, from: &Phid, to: &Phid) -> Result<bool, MethodError> {
+pub(super) async fn depends(
+    request: &ApiRequest<'_>,
+    from: &Phid,
+    to: &Phid,
+) -> Result<bool, MethodError> {
     let database = &request.context.database;
     let mut seen: Vec<Phid> = vec![from.clone()];
     let mut frontier = vec![from.clone()];
@@ -152,9 +156,8 @@ async fn depends(request: &ApiRequest<'_>, from: &Phid, to: &Phid) -> Result<boo
     Ok(false)
 }
 
-/// The dependency `text` adds, and the revisions it names, which the edit
-/// doesn't mention. Several dependencies are left to PHP, and so are cycles
-/// (PHP refuses them).
+/// The dependencies `text` adds, and the revisions it names, which the edit
+/// doesn't mention. Cycles are left to PHP (PHP refuses them).
 pub(super) async fn plan(
     request: &ApiRequest<'_>,
     revision: &Revision,
@@ -164,21 +167,18 @@ pub(super) async fn plan(
     if ids.is_empty() {
         return Ok((None, Vec::new()));
     }
-    let mut found = super::other_revisions(request, revision, ids).await?;
+    let found = super::other_revisions(request, revision, ids).await?;
     let named: Vec<String> = found
         .iter()
         .map(|found| found.phid.as_str().to_owned())
         .collect();
-    let target = match found.len() {
-        0 => return Ok((None, named)),
-        1 => found.remove(0),
-        _ => return Err(MethodError::Unsupported("several dependencies")),
-    };
-    if depends(request, &target.phid, &revision.phid).await? {
-        return Err(MethodError::Unsupported("dependency cycles"));
+    for target in &found {
+        if depends(request, &target.phid, &revision.phid).await? {
+            return Err(MethodError::Unsupported("dependency cycles"));
+        }
     }
     let edge_type = edges::REVISION_DEPENDS_ON_REVISION;
-    let link = super::plan_link(request, revision, edge_type, target).await?;
+    let link = super::plan_link(request, revision, edge_type, found).await?;
     Ok((link, named))
 }
 

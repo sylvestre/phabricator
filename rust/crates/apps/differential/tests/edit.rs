@@ -208,7 +208,9 @@ async fn leaves_the_rest_to_php() {
     };
 
     for params in [
-        comment("See T2."),
+        // Commits and files are not ported yet.
+        comment("Landed as rVCT152e0f678058."),
+        comment("See {F1}."),
         comment("   "),
         json!({"objectIdentifier": "D2", "transactions": [{"type": "comment", "value": "Hi"}]}),
         json!({"transactions": [{"type": "comment", "value": "New"}]}),
@@ -1113,6 +1115,178 @@ async fn declares_dependencies() {
         edit(&context, summary("Depends on D3, again")).await,
         Response::Fallback(_)
     ));
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn links_several_revisions() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // D4 was updated last: DifferentialRevisionQuery lists it first.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, \
+               summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+               viewPolicy, editPolicy, repositoryPHID, properties, activeDiffPHID) VALUES \
+             (3, 'Older', 'PHID-DREV-3', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', \
+               'k', 'users', 'users', NULL, '{}', 'PHID-DIFF-3'), \
+             (4, 'Newer', 'PHID-DREV-4', 'needs-review', '', '', 'PHID-USER-alice', 1, 2, '{}', \
+               'k', 'users', 'users', NULL, '{}', 'PHID-DIFF-4'), \
+             (5, 'Mentioned', 'PHID-DREV-5', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, \
+               '{}', 'k', 'users', 'users', NULL, '{}', 'PHID-DIFF-5'); \
+             INSERT INTO `{ns}_differential`.edge (src, type, dst, dateCreated, seq) VALUES \
+             ('PHID-DREV-1', 52, 'PHID-DREV-5', 1, 0), ('PHID-DREV-5', 51, 'PHID-DREV-1', 1, 0)",
+        )
+        .await;
+    // D5 is mentioned already and D2 is hidden.
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, comment("See D3, D5, D2 and D4.")).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        edges_of(&test_db, "differential", 52).await,
+        [
+            "PHID-DREV-1 PHID-DREV-3 1",
+            "PHID-DREV-1 PHID-DREV-4 0",
+            "PHID-DREV-1 PHID-DREV-5 0"
+        ]
+    );
+    assert_eq!(
+        edges_of(&test_db, "differential", 51).await,
+        [
+            "PHID-DREV-3 PHID-DREV-1 0",
+            "PHID-DREV-4 PHID-DREV-1 0",
+            "PHID-DREV-5 PHID-DREV-1 0"
+        ]
+    );
+    let edge_transactions = one_value(
+        &test_db,
+        "SELECT GROUP_CONCAT(CONCAT(objectPHID, ' ', oldValue, ' ', newValue) ORDER BY id \
+         SEPARATOR ' / ') AS value FROM `{ns}_differential`.differential_transaction \
+         WHERE transactionType = 'core:edge'",
+    )
+    .await;
+    assert_eq!(
+        edge_transactions,
+        "PHID-DREV-1 [] [\"PHID-DREV-4\",\"PHID-DREV-3\"] / PHID-DREV-4 [] \
+         [\"PHID-DREV-1\"] / PHID-DREV-3 [] [\"PHID-DREV-1\"]"
+    );
+    let tasks = one_value(
+        &test_db,
+        "SELECT GROUP_CONCAT(objectPHID ORDER BY id SEPARATOR ' ') AS value \
+         FROM `{ns}_worker`.worker_activetask",
+    )
+    .await;
+    assert_eq!(tasks, "PHID-DREV-1 PHID-DREV-4 PHID-DREV-3");
+
+    // Two dependencies, D4 first; neither is mentioned.
+    let summary = json!({"objectIdentifier": "D5", "transactions": [
+        {"type": "summary", "value": "Depends on D3 and D4"}]});
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, summary).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        edges_of(&test_db, "differential", 5).await,
+        ["PHID-DREV-5 PHID-DREV-3 1", "PHID-DREV-5 PHID-DREV-4 0"]
+    );
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn edits_parents_and_children() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, \
+               summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+               viewPolicy, editPolicy, repositoryPHID, properties, activeDiffPHID) VALUES \
+             (3, 'Third', 'PHID-DREV-3', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', \
+               'k', 'users', 'users', NULL, '{}', 'PHID-DIFF-3'), \
+             (4, 'Fourth', 'PHID-DREV-4', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', \
+               'k', 'users', 'users', NULL, '{}', 'PHID-DIFF-4')",
+        )
+        .await;
+    let stack = |object: &str, kind: &str, phids: &[&str]| json!({"objectIdentifier": object, "transactions": [{"type": kind, "value": phids}]});
+    let edge_transactions = || async {
+        one_value(
+            &test_db,
+            "SELECT GROUP_CONCAT(CONCAT(objectPHID, ' ', oldValue, ' ', newValue) ORDER BY id \
+             SEPARATOR ' / ') AS value FROM `{ns}_differential`.differential_transaction \
+             WHERE transactionType = 'core:edge'",
+        )
+        .await
+    };
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, stack("D1", "parents.add", &["PHID-DREV-3"])).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        edges_of(&test_db, "differential", 5).await,
+        ["PHID-DREV-1 PHID-DREV-3 0"]
+    );
+    assert_eq!(
+        edges_of(&test_db, "differential", 6).await,
+        ["PHID-DREV-3 PHID-DREV-1 0"]
+    );
+    // Setting the parents removes D3 and adds D4, each with its inverse
+    // edit (D3, updated last, first).
+    test_db
+        .execute("DELETE FROM `{ns}_differential`.differential_transaction")
+        .await;
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, stack("D1", "parents.set", &["PHID-DREV-4"])).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        edges_of(&test_db, "differential", 5).await,
+        ["PHID-DREV-1 PHID-DREV-4 0"]
+    );
+    assert_eq!(
+        edge_transactions().await,
+        "PHID-DREV-1 [\"PHID-DREV-3\"] [\"PHID-DREV-4\"] / PHID-DREV-3 [\"PHID-DREV-1\"] [] \
+         / PHID-DREV-4 [] [\"PHID-DREV-1\"]"
+    );
+    // A child: the edge goes the other way.
+    let Response::Envelope(Envelope {
+        error_code: None, ..
+    }) = edit(&context, stack("D1", "children.add", &["PHID-DREV-3"])).await
+    else {
+        panic!("expected an answer");
+    };
+    assert_eq!(
+        edges_of(&test_db, "differential", 5).await,
+        ["PHID-DREV-1 PHID-DREV-4 0", "PHID-DREV-3 PHID-DREV-1 0"]
+    );
+    // Cycles, hidden revisions, the revision itself and edits without
+    // effect go to PHP.
+    for (object, kind, phid) in [
+        ("D4", "parents.add", "PHID-DREV-1"),
+        ("D1", "parents.add", "PHID-DREV-2"),
+        ("D1", "parents.add", "PHID-DREV-1"),
+        ("D1", "parents.add", "PHID-DREV-4"),
+    ] {
+        assert!(
+            matches!(
+                edit(&context, stack(object, kind, &[phid])).await,
+                Response::Fallback(_)
+            ),
+            "{object} {kind} {phid}"
+        );
+    }
 
     test_db.drop_databases().await;
 }
