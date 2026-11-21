@@ -1,0 +1,12 @@
+[
+  {"name": "Herald subscribes dave to D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-subscribe"}]}},
+  {"name": "Herald unsubscribes bob from D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-unsubscribe"}]}},
+  {"name": "Herald subscribes dave with a comment on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-subscribe"}, {"type": "comment", "value": "Retitled."}]}},
+  {"name": "Herald subscribes and unsubscribes on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-subscribe act-unsubscribe"}]}},
+  {"name": "Herald subscribes dave, who the edit subscribes", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-subscribe"}, {"type": "subscribers.add", "value": ["PHID-USER-5fhrwkaff4cbtd44svtw"]}]}},
+  {"name": "Herald subscribes dave to D7, his own revision", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "title", "value": "D7 act-subscribe"}]}},
+  {"name": "Herald subscribes dave, who can't see D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "D1 act-subscribe"}]}},
+  {"name": "Herald unsubscribes bob, who isn't on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "D1 act-unsubscribe"}]}},
+  {"name": "Herald unsubscribes bob while the edit unsubscribes him", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-unsubscribe"}, {"type": "subscribers.remove", "value": ["PHID-USER-gjsswwcaxvzc2p3qhkkk"]}]}},
+  {"name": "Herald subscribes dave on D3, which bob unsubscribed from", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "title", "value": "D3 act-subscribe"}]}}
+]

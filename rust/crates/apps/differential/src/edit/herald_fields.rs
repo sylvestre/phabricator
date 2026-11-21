@@ -44,6 +44,10 @@ pub(super) struct Input<'a> {
     pub(super) actor: &'a str,
     /// The summary or test plan the edit sets.
     pub(super) text: Option<(TextField, &'a str)>,
+    /// Whether the edit unsubscribes anyone.
+    pub(super) removes_subscribers: bool,
+    /// Who the edit subscribes, in the order of their edges.
+    pub(super) subscribed: Vec<String>,
 }
 
 fn phid_list<'a>(phids: impl IntoIterator<Item = &'a String>) -> Php {

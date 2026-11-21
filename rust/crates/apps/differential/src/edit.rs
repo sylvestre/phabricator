@@ -21,6 +21,7 @@
 mod commits;
 mod dependencies;
 mod files;
+mod herald_actions;
 mod herald_fields;
 mod lists;
 mod merge_checks;
@@ -60,7 +61,10 @@ impl Adapter for RevisionAdapter {
     }
 
     fn has_action(&self, action: &str) -> bool {
-        matches!(action, "email.must-encrypt" | "projects.add")
+        matches!(
+            action,
+            "email.must-encrypt" | "projects.add" | "subscribers.add" | "subscribers.remove"
+        )
     }
 }
 
@@ -1067,6 +1071,8 @@ struct Plan {
     /// The revisions whose merge conflicts to recheck, with those stacked
     /// above them: the linked revisions' sub-editors', then the edit's.
     merge_checks: Vec<String>,
+    /// The Herald editor's `core:subscribers` transaction.
+    herald_subscription: Option<Subscription>,
     /// Every transaction, in the order PHP applies them.
     applied_phids: Vec<String>,
     group_id: String,
@@ -1078,11 +1084,12 @@ struct Plan {
 
 /// `HeraldEngine::loadAndApplyRules()` and the effects, without writing.
 async fn run_herald(
-    database: &Database,
+    request: &ApiRequest<'_>,
     revision: &Revision,
     facts: &Facts,
     (input, applied_phids): (&herald_fields::Input<'_>, &[String]),
-) -> Result<(Vec<Rule>, Evaluation, Vec<Applied>, Vec<String>), MethodError> {
+) -> Result<HeraldOutcome, MethodError> {
+    let database = &request.context.database;
     let unsupported = |error: engine::HeraldError| match error {
         engine::HeraldError::Unsupported(what) => MethodError::Unsupported(what),
         other => MethodError::internal(other),
@@ -1105,8 +1112,27 @@ async fn run_herald(
     }
     let mut applied = Vec::new();
     let mut must_encrypt = Vec::new();
+    let mut queue = herald_actions::Queue::default();
     for effect in &evaluation.effects {
         match effect.action.as_str() {
+            action @ ("subscribers.add" | "subscribers.remove") => {
+                let is_add = action == "subscribers.add";
+                // The unsubscribers the edit makes come in edge order.
+                if is_add && input.removes_subscribers {
+                    return Err(MethodError::Unsupported(
+                        "Herald subscriptions of edits which unsubscribe",
+                    ));
+                }
+                let target = (&effect.target, is_add);
+                let reasons =
+                    herald_actions::subscribe(request, (revision, facts), target, &mut queue)
+                        .await?;
+                applied.push(Applied {
+                    effect: effect.clone(),
+                    applied: true,
+                    reasons,
+                });
+            }
             "email.must-encrypt" => {
                 must_encrypt.push(effect.rule_phid.clone());
                 applied.push(Applied {
@@ -1125,7 +1151,22 @@ async fn run_herald(
             }
         }
     }
-    Ok((rules, evaluation, applied, must_encrypt))
+    Ok(HeraldOutcome {
+        rules,
+        evaluation,
+        applied,
+        must_encrypt,
+        queue,
+    })
+}
+
+/// What Herald's evaluation and actions produce.
+struct HeraldOutcome {
+    rules: Vec<Rule>,
+    evaluation: Evaluation,
+    applied: Vec<Applied>,
+    must_encrypt: Vec<String>,
+    queue: herald_actions::Queue,
 }
 
 /// `getHeraldRuleMonograms()` of a header like "<1>, <2>".
@@ -1654,45 +1695,83 @@ fn transaction_phid() -> String {
 /// What Herald and the publish task need of the planned edit.
 struct Publication {
     must_encrypt: Vec<String>,
+    /// The Herald editor's `core:subscribers` transaction.
+    herald_subscription: Option<Subscription>,
     rules: Vec<Rule>,
     transcript: engine::TranscriptRow,
     herald_header: String,
     worker_data: String,
 }
 
-/// Runs Herald on the edited revision and builds the publish task.
+/// What Herald's fields read of the edit: the actor, the summary or test
+/// plan set, and whether the edit unsubscribes anyone.
+fn herald_input<'a>(
+    actor: &'a str,
+    actions: &'a Actions,
+    subscription: Option<&Subscription>,
+) -> herald_fields::Input<'a> {
+    let removes = |edit: &Subscription| !lists::minus(&edit.old, &edit.new).is_empty();
+    let subscribed = subscription
+        .into_iter()
+        .chain(actions.subscriber_edit.as_ref())
+        .flat_map(|edit| lists::minus(&edit.new, &edit.old))
+        .collect();
+    herald_fields::Input {
+        subscribed,
+        actor,
+        text: actions
+            .text
+            .as_ref()
+            .map(|(field, _, _, new)| (*field, new.as_str())),
+        removes_subscribers: subscription.is_some_and(removes)
+            || actions.subscriber_edit.as_ref().is_some_and(removes),
+    }
+}
+
+/// Runs Herald on the edited revision, plans what its actions queue, and
+/// builds the publish task, which lists the Herald editor's transaction
+/// too and sees its effect.
 async fn publication(
-    database: &Database,
+    request: &ApiRequest<'_>,
     revision: &Revision,
-    facts: &Facts,
-    (actor, text): (&str, Option<&(TextField, String, String, String)>),
+    facts: &mut Facts,
+    input: &herald_fields::Input<'_>,
     applied_phids: &[String],
 ) -> Result<Publication, MethodError> {
-    let text = text.map(|(field, _, _, new)| (*field, new.as_str()));
-    let input = herald_fields::Input { actor, text };
-    let (rules, evaluation, applied, must_encrypt) =
-        run_herald(database, revision, facts, (&input, applied_phids)).await?;
+    let database = &request.context.database;
+    let outcome = run_herald(request, revision, facts, (input, applied_phids)).await?;
     let subject = Subject {
         phid: revision.phid.as_str().to_owned(),
         content_type: "differential".to_owned(),
         name: revision.title.clone(),
         applied_transaction_phids: Some(applied_phids.to_vec()),
     };
-    let transcript = evaluation.transcript(&subject, &applied);
+    let transcript = outcome.evaluation.transcript(&subject, &outcome.applied);
     let herald_header = engine::combine_headers(
         saved_header(database, &revision.phid).await?.as_deref(),
-        &engine::rules_header(&applied),
+        &engine::rules_header(&outcome.applied),
     );
-    let state = worker_state(revision, facts, actor, &must_encrypt, &herald_header);
+    let herald_subscription =
+        herald_actions::subscription(&outcome.queue, facts, &input.subscribed);
+    let mut published: Vec<String> = applied_phids.to_vec();
+    published.extend(herald_subscription.iter().map(|edit| edit.phid.clone()));
+    let state = worker_state(
+        revision,
+        facts,
+        input.actor,
+        &outcome.must_encrypt,
+        &herald_header,
+    );
     let worker_data = php::json_encode(&json!({
         "objectPHID": revision.phid.as_str(),
-        "actorPHID": actor,
-        "xactionPHIDs": applied_phids,
+        "actorPHID": input.actor,
+        "xactionPHIDs": published,
         "state": state,
     }));
     Ok(Publication {
-        must_encrypt,
-        rules,
+        must_encrypt: outcome.must_encrypt,
+        herald_subscription,
+        rules: outcome.rules,
         transcript,
         herald_header,
         worker_data,
@@ -2010,8 +2089,8 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
     let merge_checks = plan_merge_checks(request, &revision, &actions, &links).await?;
-    let text = (actor.as_str(), actions.text.as_ref());
-    let published = publication(database, &revision, &facts, text, &applied_phids).await?;
+    let input = herald_input(&actor, &actions, subscription.as_ref());
+    let published = publication(request, &revision, &mut facts, &input, &applied_phids).await?;
     let tasks = link_tasks(database, links, &actor, &published.must_encrypt).await?;
     Ok(Plan {
         actor,
@@ -2028,6 +2107,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         transcript: published.transcript,
         herald_header: published.herald_header,
         worker_data: published.worker_data,
+        herald_subscription: published.herald_subscription,
         revision,
     })
 }
@@ -2143,7 +2223,8 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
         insert_transaction(request, plan, connection, row).await?;
     }
     merge_checks::queue(request, connection, &plan.merge_checks).await?;
-    write_herald(request, plan, connection).await?;
+    let transcript_id = write_herald(request, plan, connection).await?;
+    herald_actions::write(request, plan, transcript_id, connection).await?;
     queue_publishing(request, plan, connection).await?;
     transaction.commit().await?;
     Ok(())
@@ -2606,8 +2687,6 @@ async fn write_subscription(
     metadata: &str,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
-    let database = &request.context.database;
-    let revision = plan.revision.phid.as_str();
     let (old, new) = (&subscription.old, &subscription.new);
     let (old_value, new_value) = (php::json_encode(&json!(old)), php::json_encode(&json!(new)));
     let row = (
@@ -2618,7 +2697,20 @@ async fn write_subscription(
         metadata,
     );
     insert_transaction(request, plan, connection, row).await?;
-    // PhabricatorEdgeEditor numbers the new edges of each source.
+    write_subscription_edges(request, plan, subscription, connection).await
+}
+
+/// The subscription's edges: `PhabricatorEdgeEditor` numbers the new edges
+/// of each source.
+async fn write_subscription_edges(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    subscription: &Subscription,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let revision = plan.revision.phid.as_str();
+    let (old, new) = (&subscription.old, &subscription.new);
     let changes = lists::minus(new, old)
         .into_iter()
         .map(|phid| {
@@ -2650,15 +2742,17 @@ async fn write_subscription(
 }
 
 /// The transcript, the rules' applied state and the saved header.
+/// The transcript, the rules' bookkeeping and the saved header. Returns the
+/// transcript's ID, which the Herald editor's transactions name.
 async fn write_herald(
     request: &ApiRequest<'_>,
     plan: &Plan,
     connection: &mut phab_db::sqlx::MySqlConnection,
-) -> Result<(), MethodError> {
+) -> Result<u64, MethodError> {
     let database = &request.context.database;
     let revision = &plan.revision;
     let transcript = &plan.transcript;
-    phab_db::sqlx::query(&format!(
+    let transcript_id = phab_db::sqlx::query(&format!(
         "INSERT INTO {} (phid, time, host, duration, objectPHID, dryRun, objectTranscript, \
          ruleTranscripts, conditionTranscripts, applyTranscripts, garbageCollected) VALUES \
          (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 0)",
@@ -2674,7 +2768,8 @@ async fn write_herald(
     .bind(&transcript.condition_transcripts)
     .bind(&transcript.apply_transcripts)
     .execute(&mut *connection)
-    .await?;
+    .await?
+    .last_insert_id();
     // Rules repeating on every edit forget where they applied.
     if !plan.rules.is_empty() {
         phab_db::bind_all(
@@ -2698,7 +2793,7 @@ async fn write_herald(
     .bind(&plan.herald_header)
     .execute(&mut *connection)
     .await?;
-    Ok(())
+    Ok(transcript_id)
 }
 
 pub use files::{FileFinder, FilesFuture};

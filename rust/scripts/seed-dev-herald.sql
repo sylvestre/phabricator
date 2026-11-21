@@ -96,3 +96,28 @@ INSERT IGNORE INTO phabricator_herald.herald_condition (id, ruleID, fieldName,
 INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
   target) VALUES
 (106, 8, 'email.must-encrypt', 'null');
+
+-- Actions: rule 9 subscribes dave and rule 10 unsubscribes bob when a
+-- title says so (parity/writes/herald-actions.json).
+INSERT IGNORE INTO phabricator_herald.herald_rule (id, name, authorPHID,
+  contentType, mustMatchAll, configVersion, dateCreated, dateModified,
+  repetitionPolicy, ruleType, phid, isDisabled, triggerObjectPHID)
+SELECT 9, 'Act: subscribe dave', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'global', 'PHID-HRUL-actsubscribe0009', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin'
+UNION ALL
+SELECT 10, 'Act: unsubscribe bob', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'global', 'PHID-HRUL-actunsubscrib010', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin';
+
+INSERT IGNORE INTO phabricator_herald.herald_condition (id, ruleID, fieldName,
+  fieldCondition, value) VALUES
+(201, 9, 'differential.revision.title', 'contains', '"act-subscribe"'),
+(202, 10, 'differential.revision.title', 'contains', '"act-unsubscribe"');
+
+INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
+  target) VALUES
+(201, 9, 'subscribers.add',
+  (SELECT CONCAT('["', phid, '"]') FROM phabricator_user.user WHERE userName = 'dave')),
+(202, 10, 'subscribers.remove',
+  (SELECT CONCAT('["', phid, '"]') FROM phabricator_user.user WHERE userName = 'bob'));
