@@ -1680,6 +1680,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-remarkup"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "phab-app-differential",
+ "phab-conduit",
+ "phab-core",
+ "phab-db",
+ "phab-remarkup",
+ "phab-web",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "phab-auth"
 version = "0.1.0"
 dependencies = [
@@ -1815,6 +1830,7 @@ dependencies = [
  "phab-app-phid",
  "phab-app-policy",
  "phab-app-project",
+ "phab-app-remarkup",
  "phab-auth",
  "phab-conduit",
  "phab-core",

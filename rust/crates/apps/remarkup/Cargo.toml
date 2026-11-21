@@ -1,0 +1,25 @@
+[package]
+name = "phab-app-remarkup"
+description = "Remarkup: the remarkup.process Conduit method"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+phab-app-differential.workspace = true
+phab-conduit.workspace = true
+phab-core.workspace = true
+phab-db.workspace = true
+phab-remarkup.workspace = true
+phab-web.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+form_urlencoded.workspace = true
+phab-db = { workspace = true, features = ["test-support"] }
+tokio.workspace = true
+
+[lints]
+workspace = true

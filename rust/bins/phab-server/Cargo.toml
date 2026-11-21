@@ -15,6 +15,7 @@ phab-app-diffusion.workspace = true
 phab-app-feed.workspace = true
 phab-app-files.workspace = true
 phab-app-flag.workspace = true
+phab-app-remarkup.workspace = true
 phab-app-people.workspace = true
 phab-app-phid.workspace = true
 phab-app-policy.workspace = true

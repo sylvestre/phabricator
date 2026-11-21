@@ -1,0 +1,22 @@
+[
+  {"name": "remarkup.process: paragraphs", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["**bold** and //italic//, ~~del~~, __under__ and !!highlight!!", "one\ntwo\n\nthree"]}},
+  {"name": "remarkup.process: empty text", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": [""]}},
+  {"name": "remarkup.process: no texts", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "feed", "contents": []}},
+  {"name": "remarkup.process: dictionary of texts", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "feed", "contents": {"a": "`code`", "b": "##mono##"}}},
+  {"name": "remarkup.process: headers", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["= One =\n\n== Two ==\n\nText"]}},
+  {"name": "remarkup.process: headers with anchors", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "diffusion", "contents": ["= One =\n\n== Two ==\n\n= One =\n\n== [[ http://example.com/ | Link ]] =="]}},
+  {"name": "remarkup.process: lists and quotes", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["- a\n- b\n  - c\n\n# one\n# two\n\n> quoted\n> text\n\n[ ] todo\n[x] done"]}},
+  {"name": "remarkup.process: tables and notes", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["| a | b |\n|---|---|\n| 1 | 2 |", "<table><tr><th>x</th><td>y</td></tr></table>", "NOTE: careful\n\nWARNING: very careful\n\n(IMPORTANT) really", "---"]}},
+  {"name": "remarkup.process: links", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "feed", "contents": ["https://example.com/a?b=c and <https://example.org> and [[ https://example.net | named ]] and [md](https://example.com/md)", "mailto:a@example.com ftp://example.com/x", "[[ /some/path ]] and [[ #anchor ]]"]}},
+  {"name": "remarkup.process: escapes and literals", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["%%%**not bold**%%%", "<b>html</b> & entities &amp;", "\\**not**"]}},
+  {"name": "remarkup.process: plain code blocks", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["  indented code", "```\nfenced\n```", "```lang=text, name=notes.txt, lines=8\nx\ny\n```", "```lang=console\n$ ls -la\n```"]}},
+  {"name": "remarkup.process: highlighted code", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["```lang=rust\nfn main() {}\n```", "```lang=php\n<?php echo 1;\n```"]}},
+  {"name": "remarkup.process: mentions and objects", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["@admin and D1 and #parity and rVCT", "@nobody-at-all and D999999"]}},
+  {"name": "remarkup.process: unknown references", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["D999999 F999999 H999999 {D999999}"]}},
+  {"name": "remarkup.process: Phabricator rules", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["{icon camera}", "{key cmd shift P}", "{nav Home > Settings}", ":smile:", "bug 123456", "{img https://example.com/a.png}", "B1 and W1"]}},
+  {"name": "remarkup.process: YouTube", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "feed", "contents": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]}},
+  {"name": "remarkup.process: unknown context", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "nope", "contents": ["x"]}},
+  {"name": "remarkup.process: no context", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"contents": ["x"]}},
+  {"name": "remarkup.process: no contents", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential"}},
+  {"name": "remarkup.process: unknown parameter", "method": "remarkup.process", "token": "$PHAB_REPLAY_TOKEN", "params": {"context": "differential", "contents": ["x"], "nope": 1}}
+]
