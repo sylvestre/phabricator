@@ -325,21 +325,14 @@ async fn leaves_unported_stories_to_php() {
     };
     add_stories(&test_db).await;
 
-    // Custom fields enabled by differential.fields need PHP.
+    // PHP throws on subscribers which aren't lists: left to it.
     add_transaction(
         &test_db,
         "PHID-XACT-DREV-8",
         "PHID-DREV-open",
-        "core:customfield",
+        "core:subscribers",
     )
     .await;
-    test_db
-        .execute(
-            "UPDATE `{ns}_differential`.differential_transaction \
-             SET metadata = '{\"customfield:key\":\"phabricator:revert-plan\"}' \
-             WHERE phid = 'PHID-XACT-DREV-8'",
-        )
-        .await;
     add_story(
         &test_db,
         8,

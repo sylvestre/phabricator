@@ -162,18 +162,9 @@ fn should_hide(transaction: &Transaction, comment: Option<&Comment>) -> FeedVisi
         {
             (transaction.old_value == Value::Null).into()
         }
-        // The Mozilla fields never hide their transactions; the others
-        // depend on differential.fields.
-        "core:customfield" => {
-            let key = transaction
-                .metadata_value("customfield:key")
-                .and_then(Value::as_str);
-            if crate::title::is_known_custom_field(key) {
-                FeedVisibility::Visible
-            } else {
-                FeedVisibility::Unknown
-            }
-        }
+        // No custom field overrides shouldHideInApplicationTransactions(),
+        // and a field which doesn't exist hides nothing either.
+        "core:customfield" => FeedVisibility::Visible,
         TYPE_EDGE => match edge_type(transaction) {
             Some(edges::OBJECT_MENTIONS_OBJECT | edges::MUTED | edges::MUTED_BY) => {
                 FeedVisibility::Hidden
@@ -286,7 +277,7 @@ mod tests {
     #[case("core:edge", json!([]), json!([]), json!({"edge:type": 5}), FeedVisibility::Hidden)]
     #[case("core:edge", json!([]), json!([]), json!({"edge:type": "52"}), FeedVisibility::Hidden)]
     #[case("core:edge", json!([]), json!([]), json!({"edge:type": 41}), FeedVisibility::Visible)]
-    #[case("core:customfield", json!(null), json!("x"), json!({"customfield:key": "std:x"}), FeedVisibility::Unknown)]
+    #[case("core:customfield", json!(null), json!("x"), json!({"customfield:key": "std:x"}), FeedVisibility::Visible)]
     #[case("core:customfield", json!(""), json!("1"), json!({"customfield:key": "differential:bugzilla-bug-id"}), FeedVisibility::Visible)]
     #[case("core:view-policy", json!(null), json!("users"), json!({}), FeedVisibility::Hidden)]
     #[case("core:view-policy", json!("admin"), json!("users"), json!({}), FeedVisibility::Visible)]
@@ -316,19 +307,19 @@ mod tests {
 
     #[test]
     fn comments_make_transactions_visible() {
-        let custom = transaction(
-            "core:customfield",
-            json!(null),
-            json!("x"),
-            json!({"customfield:key": "std:x"}),
+        let attach = transaction(
+            "core:file",
+            json!([]),
+            json!([]),
+            json!({"attach.implicit": true}),
         );
         assert_eq!(
-            feed_visibility(&custom, Some(&comment("hello"))),
+            feed_visibility(&attach, Some(&comment("hello"))),
             FeedVisibility::Visible
         );
         assert_eq!(
-            feed_visibility(&custom, Some(&comment(" \n\t"))),
-            FeedVisibility::Unknown
+            feed_visibility(&attach, Some(&comment(" \n\t"))),
+            FeedVisibility::Hidden
         );
         let token = transaction("token:give", json!(null), json!("x"), json!({}));
         assert_eq!(
