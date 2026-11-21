@@ -69,7 +69,7 @@ pub(crate) enum Order {
 }
 
 impl Order {
-    fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
+    pub(crate) fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
         let key = match value {
             None | Some(Value::Null) => return Ok(Self::Newest),
             Some(Value::String(key)) => key.as_str(),
@@ -109,6 +109,8 @@ pub(crate) struct Filters {
     pub(crate) unreachable: Option<bool>,
     pub(crate) permanent: Option<bool>,
     pub(crate) identifiers: Option<Vec<String>>,
+    /// `withAuditorPHIDs()`: commits with an audit request of one of them.
+    pub(crate) auditors: Option<Vec<String>>,
 }
 
 /// `DiffusionCommitAuditStatus::newModernKeys()`: legacy numbers.
@@ -263,6 +265,18 @@ impl<'a> Commits<'a> {
         }
         if let Some(statuses) = &filters.statuses {
             clauses.in_list("auditStatus", search::strings(statuses));
+        }
+        if let Some(auditors) = &filters.auditors {
+            // PHP joins the audit requests and groups by commit; the
+            // subquery finds the same commits.
+            clauses.condition(
+                format!(
+                    "phid IN (SELECT commitPHID FROM {} WHERE auditorPHID IN ({}))",
+                    database.table("repository", "repository_auditrequest"),
+                    phab_db::placeholders(auditors.len())
+                ),
+                search::strings(auditors),
+            );
         }
         for (flag, value) in [
             (IMPORTED_UNREACHABLE, filters.unreachable),

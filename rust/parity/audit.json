@@ -1,0 +1,22 @@
+[
+  {"name": "audit.query: everything", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "audit.query: limit", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 2}},
+  {"name": "audit.query: offset", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"offset": 1, "limit": 2}},
+  {"name": "audit.query: string offset and limit", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"offset": "1", "limit": "3"}},
+  {"name": "audit.query: no limit", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 0}},
+  {"name": "audit.query: past the end", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"offset": 100000}},
+  {"name": "audit.query: open", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "audit-status-open"}},
+  {"name": "audit.query: concern", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "audit-status-concern"}},
+  {"name": "audit.query: accepted", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "audit-status-accepted"}},
+  {"name": "audit.query: partial", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "audit-status-partial"}},
+  {"name": "audit.query: any status", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "audit-status-any"}},
+  {"name": "audit.query: unknown status", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"status": "nope"}},
+  {"name": "audit.query: by auditor", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"auditorPHIDs": ["PHID-USER-smtgbo5evsea6efnaz7m"]}},
+  {"name": "audit.query: by auditors", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"auditorPHIDs": ["PHID-USER-smtgbo5evsea6efnaz7m", "PHID-USER-gjsswwcaxvzc2p3qhkkk", "PHID-PROJ-sv7lxylfx3dmjxbkjkt4"]}},
+  {"name": "audit.query: unknown auditor", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"auditorPHIDs": ["PHID-USER-nobody"]}},
+  {"name": "audit.query: by commit", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"commitPHIDs": ["PHID-CMIT-3eggks6trcbkxwbswzns"]}},
+  {"name": "audit.query: unknown commit", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"commitPHIDs": ["PHID-CMIT-nope"]}},
+  {"name": "audit.query: empty lists", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"auditorPHIDs": [], "commitPHIDs": [], "status": null}},
+  {"name": "audit.query: auditor and status", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"auditorPHIDs": ["PHID-USER-smtgbo5evsea6efnaz7m"], "status": "audit-status-open", "limit": 5}},
+  {"name": "audit.query: unknown parameter", "method": "audit.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"nope": 1}}
+]

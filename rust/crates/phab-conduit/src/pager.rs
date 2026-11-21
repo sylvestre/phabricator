@@ -334,6 +334,44 @@ pub async fn execute<Q: PolicyAwareQuery + Sync>(
     Ok(results)
 }
 
+/// `(int)` of an `offset` or `limit` given to `setOffset()` or
+/// `setLimit()`, with `getValue($key, $default)`'s default for `null`.
+/// Negative numbers and values which are not integers are left to PHP.
+pub fn offset_value(value: Option<&Value>, default: usize) -> Result<usize, MethodError> {
+    let number = match value {
+        None | Some(Value::Null) => return Ok(default),
+        Some(Value::Number(number)) if !number.is_f64() => number.as_u64(),
+        Some(Value::String(text))
+            if !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            text.parse().ok()
+        }
+        Some(_) => None,
+    };
+    number
+        .filter(|number| *number < 1 << 40)
+        .and_then(|number| usize::try_from(number).ok())
+        .ok_or(MethodError::Unsupported("an unusual offset or limit"))
+}
+
+/// `PhabricatorPolicyAwareQuery::execute()` with `setOffset()` and
+/// `setLimit()`, from the start: the visible rows after the first
+/// `offset`, up to `limit` of them. A limit of 0 is none: one query loads
+/// every row.
+pub async fn execute_with_offset<Q: PolicyAwareQuery + Sync>(
+    query: &Q,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<Q::Row>, MethodError> {
+    let visible = if limit == 0 {
+        let rows = query.load(None, None, Direction::Forward, None).await?;
+        query.filter(rows).await?
+    } else {
+        execute(query, None, Direction::Forward, offset + limit).await?
+    };
+    Ok(visible.into_iter().skip(offset).collect())
+}
+
 /// A page of results with the cursors to the pages around it.
 #[derive(Debug, PartialEq)]
 pub struct Paged<T> {
@@ -404,6 +442,31 @@ mod tests {
             PageSize::parse(Some(&limit), 100),
             Ok(PageSize { shown, value })
         );
+    }
+
+    #[rstest]
+    #[case(None, 100)]
+    #[case(Some(json!(null)), 100)]
+    #[case(Some(json!(0)), 0)]
+    #[case(Some(json!(7)), 7)]
+    #[case(Some(json!("12")), 12)]
+    fn offsets_like_php(#[case] value: Option<Value>, #[case] expected: usize) {
+        assert_eq!(offset_value(value.as_ref(), 100), Ok(expected));
+    }
+
+    #[rstest]
+    #[case(json!(-1))]
+    #[case(json!("-1"))]
+    #[case(json!(""))]
+    #[case(json!("5x"))]
+    #[case(json!(1.5))]
+    #[case(json!(true))]
+    #[case(json!([]))]
+    fn leaves_unusual_offsets_to_php(#[case] value: Value) {
+        assert!(matches!(
+            offset_value(Some(&value), 0),
+            Err(MethodError::Unsupported(_))
+        ));
     }
 
     #[rstest]

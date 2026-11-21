@@ -1,5 +1,6 @@
 //! Methods of `PhabricatorDiffusionApplication`.
 
+pub mod audit_query;
 pub mod commit_search;
 pub mod legacy_query;
 pub mod query_commits;
@@ -15,6 +16,7 @@ pub const APPLICATION: Application = Application {
 
 /// Registers the Diffusion methods.
 pub fn register(registry: &mut Registry) {
+    registry.register(audit_query::AuditQuery);
     registry.register(commit_search::CommitSearch);
     registry.register(legacy_query::LegacyQuery);
     registry.register(query_commits::QueryCommits);
