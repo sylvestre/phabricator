@@ -1,0 +1,16 @@
+[
+  {"name": "email status", "method": "feed.for_email.status", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "email status id", "method": "feed.for_email.status_id", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "email feed by id, first page", "method": "feed.for_email.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"storyLimit": 20}},
+  {"name": "email feed by id, default limit", "method": "feed.for_email.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "email feed by id, after a story", "method": "feed.for_email.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"storyLimit": 10, "after": 5}},
+  {"name": "email feed by id, one story", "method": "feed.for_email.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"storyLimit": 1, "after": 1}},
+  {"name": "email feed by id, string parameters", "method": "feed.for_email.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"storyLimit": "3", "after": "2"}},
+  {"name": "email feed by id, zero limit", "method": "feed.for_email.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"storyLimit": 0}},
+  {"name": "email feed by id, huge limit", "method": "feed.for_email.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"storyLimit": 5000}},
+  {"name": "email feed by id, past the end", "method": "feed.for_email.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": 1000000}},
+  {"name": "email feed by key, first page", "method": "feed.for_email.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"storyLimit": 20}},
+  {"name": "email feed by key, default limit", "method": "feed.for_email.query", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "email feed by key, negative limit", "method": "feed.for_email.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"storyLimit": -4}},
+  {"name": "email feed by key, unknown cursor", "method": "feed.for_email.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": 12345}}
+]

@@ -59,6 +59,8 @@ pub struct StoryRow {
     pub story_data: Value,
     /// The author's PHID.
     pub author_phid: String,
+    /// `dateCreated`.
+    pub date_created: i64,
 }
 
 impl StoryRow {
@@ -152,7 +154,7 @@ impl Page<'_> {
             .unwrap_or_default();
         format!(
             "SELECT story.id, story.phid, story.chronologicalKey, story.storyType, \
-             story.storyData, story.authorPHID FROM {} story JOIN {} ref \
+             story.storyData, story.authorPHID, story.dateCreated FROM {} story JOIN {} ref \
              ON ref.chronologicalKey = story.chronologicalKey{filter} \
              GROUP BY story.chronologicalKey ORDER BY {column} {direction}{limit}",
             database.table("feed", "feed_storydata"),
@@ -188,6 +190,7 @@ pub async fn load_page(database: &Database, page: Page<'_>) -> Result<Vec<StoryR
                 story_type: rows::text(row, "storyType")?,
                 story_data: rows::json(row, "storyData")?,
                 author_phid: rows::text(row, "authorPHID")?,
+                date_created: rows::int(row, "dateCreated")?,
             })
         })
         .collect()
@@ -402,6 +405,16 @@ pub struct VisibleStory {
 }
 
 impl VisibleStory {
+    /// A row which did not go through [`load_visible()`] yet, for queries
+    /// whose loaded and filtered rows must have the same type.
+    pub fn unfiltered(row: StoryRow) -> Self {
+        Self {
+            row,
+            object: Phid::new(""),
+            transactions: Vec::new(),
+        }
+    }
+
     /// `getPrimaryTransaction()`: the first transaction shown in feed.
     pub fn primary_transaction(&self) -> Option<&Transaction> {
         phab_app_differential::title::primary_transaction(&self.transactions)
