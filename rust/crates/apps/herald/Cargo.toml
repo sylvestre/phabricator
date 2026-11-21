@@ -11,6 +11,8 @@ publish.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
 phab-policy.workspace = true
+phab-remarkup.workspace = true
+pcre2.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 

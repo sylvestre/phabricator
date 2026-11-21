@@ -1602,9 +1602,11 @@ dependencies = [
 name = "phab-app-herald"
 version = "0.1.0"
 dependencies = [
+ "pcre2",
  "phab-core",
  "phab-db",
  "phab-policy",
+ "phab-remarkup",
  "serde_json",
  "thiserror",
 ]

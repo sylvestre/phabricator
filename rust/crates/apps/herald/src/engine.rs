@@ -2,9 +2,10 @@
 //! of the rules which match, and the transcript of it all.
 //!
 //! Ported: global rules repeating on every edit, the fields and actions an
-//! [`Adapter`] provides, and every condition but the regular expressions
-//! and bit tests. Anything else is [`HeraldError::Unsupported`], found
-//! before evaluation starts, so the caller can leave the edit to PHP.
+//! [`Adapter`] provides, and every condition but the bit tests. Anything else is [`HeraldError::Unsupported`], found
+//! before evaluation starts, so the caller can leave the edit to PHP; a
+//! regular expression which fails while matching sets
+//! [`Evaluation::unsupported`] instead.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -346,6 +347,9 @@ fn keyed(entries: Vec<(String, Php)>) -> Php {
 pub struct Evaluation {
     /// The effects of the rules which matched, in order.
     pub effects: Vec<Effect>,
+    /// Something met while evaluating which PHP handles otherwise: a
+    /// regular expression exceeding PCRE's limits, which PHP reports.
+    pub unsupported: Option<&'static str>,
     object_transcript: Php,
     rule_transcripts: Php,
     condition_transcripts: Php,
@@ -361,6 +365,7 @@ struct Engine<'a> {
     results: HashMap<String, ResultMap>,
     rule_stack: Vec<String>,
     transcripts: Transcripts,
+    unsupported: Option<&'static str>,
 }
 
 impl<'a> Engine<'a> {
@@ -411,6 +416,55 @@ impl<'a> Engine<'a> {
         };
         self.record_frame("field", key, started);
         value
+    }
+
+    /// `regexp`, `!regexp` and `regexp-pair`. A pattern PHP would reject,
+    /// or which PCRE gives up on, marks the evaluation unsupported.
+    fn test_regex(&mut self, condition: &Condition, field: &Php) -> bool {
+        let expected = &condition.value;
+        if condition.condition != "regexp-pair" {
+            let wanted = condition.condition == "regexp";
+            let Some(regex) = expected.as_bytes().and_then(php_regex) else {
+                self.unsupported = Some("Herald regular expressions not ported");
+                return false;
+            };
+            // (array)$field_value: each value, cast to a string.
+            for value in as_list(field) {
+                match regex.is_match(&php_bytes(&value)) {
+                    Ok(true) => return wanted,
+                    Ok(false) => {}
+                    Err(_) => {
+                        self.unsupported = Some("Herald regular expressions PCRE gives up on");
+                        return false;
+                    }
+                }
+            }
+            return !wanted;
+        }
+        let Some((key_regex, value_regex)) = regex_pair(expected) else {
+            self.unsupported = Some("Herald regular expressions not ported");
+            return false;
+        };
+        // @preg_match(): a failing match is an invalid condition,
+        // which PHP reports.
+        for (key, value) in as_entries(field) {
+            let key = match key {
+                Key::Int(number) => number.to_string().into_bytes(),
+                Key::Str(bytes) => bytes,
+            };
+            let matched = key_regex
+                .is_match(&key)
+                .and_then(|matched| Ok(matched && value_regex.is_match(&php_bytes(&value))?));
+            match matched {
+                Ok(true) => return true,
+                Ok(false) => {}
+                Err(_) => {
+                    self.unsupported = Some("Herald regular expressions PCRE gives up on");
+                    return false;
+                }
+            }
+        }
+        false
     }
 
     /// `getRuleMatchResult()`.
@@ -498,6 +552,9 @@ impl<'a> Engine<'a> {
                     .any(|value| contains(&php_string(value).to_ascii_lowercase(), &needle));
                 if found { wanted } else { !wanted }
             }
+            "regexp" | "!regexp" | "regexp-pair" => self.test_regex(condition, field),
+            "is" => loose_equals(field, expected),
+            "!is" => !loose_equals(field, expected),
             "isany" | "!isany" => {
                 let Php::Array(values) = expected else {
                     return Err(invalid("Expected condition value to be an array."));
@@ -565,6 +622,81 @@ impl<'a> Engine<'a> {
 }
 
 /// `(string)` of a scalar.
+/// PHP 8's numeric strings (`is_numeric()`): surrounding whitespace, a
+/// sign, digits with a decimal point or an exponent.
+fn numeric(bytes: &[u8]) -> Option<f64> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let text = text.trim_matches([' ', '\t', '\n', '\r', '\x0B', '\x0C']);
+    let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
+    let (mantissa, exponent) = match unsigned.find(['e', 'E']) {
+        Some(at) => (&unsigned[..at], Some(&unsigned[at + 1..])),
+        None => (unsigned, None),
+    };
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
+    let exponent_ok = exponent.is_none_or(|exponent| {
+        let exponent = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+        !exponent.is_empty() && digits(exponent)
+    });
+    if (whole.is_empty() && fraction.is_empty())
+        || !digits(whole)
+        || !digits(fraction)
+        || !exponent_ok
+    {
+        return None;
+    }
+    text.parse().ok()
+}
+
+/// PHP 8's `==` of the values Herald compares: strings (numerically when
+/// both are numeric), `null` and the empty string.
+#[expect(clippy::float_cmp, reason = "PHP compares the numbers exactly")]
+fn loose_equals(left: &Php, right: &Php) -> bool {
+    match (left, right) {
+        (Php::Str(left), Php::Str(right)) => match (numeric(left), numeric(right)) {
+            (Some(left), Some(right)) => left == right,
+            _ => left == right,
+        },
+        (Php::Null, Php::Str(text)) | (Php::Str(text), Php::Null) => text.is_empty(),
+        (Php::Null, Php::Bool(flag)) | (Php::Bool(flag), Php::Null) => !flag,
+        _ => left == right,
+    }
+}
+
+/// A regular expression of a condition, which PHP passes to
+/// `preg_match()` with its delimiters and modifiers. Modifiers which change
+/// matching (`A`, `D`, `u`'s check of the subject...) and patterns which
+/// don't compile are `None`, left to PHP.
+fn php_regex(pattern: &[u8]) -> Option<pcre2::bytes::Regex> {
+    let text = std::str::from_utf8(pattern).ok()?;
+    let open = text.chars().next()?;
+    let close = match open {
+        '(' => ')',
+        '[' => ']',
+        '{' => '}',
+        '<' => '>',
+        other => other,
+    };
+    let end = text.rfind(close).filter(|end| *end > 0)?;
+    let modifiers = &text[end + close.len_utf8()..];
+    if !modifiers
+        .chars()
+        .all(|flag| matches!(flag, 'i' | 'm' | 's' | 'x' | 'U' | 'S'))
+    {
+        return None;
+    }
+    phab_remarkup::preg::compile_php(pattern)
+}
+
+/// A value as `preg_match()` takes it: strings as they are, numbers and
+/// booleans as PHP casts them.
+fn php_bytes(value: &Php) -> Vec<u8> {
+    match value {
+        Php::Str(bytes) => bytes.clone(),
+        other => php_string(other).into_bytes(),
+    }
+}
+
 fn php_string(value: &Php) -> String {
     match value {
         Php::Str(bytes) => String::from_utf8_lossy(bytes).into_owned(),
@@ -580,6 +712,33 @@ fn contains(haystack: &str, needle: &str) -> bool {
 }
 
 /// `(array)` of a value.
+/// `(array)$value`: its entries, a scalar under key 0.
+fn as_entries(value: &Php) -> Vec<(Key, Php)> {
+    match value {
+        Php::Null => Vec::new(),
+        Php::Array(entries) => entries.clone(),
+        other => vec![(Key::Int(0), other.clone())],
+    }
+}
+
+/// The two regular expressions of a `regexp-pair` condition, whose value
+/// is their JSON list; `None` where PHP would throw or warn.
+fn regex_pair(value: &Php) -> Option<(pcre2::bytes::Regex, pcre2::bytes::Regex)> {
+    let json: serde_json::Value = serde_json::from_slice(value.as_bytes()?).ok()?;
+    let serde_json::Value::Array(pair) = json else {
+        return None;
+    };
+    let [
+        serde_json::Value::String(key),
+        serde_json::Value::String(value),
+    ] = pair.as_slice()
+    else {
+        return None;
+    };
+    // Unlike "regexp", PHP adds no "S" modifier here.
+    Some((php_regex(key.as_bytes())?, php_regex(value.as_bytes())?))
+}
+
 fn as_list(value: &Php) -> Vec<Php> {
     match value {
         Php::Null => Vec::new(),
@@ -620,6 +779,11 @@ fn phab_core_truthy(value: &Php) -> bool {
 const CONDITIONS: &[&str] = &[
     "contains",
     "!contains",
+    "is",
+    "!is",
+    "regexp",
+    "!regexp",
+    "regexp-pair",
     "isany",
     "!isany",
     "all",
@@ -644,6 +808,16 @@ pub fn check_supported(rules: &[Rule], adapter: &impl Adapter) -> Result<(), Her
             }
             if !CONDITIONS.contains(&condition.condition.as_str()) {
                 return Err(HeraldError::Unsupported("a Herald condition not ported"));
+            }
+            let compiles = match condition.condition.as_str() {
+                "regexp" | "!regexp" => condition.value.as_bytes().and_then(php_regex).is_some(),
+                "regexp-pair" => regex_pair(&condition.value).is_some(),
+                _ => true,
+            };
+            if !compiles {
+                return Err(HeraldError::Unsupported(
+                    "Herald regular expressions not ported",
+                ));
             }
         }
         for action in &rule.actions {
@@ -680,6 +854,7 @@ pub fn evaluate(rules: &[Rule], subject: &Subject, values: &[(String, Php)]) -> 
         results: HashMap::new(),
         rule_stack: Vec::new(),
         transcripts: Transcripts::default(),
+        unsupported: None,
     };
     let mut effects = Vec::new();
     for rule in ordered {
@@ -722,6 +897,7 @@ pub fn evaluate(rules: &[Rule], subject: &Subject, values: &[(String, Php)]) -> 
         .collect();
     Evaluation {
         effects,
+        unsupported: engine.unsupported,
         object_transcript,
         rule_transcripts: keyed(engine.transcripts.rules),
         condition_transcripts: keyed(conditions),
@@ -1033,6 +1209,49 @@ mod tests {
                 ("projects".to_owned(), 1),
             ]
         );
+    }
+
+    #[test]
+    fn compiles_regular_expressions_like_php() {
+        let matches = |pattern: &str, subject: &str| {
+            php_regex(pattern.as_bytes())
+                .expect("a pattern")
+                .is_match(subject.as_bytes())
+                .expect("a match")
+        };
+        assert!(matches("@^dom/base/@", "dom/base/Element.cpp"));
+        assert!(!matches("@^dom/base/@", "layout/dom/base/x"));
+        assert!(matches("/FIX/i", "a fix"));
+        assert!(matches("(a(b)c)", "xabcx"));
+        // PCRE's $ matches before a final newline.
+        assert!(matches("/c$/", "abc\n"));
+        for pattern in ["/a/A", "/a/D", "/a/u", "noslash", "/a(/"] {
+            assert!(php_regex(pattern.as_bytes()).is_none(), "{pattern}");
+        }
+    }
+
+    #[test]
+    fn pairs_regular_expressions_like_php() {
+        let pair = Php::str(r#"["@^/dom/@","/Element/"]"#);
+        let (key, value) = regex_pair(&pair).expect("a pair");
+        assert!(key.is_match(b"/dom/base").expect("a match"));
+        assert!(value.is_match(b"Element::Foo").expect("a match"));
+        for invalid in [r#"["@a@"]"#, "not json", r#"["@a@","b"]"#, "[1,2]"] {
+            assert!(regex_pair(&Php::str(invalid)).is_none(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn compares_like_php() {
+        assert!(loose_equals(&Php::str("Fix"), &Php::str("Fix")));
+        assert!(!loose_equals(&Php::str("Fix"), &Php::str("fix")));
+        assert!(loose_equals(&Php::str("10"), &Php::str("1e1")));
+        assert!(loose_equals(&Php::str(" 7"), &Php::str("7.0")));
+        assert!(!loose_equals(&Php::str("abc"), &Php::str("ABC")));
+        assert!(loose_equals(&Php::Null, &Php::str("")));
+        assert!(!loose_equals(&Php::str("1."), &Php::str("x")));
+        assert_eq!(numeric(b"."), None);
+        assert_eq!(numeric(b"1e"), None);
     }
 
     #[test]

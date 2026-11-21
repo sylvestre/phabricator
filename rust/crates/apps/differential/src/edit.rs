@@ -21,6 +21,7 @@
 mod commits;
 mod dependencies;
 mod files;
+mod herald_fields;
 mod lists;
 mod merge_checks;
 mod monograms;
@@ -55,7 +56,7 @@ struct RevisionAdapter;
 
 impl Adapter for RevisionAdapter {
     fn has_field(&self, key: &str) -> bool {
-        matches!(key, "new-object" | "rule" | "projects")
+        herald_fields::FIELDS.contains(&key)
     }
 
     fn has_action(&self, action: &str) -> bool {
@@ -1080,7 +1081,7 @@ async fn run_herald(
     database: &Database,
     revision: &Revision,
     facts: &Facts,
-    applied_phids: &[String],
+    (input, applied_phids): (&herald_fields::Input<'_>, &[String]),
 ) -> Result<(Vec<Rule>, Evaluation, Vec<Applied>, Vec<String>), MethodError> {
     let unsupported = |error: engine::HeraldError| match error {
         engine::HeraldError::Unsupported(what) => MethodError::Unsupported(what),
@@ -1096,15 +1097,12 @@ async fn run_herald(
         name: revision.title.clone(),
         applied_transaction_phids: Some(applied_phids.to_vec()),
     };
-    let values = vec![
-        ("new-object".to_owned(), Php::Bool(false)),
-        ("rule".to_owned(), Php::Null),
-        (
-            "projects".to_owned(),
-            Php::list(facts.projects.iter().map(|phid| Php::str(phid))),
-        ),
-    ];
+    let used = engine::fields_used(&rules);
+    let values = herald_fields::values(database, revision, facts, input, &used).await?;
     let evaluation = engine::evaluate(&rules, &subject, &values);
+    if let Some(what) = evaluation.unsupported {
+        return Err(MethodError::Unsupported(what));
+    }
     let mut applied = Vec::new();
     let mut must_encrypt = Vec::new();
     for effect in &evaluation.effects {
@@ -1667,11 +1665,13 @@ async fn publication(
     database: &Database,
     revision: &Revision,
     facts: &Facts,
-    actor: &str,
+    (actor, text): (&str, Option<&(TextField, String, String, String)>),
     applied_phids: &[String],
 ) -> Result<Publication, MethodError> {
+    let text = text.map(|(field, _, _, new)| (*field, new.as_str()));
+    let input = herald_fields::Input { actor, text };
     let (rules, evaluation, applied, must_encrypt) =
-        run_herald(database, revision, facts, applied_phids).await?;
+        run_herald(database, revision, facts, (&input, applied_phids)).await?;
     let subject = Subject {
         phid: revision.phid.as_str().to_owned(),
         content_type: "differential".to_owned(),
@@ -2010,7 +2010,8 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
     let merge_checks = plan_merge_checks(request, &revision, &actions, &links).await?;
-    let published = publication(database, &revision, &facts, &actor, &applied_phids).await?;
+    let text = (actor.as_str(), actions.text.as_ref());
+    let published = publication(database, &revision, &facts, text, &applied_phids).await?;
     let tasks = link_tasks(database, links, &actor, &published.must_encrypt).await?;
     Ok(Plan {
         actor,
