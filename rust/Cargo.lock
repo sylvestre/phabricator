@@ -1612,6 +1612,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-harbormaster"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "phab-app-differential",
+ "phab-conduit",
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "phab-app-herald"
 version = "0.1.0"
 dependencies = [
@@ -1826,6 +1840,7 @@ dependencies = [
  "phab-app-feed",
  "phab-app-files",
  "phab-app-flag",
+ "phab-app-harbormaster",
  "phab-app-people",
  "phab-app-phid",
  "phab-app-policy",

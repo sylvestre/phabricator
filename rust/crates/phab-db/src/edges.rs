@@ -64,6 +64,17 @@ pub fn edge_database(phid_type: PhidType) -> Option<&'static str> {
         PhidType::FILE => "file",
         PhidType::SPACE => "spaces",
         PhidType::POLICY => "policy",
+        // Harbormaster's objects (HarbormasterDAO): build plans, steps,
+        // buildables, builds, targets, artifacts and logs.
+        phid_type
+            if [
+                *b"HMCP", *b"HMCS", *b"HMBB", *b"HMBD", *b"HMBT", *b"HMBA", *b"HMCL",
+            ]
+            .iter()
+            .any(|code| phid_type == PhidType::new(*code)) =>
+        {
+            "harbormaster"
+        }
         _ => return None,
     };
     Some(database)
