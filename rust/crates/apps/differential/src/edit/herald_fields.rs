@@ -48,6 +48,8 @@ pub(super) struct Input<'a> {
     pub(super) removes_subscribers: bool,
     /// Who the edit subscribes, in the order of their edges.
     pub(super) subscribed: Vec<String>,
+    /// The projects the edit tags, in the order of their edges.
+    pub(super) tagged: Vec<String>,
 }
 
 fn phid_list<'a>(phids: impl IntoIterator<Item = &'a String>) -> Php {

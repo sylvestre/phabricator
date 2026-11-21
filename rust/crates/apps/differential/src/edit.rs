@@ -35,7 +35,6 @@ mod tags;
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
 use phab_core::{Phid, PhidType, php, random};
-use phab_db::phpser::Value as Php;
 use phab_db::{Database, edges, rows, worker};
 use serde_json::{Value, json};
 
@@ -64,7 +63,10 @@ impl Adapter for RevisionAdapter {
         matches!(
             action,
             "email.must-encrypt"
+                | "email.other"
+                | "nothing"
                 | "projects.add"
+                | "projects.remove"
                 | "subscribers.add"
                 | "subscribers.remove"
                 | "differential.reviewers.add"
@@ -1119,52 +1121,16 @@ async fn run_herald(
     let mut must_encrypt = Vec::new();
     let mut queue = herald_actions::Queue::default();
     for effect in &evaluation.effects {
-        match effect.action.as_str() {
-            action @ ("differential.reviewers.add" | "differential.reviewers.blocking") => {
-                let target = (&effect.target, action == "differential.reviewers.blocking");
-                let reasons =
-                    herald_actions::review(request, (revision, facts), target, &mut queue).await?;
-                applied.push(Applied {
-                    effect: effect.clone(),
-                    applied: true,
-                    reasons,
-                });
-            }
-            action @ ("subscribers.add" | "subscribers.remove") => {
-                let is_add = action == "subscribers.add";
-                // The unsubscribers the edit makes come in edge order.
-                if is_add && input.removes_subscribers {
-                    return Err(MethodError::Unsupported(
-                        "Herald subscriptions of edits which unsubscribe",
-                    ));
-                }
-                let target = (&effect.target, is_add);
-                let reasons =
-                    herald_actions::subscribe(request, (revision, facts), target, &mut queue)
-                        .await?;
-                applied.push(Applied {
-                    effect: effect.clone(),
-                    applied: true,
-                    reasons,
-                });
-            }
-            "email.must-encrypt" => {
-                must_encrypt.push(effect.rule_phid.clone());
-                applied.push(Applied {
-                    effect: effect.clone(),
-                    applied: true,
-                    reasons: vec![(
-                        "do.must-encrypt".to_owned(),
-                        Php::list([Php::str(&effect.rule_phid)]),
-                    )],
-                });
-            }
-            _ => {
-                return Err(MethodError::Unsupported(
-                    "Herald effects which edit the revision",
-                ));
-            }
-        }
+        let subject = (revision, facts);
+        let state = (&mut queue, &mut must_encrypt);
+        let reasons =
+            herald_actions::apply(request, subject, effect, input.removes_subscribers, state)
+                .await?;
+        applied.push(Applied {
+            effect: effect.clone(),
+            applied: true,
+            reasons,
+        });
     }
     Ok(HeraldOutcome {
         rules,
@@ -1733,6 +1699,11 @@ fn herald_input<'a>(
         .collect();
     herald_fields::Input {
         subscribed,
+        tagged: actions
+            .tag_edit
+            .as_ref()
+            .map(|edit| edit.added.clone())
+            .unwrap_or_default(),
         actor,
         text: actions
             .text
@@ -1769,18 +1740,20 @@ async fn publication(
     let herald = herald_actions::edits(
         outcome.queue,
         (revision, facts),
-        &input.subscribed,
+        (&input.subscribed, &input.tagged),
         sticky_accept(request),
     )?;
     let mut published: Vec<String> = applied_phids.to_vec();
     published.extend(herald.phids());
-    let state = worker_state(
+    let mut state = worker_state(
         revision,
         facts,
         input.actor,
         &outcome.must_encrypt,
         &herald_header,
     );
+    state["heraldEmailPHIDs"] = json!(herald.email);
+    state["heraldForcedEmailPHIDs"] = json!(herald.forced_email);
     let worker_data = php::json_encode(&json!({
         "objectPHID": revision.phid.as_str(),
         "actorPHID": input.actor,

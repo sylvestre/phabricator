@@ -145,3 +145,39 @@ INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
   (SELECT CONCAT('["', phid, '"]') FROM phabricator_user.user WHERE userName = 'dave')),
 (204, 12, 'differential.reviewers.blocking',
   (SELECT CONCAT('["', phid, '"]') FROM phabricator_user.user WHERE userName = 'dave'));
+
+-- Rule 13 tags with Build Reviewers, 14 mails dave, 15 does nothing, 17
+-- removes Frontend Reviewers.
+INSERT IGNORE INTO phabricator_herald.herald_rule (id, name, authorPHID,
+  contentType, mustMatchAll, configVersion, dateCreated, dateModified,
+  repetitionPolicy, ruleType, phid, isDisabled, triggerObjectPHID)
+SELECT 13, 'Act: tag', phid, 'differential', 1, 38, 1794600000, 1794600000,
+  'every', 'global', 'PHID-HRUL-acttag0000000013', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin'
+UNION ALL
+SELECT 14, 'Act: email dave', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'global', 'PHID-HRUL-actemail0000014', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin'
+UNION ALL
+SELECT 15, 'Act: nothing', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'global', 'PHID-HRUL-actnothing00015', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin'
+UNION ALL
+SELECT 17, 'Act: untag', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'global', 'PHID-HRUL-actuntag0000017', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin';
+
+INSERT IGNORE INTO phabricator_herald.herald_condition (id, ruleID, fieldName,
+  fieldCondition, value) VALUES
+(205, 13, 'differential.revision.title', 'contains', '"act-tag"'),
+(206, 14, 'differential.revision.title', 'contains', '"act-email"'),
+(207, 15, 'differential.revision.title', 'contains', '"act-nothing"'),
+(209, 17, 'differential.revision.title', 'contains', '"act-untag"');
+
+INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
+  target) VALUES
+(205, 13, 'projects.add', '["PHID-PROJ-fw4ppopw3mj73juscyek"]'),
+(206, 14, 'email.other',
+  (SELECT CONCAT('["', phid, '"]') FROM phabricator_user.user WHERE userName = 'dave')),
+(207, 15, 'nothing', 'null'),
+(209, 17, 'projects.remove', '["PHID-PROJ-sv7lxylfx3dmjxbkjkt4"]');

@@ -1,6 +1,8 @@
 //! The actions of Herald rules which edit the revision
 //! (`PhabricatorSubscriptionsHeraldAction`,
-//! `DifferentialReviewersHeraldAction`): each logs what it did
+//! `DifferentialReviewersHeraldAction`, `PhabricatorProjectHeraldAction`),
+//! and those which mail (`PhabricatorMetaMTAEmailHeraldAction`): each logs
+//! what it did
 //! (`logEffect()`, kept in the transcript) and queues a transaction, which
 //! PHP's Herald editor applies after the edit's, as the Herald
 //! application (`applyHeraldRules()`).
@@ -10,6 +12,8 @@ use phab_core::{Phid, php};
 use phab_db::phpser::{Key, Value as Php};
 use phab_db::{edges, rows};
 use serde_json::json;
+
+use phab_app_herald::engine::Effect;
 
 use super::{Facts, Plan, Subscription};
 use crate::storage::Revision;
@@ -27,6 +31,8 @@ enum Entry {
     /// Reviewers, with the status each gets, `added` or `blocking`: these
     /// are not merged.
     Reviewers(Vec<(String, String)>),
+    /// Tags: edge transactions of one type merge into the first.
+    Projects,
 }
 
 /// What the actions queued, in order, and the merged subscriptions' `+`
@@ -36,12 +42,35 @@ pub(super) struct Queue {
     entries: Vec<Entry>,
     add: Vec<String>,
     remove: Vec<String>,
+    tag: Vec<String>,
+    untag: Vec<String>,
+    /// `addEmailPHID()`: who gets mail, and who gets it however they
+    /// configured their mail.
+    email: Vec<String>,
+    forced_email: Vec<String>,
+}
+
+impl Queue {
+    /// Queues a mergeable transaction, the first of its kind.
+    fn merged(&mut self, entry: Entry, kind: fn(&Entry) -> bool) {
+        if !self.entries.iter().any(kind) {
+            self.entries.push(entry);
+        }
+    }
+}
+
+/// `$merged = array_merge($later, $earlier)` of PHIDs.
+fn merge(into: &mut Vec<String>, later: &[String]) {
+    let mut merged = later.to_vec();
+    merged.extend(into.iter().filter(|phid| !later.contains(phid)).cloned());
+    *into = merged;
 }
 
 /// A transaction of the Herald editor.
 enum Planned {
     Subscription(Subscription),
     Reviewers(super::reviewers::Planned),
+    Tags(super::tags::Planned),
 }
 
 /// The Herald editor's transactions, in the order it applies them, and
@@ -51,6 +80,9 @@ pub(super) struct Edits {
     transactions: Vec<Planned>,
     /// The reviewers before and after the transactions, to write.
     reviewers: Option<super::reviewers::Planned>,
+    /// The publish task's `heraldEmailPHIDs` and `heraldForcedEmailPHIDs`.
+    pub(super) email: Vec<String>,
+    pub(super) forced_email: Vec<String>,
 }
 
 impl Edits {
@@ -61,6 +93,7 @@ impl Edits {
             .map(|planned| match planned {
                 Planned::Subscription(edit) => edit.phid.clone(),
                 Planned::Reviewers(edit) => edit.phid.clone(),
+                Planned::Tags(edit) => edit.phid.clone(),
             })
             .collect()
     }
@@ -79,21 +112,65 @@ fn list(phids: &[String]) -> Php {
     Php::list(phids.iter().map(|phid| Php::str(phid)))
 }
 
+/// Applies one effect of a rule which matched: logs it and queues what it
+/// does. `removes_subscribers` says whether the edit unsubscribes anyone:
+/// the unsubscribers it makes come in edge order, so adding subscribers
+/// then is left to PHP.
+pub(super) async fn apply(
+    request: &ApiRequest<'_>,
+    subject: (&Revision, &Facts),
+    effect: &Effect,
+    removes_subscribers: bool,
+    (queue, must_encrypt): (&mut Queue, &mut Vec<String>),
+) -> Result<Vec<(String, Php)>, MethodError> {
+    let target = &effect.target;
+    match effect.action.as_str() {
+        "email.must-encrypt" => {
+            must_encrypt.push(effect.rule_phid.clone());
+            Ok(vec![(
+                "do.must-encrypt".to_owned(),
+                Php::list([Php::str(&effect.rule_phid)]),
+            )])
+        }
+        "nothing" => Ok(vec![("do.nothing".to_owned(), Php::Null)]),
+        "email.other" => email(request, subject.0, target, queue).await,
+        action @ ("projects.add" | "projects.remove") => {
+            tag(request, subject, (target, action == "projects.add"), queue).await
+        }
+        action @ ("differential.reviewers.add" | "differential.reviewers.blocking") => {
+            let blocking = action == "differential.reviewers.blocking";
+            review(request, subject, (target, blocking), queue).await
+        }
+        action @ ("subscribers.add" | "subscribers.remove") => {
+            let is_add = action == "subscribers.add";
+            if is_add && removes_subscribers {
+                return Err(MethodError::Unsupported(
+                    "Herald subscriptions of edits which unsubscribe",
+                ));
+            }
+            subscribe(request, subject, (target, is_add), queue).await
+        }
+        _ => Err(MethodError::Unsupported(
+            "Herald effects which edit the revision",
+        )),
+    }
+}
+
 /// `loadStandardTargets()` for users and projects: the targets which can
 /// be acted on, and the log of those which can't.
 async fn standard_targets(
     request: &ApiRequest<'_>,
     revision: &Revision,
-    phids: Vec<String>,
+    (phids, projects_only): (Vec<String>, bool),
     log: &mut Vec<(String, Php)>,
 ) -> Result<Vec<String>, MethodError> {
     if phids.is_empty() {
         log.push(("do.standard.empty".to_owned(), Php::Null));
         return Ok(Vec::new());
     }
-    let (valid, invalid): (Vec<String>, Vec<String>) = phids
-        .into_iter()
-        .partition(|phid| phid.starts_with("PHID-USER-") || phid.starts_with("PHID-PROJ-"));
+    let (valid, invalid): (Vec<String>, Vec<String>) = phids.into_iter().partition(|phid| {
+        phid.starts_with("PHID-PROJ-") || (!projects_only && phid.starts_with("PHID-USER-"))
+    });
     if !invalid.is_empty() {
         log.push(("do.standard.invalid".to_owned(), list(&invalid)));
     }
@@ -178,7 +255,7 @@ pub(super) async fn subscribe(
             "Herald actions on several targets",
         ));
     }
-    let mut phids = standard_targets(request, revision, phids, &mut log).await?;
+    let mut phids = standard_targets(request, revision, (phids, false), &mut log).await?;
     if phids.is_empty() {
         return Ok(log);
     }
@@ -224,25 +301,17 @@ pub(super) async fn subscribe(
     if remaining.is_empty() {
         return Ok(log);
     }
-    if !queue
-        .entries
-        .iter()
-        .any(|entry| matches!(entry, Entry::Subscribers))
-    {
-        queue.entries.push(Entry::Subscribers);
-    }
-    let into = if is_add {
-        &mut queue.add
-    } else {
-        &mut queue.remove
-    };
-    let mut merged = remaining.clone();
-    merged.extend(
-        into.iter()
-            .filter(|phid| !remaining.contains(phid))
-            .cloned(),
+    queue.merged(Entry::Subscribers, |entry| {
+        matches!(entry, Entry::Subscribers)
+    });
+    merge(
+        if is_add {
+            &mut queue.add
+        } else {
+            &mut queue.remove
+        },
+        &remaining,
     );
-    *into = merged;
     let code = if is_add {
         "do.subscribed"
     } else {
@@ -309,7 +378,7 @@ pub(super) async fn review(
             return Ok(log);
         }
     }
-    let targets = standard_targets(request, revision, phids, &mut log).await?;
+    let targets = standard_targets(request, revision, (phids, false), &mut log).await?;
     if targets.is_empty() {
         return Ok(log);
     }
@@ -325,6 +394,82 @@ pub(super) async fn review(
         "do.add-reviewers"
     };
     log.push((code.to_owned(), keyed(&targets)));
+    Ok(log)
+}
+
+/// `applyProjects()`: `projects.add` or `projects.remove` of `targets`.
+/// Returns the log.
+pub(super) async fn tag(
+    request: &ApiRequest<'_>,
+    (revision, facts): (&Revision, &Facts),
+    (targets, is_add): (&Php, bool),
+    queue: &mut Queue,
+) -> Result<Vec<(String, Php)>, MethodError> {
+    let mut log = Vec::new();
+    let phids = target_phids(targets);
+    if phids.len() > 1 {
+        return Err(MethodError::Unsupported(
+            "Herald actions on several targets",
+        ));
+    }
+    let phids = standard_targets(request, revision, (phids, true), &mut log).await?;
+    if phids.is_empty() {
+        return Ok(log);
+    }
+    let (already, remaining): (Vec<String>, Vec<String>) = phids
+        .into_iter()
+        .partition(|phid| facts.projects.contains(phid) == is_add);
+    if !already.is_empty() {
+        log.push(("do.standard.no-effect".to_owned(), keyed(&already)));
+    }
+    if remaining.is_empty() {
+        return Ok(log);
+    }
+    if is_add {
+        super::tags::check_added(request, &remaining).await?;
+    }
+    queue.merged(Entry::Projects, |entry| matches!(entry, Entry::Projects));
+    merge(
+        if is_add {
+            &mut queue.tag
+        } else {
+            &mut queue.untag
+        },
+        &remaining,
+    );
+    let code = if is_add {
+        "do.add-projects"
+    } else {
+        "do.remove-projects"
+    };
+    log.push((code.to_owned(), keyed(&remaining)));
+    Ok(log)
+}
+
+/// `applyEmail()`: `email.other`. Returns the log.
+pub(super) async fn email(
+    request: &ApiRequest<'_>,
+    revision: &Revision,
+    targets: &Php,
+    queue: &mut Queue,
+) -> Result<Vec<(String, Php)>, MethodError> {
+    let mut log = Vec::new();
+    let phids = target_phids(targets);
+    if phids.len() > 1 {
+        return Err(MethodError::Unsupported(
+            "Herald actions on several targets",
+        ));
+    }
+    let phids = standard_targets(request, revision, (phids, false), &mut log).await?;
+    if phids.is_empty() {
+        return Ok(log);
+    }
+    for phid in &phids {
+        if !queue.email.contains(phid) {
+            queue.email.push(phid.clone());
+        }
+    }
+    log.push(("do.send".to_owned(), keyed(&phids)));
     Ok(log)
 }
 
@@ -372,7 +517,7 @@ async fn unsubscribers(
 pub(super) fn edits(
     queue: Queue,
     (revision, facts): (&mut Revision, &mut Facts),
-    subscribed: &[String],
+    (subscribed, tagged): (&[String], &[String]),
     sticky_accept: bool,
 ) -> Result<Edits, MethodError> {
     // populateTransaction() reads every old value before applying any.
@@ -380,11 +525,13 @@ pub(super) fn edits(
     let mut after = before.clone();
     let mut transactions = Vec::new();
     let mut subscription = subscription(&queue, facts, subscribed);
+    let mut tags = tags(&queue, facts, tagged);
     for entry in queue.entries {
         match entry {
             Entry::Subscribers => {
                 transactions.extend(subscription.take().map(Planned::Subscription));
             }
+            Entry::Projects => transactions.extend(tags.take().map(Planned::Tags)),
             Entry::Reviewers(tokens) => {
                 let Some(new) = super::reviewers::herald_value(&before, tokens) else {
                     continue;
@@ -411,15 +558,66 @@ pub(super) fn edits(
     Ok(Edits {
         transactions,
         reviewers,
+        email: queue.email,
+        forced_email: queue.forced_email,
+    })
+}
+
+/// A list of edges as the edge query reads it (newest first) after Herald:
+/// the edit's new edges (`main`, numbered in order) and Herald's (`added`)
+/// are all as old, so edges of the same number come by PHID, descending,
+/// as MySQL reads the `(src, type, dateCreated, seq)` index backwards.
+fn newest_first(
+    old: &[String],
+    main: &[String],
+    added: &[String],
+    removed: &[String],
+) -> Vec<String> {
+    let mut fresh: Vec<(usize, &String)> = main
+        .iter()
+        .filter(|phid| !removed.contains(phid))
+        .enumerate()
+        .chain(added.iter().enumerate())
+        .collect();
+    fresh.sort_by(|(left_seq, left), (right_seq, right)| {
+        right_seq.cmp(left_seq).then_with(|| right.cmp(left))
+    });
+    let mut after: Vec<String> = fresh.into_iter().map(|(_, phid)| phid.clone()).collect();
+    after.extend(
+        old.iter()
+            .filter(|phid| !removed.contains(phid) && !main.contains(phid))
+            .cloned(),
+    );
+    after
+}
+
+/// The tags' `core:edge` transaction of the queue, if it has an effect, in
+/// the slim format of edges. Updates the projects of `facts`.
+fn tags(queue: &Queue, facts: &mut Facts, tagged: &[String]) -> Option<super::tags::Planned> {
+    let old = facts.projects.clone();
+    let mut new = old.clone();
+    for phid in &queue.tag {
+        if !new.contains(phid) {
+            new.push(phid.clone());
+        }
+    }
+    new.retain(|phid| !queue.untag.contains(phid));
+    let added = super::lists::minus(&new, &old);
+    let removed = super::lists::minus(&old, &new);
+    if added.is_empty() && removed.is_empty() {
+        return None;
+    }
+    facts.projects = newest_first(&old, tagged, &added, &removed);
+    Some(super::tags::Planned {
+        phid: super::transaction_phid(),
+        removed,
+        added,
     })
 }
 
 /// The `core:subscribers` transaction of the queue, if it has an effect:
 /// the subscribers before, then `getPHIDList()`. Updates the subscribers
-/// of `facts`, as the edge query reads them (newest first): the edit's new
-/// edges (`subscribed`, numbered in order) and Herald's are all as old, so
-/// edges of the same number come by PHID, descending, as MySQL reads the
-/// `(src, type, dateCreated, seq)` index backwards.
+/// of `facts` ([`newest_first()`]).
 fn subscription(queue: &Queue, facts: &mut Facts, subscribed: &[String]) -> Option<Subscription> {
     let old = facts.subscribers.clone();
     let mut new = old.clone();
@@ -434,22 +632,7 @@ fn subscription(queue: &Queue, facts: &mut Facts, subscribed: &[String]) -> Opti
     }
     let added = super::lists::minus(&new, &old);
     let removed = super::lists::minus(&old, &new);
-    let mut fresh: Vec<(usize, &String)> = subscribed
-        .iter()
-        .filter(|phid| !removed.contains(phid))
-        .enumerate()
-        .chain(added.iter().enumerate())
-        .collect();
-    fresh.sort_by(|(left_seq, left), (right_seq, right)| {
-        right_seq.cmp(left_seq).then_with(|| right.cmp(left))
-    });
-    let mut after: Vec<String> = fresh.into_iter().map(|(_, phid)| phid.clone()).collect();
-    after.extend(
-        old.iter()
-            .filter(|phid| !removed.contains(phid) && !subscribed.contains(phid))
-            .cloned(),
-    );
-    facts.subscribers = after;
+    facts.subscribers = newest_first(&old, subscribed, &added, &removed);
     Some(Subscription {
         phid: super::transaction_phid(),
         old,
@@ -487,6 +670,22 @@ pub(super) async fn write(
                 super::reviewers::encode(&edit.old),
                 super::reviewers::encode(&edit.new),
             ),
+            Planned::Tags(edit) => (
+                &edit.phid,
+                "core:edge",
+                php::json_encode(&json!(edit.removed)),
+                php::json_encode(&json!(edit.added)),
+            ),
+        };
+        // Edge transactions name their type first.
+        let metadata = if matches!(planned, Planned::Tags(_)) {
+            php::json_encode(&json!({
+                "edge:type": edges::OBJECT_HAS_PROJECT,
+                "herald:transcriptID": transcript_id,
+                "core.groupID": plan.group_id,
+            }))
+        } else {
+            metadata.clone()
         };
         phab_db::sqlx::query(&format!(
             "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
@@ -509,8 +708,14 @@ pub(super) async fn write(
         .await?;
     }
     for planned in &edits.transactions {
-        if let Planned::Subscription(edit) = planned {
-            super::write_subscription_edges(request, plan, edit, connection).await?;
+        match planned {
+            Planned::Subscription(edit) => {
+                super::write_subscription_edges(request, plan, edit, connection).await?;
+            }
+            Planned::Tags(edit) => {
+                super::tags::write_edges(request, plan, edit, connection).await?;
+            }
+            Planned::Reviewers(_) => {}
         }
     }
     if let Some(edit) = &edits.reviewers {

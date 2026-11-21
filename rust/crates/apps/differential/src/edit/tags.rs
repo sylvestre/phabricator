@@ -51,6 +51,27 @@ pub(super) async fn plan(
         if !lists::all_valid(request, &refs).await? {
             return Err(MethodError::Unsupported("tags PHP refuses"));
         }
+        check_added(request, &added).await?;
+    }
+    let mut after: Vec<String> = added.iter().rev().cloned().collect();
+    after.extend(lists::minus(&old, &removed));
+    facts.projects = after;
+    Ok(Planned {
+        phid: super::transaction_phid(),
+        removed,
+        added,
+    })
+}
+
+/// New tags whose effects are left to PHP: subprojects and milestones
+/// (`applyProjectConflictRules()`) and projects with watchers, who get mail.
+pub(super) async fn check_added(
+    request: &ApiRequest<'_>,
+    added: &[String],
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let refs: Vec<&str> = added.iter().map(String::as_str).collect();
+    {
         let sql = format!(
             "SELECT 1 FROM {} WHERE phid IN ({}) AND (parentProjectPHID IS NOT NULL OR \
              milestoneNumber IS NOT NULL) LIMIT 1",
@@ -71,14 +92,7 @@ pub(super) async fn plan(
             return Err(MethodError::Unsupported("projects with watchers"));
         }
     }
-    let mut after: Vec<String> = added.iter().rev().cloned().collect();
-    after.extend(lists::minus(&old, &removed));
-    facts.projects = after;
-    Ok(Planned {
-        phid: super::transaction_phid(),
-        removed,
-        added,
-    })
+    Ok(())
 }
 
 /// The transaction, in the slim format of edges (the removed and the
@@ -89,8 +103,6 @@ pub(super) async fn write(
     planned: &Planned,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
-    let database = &request.context.database;
-    let revision = plan.revision.phid.as_str();
     let (old, new) = (
         php::json_encode(&json!(planned.removed)),
         php::json_encode(&json!(planned.added)),
@@ -98,6 +110,18 @@ pub(super) async fn write(
     let metadata = super::edge_metadata(plan, edges::OBJECT_HAS_PROJECT);
     let row = (planned.phid.as_str(), "core:edge", &*old, &*new, &*metadata);
     super::insert_transaction(request, plan, connection, row).await?;
+    write_edges(request, plan, planned, connection).await
+}
+
+/// The edges of the planned tags, with their inverses.
+pub(super) async fn write_edges(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    planned: &Planned,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let revision = plan.revision.phid.as_str();
     for project in &planned.removed {
         super::delete_edge(
             database,
