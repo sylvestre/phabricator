@@ -8,5 +8,16 @@
   {"name": "Herald subscribes dave, who can't see D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "D1 act-subscribe"}]}},
   {"name": "Herald unsubscribes bob, who isn't on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "D1 act-unsubscribe"}]}},
   {"name": "Herald unsubscribes bob while the edit unsubscribes him", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-unsubscribe"}, {"type": "subscribers.remove", "value": ["PHID-USER-gjsswwcaxvzc2p3qhkkk"]}]}},
-  {"name": "Herald subscribes dave on D3, which bob unsubscribed from", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "title", "value": "D3 act-subscribe"}]}}
+  {"name": "Herald subscribes dave on D3, which bob unsubscribed from", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "title", "value": "D3 act-subscribe"}]}},
+  {"name": "Herald adds dave as reviewer of D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-review"}]}},
+  {"name": "Herald adds dave as blocking reviewer of D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-block"}]}},
+  {"name": "Herald adds dave both ways to D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-review act-block"}]}},
+  {"name": "Herald blocks accepted D2 on dave", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "title", "value": "D2 act-block"}]}},
+  {"name": "Herald adds dave as reviewer of accepted D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "title", "value": "D2 act-review"}]}},
+  {"name": "Herald adds dave as reviewer of D7, his own", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "title", "value": "D7 act-review"}]}},
+  {"name": "Herald adds dave as reviewer of D1, which he can't see", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "D1 act-review"}]}},
+  {"name": "Herald adds dave as reviewer of D3", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "title", "value": "D3 act-review"}]}},
+  {"name": "Herald adds dave, whom the edit adds", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-review"}, {"type": "reviewers.add", "value": ["PHID-USER-5fhrwkaff4cbtd44svtw"]}]}},
+  {"name": "Herald subscribes and adds dave as reviewer of D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-review act-subscribe"}]}},
+  {"name": "Herald blocks on dave with a comment on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-block"}, {"type": "comment", "value": "Blocking."}]}}
 ]

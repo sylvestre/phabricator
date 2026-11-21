@@ -1,5 +1,6 @@
 //! The actions of Herald rules which edit the revision
-//! (`PhabricatorSubscriptionsHeraldAction`): each logs what it did
+//! (`PhabricatorSubscriptionsHeraldAction`,
+//! `DifferentialReviewersHeraldAction`): each logs what it did
 //! (`logEffect()`, kept in the transcript) and queues a transaction, which
 //! PHP's Herald editor applies after the edit's, as the Herald
 //! application (`applyHeraldRules()`).
@@ -19,12 +20,50 @@ const HERALD_PHID: &str = "PHID-APPS-PhabricatorHeraldApplication";
 /// `PhabricatorHeraldContentSource`.
 const HERALD_SOURCE: &str = r#"{"source":"herald","params":[]}"#;
 
-/// The subscriptions the actions queued: their `+` and `-`, merged as
-/// `combineTransactions()` merges them (a later transaction's PHIDs first).
+/// A transaction an action queues.
+enum Entry {
+    /// Subscriptions: `combineTransactions()` merges them into the first.
+    Subscribers,
+    /// Reviewers, with the status each gets, `added` or `blocking`: these
+    /// are not merged.
+    Reviewers(Vec<(String, String)>),
+}
+
+/// What the actions queued, in order, and the merged subscriptions' `+`
+/// and `-` (a later transaction's PHIDs first).
 #[derive(Default)]
 pub(super) struct Queue {
+    entries: Vec<Entry>,
     add: Vec<String>,
     remove: Vec<String>,
+}
+
+/// A transaction of the Herald editor.
+enum Planned {
+    Subscription(Subscription),
+    Reviewers(super::reviewers::Planned),
+}
+
+/// The Herald editor's transactions, in the order it applies them, and
+/// what they leave of the reviewers.
+#[derive(Default)]
+pub(super) struct Edits {
+    transactions: Vec<Planned>,
+    /// The reviewers before and after the transactions, to write.
+    reviewers: Option<super::reviewers::Planned>,
+}
+
+impl Edits {
+    /// Their PHIDs, in order.
+    pub(super) fn phids(&self) -> Vec<String> {
+        self.transactions
+            .iter()
+            .map(|planned| match planned {
+                Planned::Subscription(edit) => edit.phid.clone(),
+                Planned::Reviewers(edit) => edit.phid.clone(),
+            })
+            .collect()
+    }
 }
 
 fn keyed(phids: &[String]) -> Php {
@@ -132,14 +171,7 @@ pub(super) async fn subscribe(
     queue: &mut Queue,
 ) -> Result<Vec<(String, Php)>, MethodError> {
     let mut log = Vec::new();
-    let phids: Vec<String> = match targets {
-        Php::Array(entries) => entries
-            .iter()
-            .filter_map(|(_, value)| value.as_bytes())
-            .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
-            .collect(),
-        _ => Vec::new(),
-    };
+    let phids = target_phids(targets);
     // PhabricatorObjectQuery orders several targets by type and query.
     if phids.len() > 1 {
         return Err(MethodError::Unsupported(
@@ -192,6 +224,13 @@ pub(super) async fn subscribe(
     if remaining.is_empty() {
         return Ok(log);
     }
+    if !queue
+        .entries
+        .iter()
+        .any(|entry| matches!(entry, Entry::Subscribers))
+    {
+        queue.entries.push(Entry::Subscribers);
+    }
     let into = if is_add {
         &mut queue.add
     } else {
@@ -213,6 +252,106 @@ pub(super) async fn subscribe(
     Ok(log)
 }
 
+/// `applyReviewers()`: `differential.reviewers.add` or `.blocking` of
+/// `targets`. Returns the log.
+pub(super) async fn review(
+    request: &ApiRequest<'_>,
+    (revision, facts): (&Revision, &Facts),
+    (targets, is_blocking): (&Php, bool),
+    queue: &mut Queue,
+) -> Result<Vec<(String, Php)>, MethodError> {
+    let mut log = Vec::new();
+    let mut phids = target_phids(targets);
+    if phids.len() > 1 {
+        return Err(MethodError::Unsupported(
+            "Herald actions on several targets",
+        ));
+    }
+    // Authors don't review their revisions.
+    let author = revision.author_phid.as_ref().map(Phid::as_str);
+    let authors: Vec<String> = phids
+        .iter()
+        .filter(|phid| Some(phid.as_str()) == author)
+        .cloned()
+        .collect();
+    if !authors.is_empty() {
+        phids.retain(|phid| Some(phid.as_str()) != author);
+        log.push(("do.authors".to_owned(), list(&authors)));
+        if phids.is_empty() {
+            return Ok(log);
+        }
+    }
+    let status = if is_blocking { "blocking" } else { "added" };
+    // Reviewers whose status is stronger are no effect; an equal one is
+    // queued again.
+    let current: Vec<String> = phids
+        .iter()
+        .filter(|phid| {
+            facts
+                .reviewers
+                .iter()
+                .find(|reviewer| reviewer.reviewer == **phid)
+                .is_some_and(|reviewer| strength(&reviewer.status) > strength(status))
+        })
+        .cloned()
+        .collect();
+    let mut no_effect = Vec::new();
+    phids.retain(|phid| {
+        let skip = current.contains(phid);
+        if skip {
+            no_effect.push(phid.clone());
+        }
+        !skip
+    });
+    if !no_effect.is_empty() {
+        log.push(("do.standard.no-effect".to_owned(), list(&no_effect)));
+        if phids.is_empty() {
+            return Ok(log);
+        }
+    }
+    let targets = standard_targets(request, revision, phids, &mut log).await?;
+    if targets.is_empty() {
+        return Ok(log);
+    }
+    queue.entries.push(Entry::Reviewers(
+        targets
+            .iter()
+            .map(|phid| (phid.clone(), status.to_owned()))
+            .collect(),
+    ));
+    let code = if is_blocking {
+        "do.add-blocking-reviewers"
+    } else {
+        "do.add-reviewers"
+    };
+    log.push((code.to_owned(), keyed(&targets)));
+    Ok(log)
+}
+
+/// `DifferentialReviewerStatus::getStatusStrength()`.
+fn strength(status: &str) -> i64 {
+    match status {
+        "added" => 1,
+        "commented" => 2,
+        "blocking" => 3,
+        "accepted-older" | "rejected-older" => 4,
+        "accepted" | "rejected" | "resigned" => 5,
+        _ => 0,
+    }
+}
+
+/// The PHIDs of an action's target.
+fn target_phids(targets: &Php) -> Vec<String> {
+    match targets {
+        Php::Array(entries) => entries
+            .iter()
+            .filter_map(|(_, value)| value.as_bytes())
+            .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// The unsubscribers of the revision after the edit: subscribing removes
 /// the edge, unsubscribing adds it.
 async fn unsubscribers(
@@ -227,17 +366,61 @@ async fn unsubscribers(
     Ok(found)
 }
 
-/// The Herald editor's `core:subscribers` transaction of the queue, if it
-/// has an effect: the subscribers before, then `getPHIDList()`. Updates the
-/// subscribers of `facts`, as the edge query reads them (newest first):
-/// the edit's new edges (`subscribed`, numbered in order) and Herald's are
-/// all as old, so edges of the same number come by PHID, descending, as
-/// MySQL reads the `(src, type, dateCreated, seq)` index backwards.
-pub(super) fn subscription(
-    queue: &Queue,
-    facts: &mut Facts,
+/// The Herald editor's transactions of the queue, those with an effect,
+/// applied to the revision and its facts as PHP's Herald editor applies
+/// them. A review status they would change is left to PHP.
+pub(super) fn edits(
+    queue: Queue,
+    (revision, facts): (&mut Revision, &mut Facts),
     subscribed: &[String],
-) -> Option<Subscription> {
+    sticky_accept: bool,
+) -> Result<Edits, MethodError> {
+    // populateTransaction() reads every old value before applying any.
+    let before = super::reviewers::current(&facts.reviewers);
+    let mut after = before.clone();
+    let mut transactions = Vec::new();
+    let mut subscription = subscription(&queue, facts, subscribed);
+    for entry in queue.entries {
+        match entry {
+            Entry::Subscribers => {
+                transactions.extend(subscription.take().map(Planned::Subscription));
+            }
+            Entry::Reviewers(tokens) => {
+                let Some(new) = super::reviewers::herald_value(&before, tokens) else {
+                    continue;
+                };
+                super::reviewers::apply_changes(&mut after, &before, &new);
+                transactions.push(Planned::Reviewers(super::reviewers::Planned {
+                    phid: super::transaction_phid(),
+                    old: before.clone(),
+                    new,
+                }));
+            }
+        }
+    }
+    let reviewers = (after != before)
+        .then(|| super::reviewers::apply(revision, &mut facts.reviewers, before, after));
+    if reviewers.is_some()
+        && super::new_review_status(revision, sticky_accept)
+            .is_some_and(|status| status != revision.status)
+    {
+        return Err(MethodError::Unsupported(
+            "review statuses Herald's reviewers change",
+        ));
+    }
+    Ok(Edits {
+        transactions,
+        reviewers,
+    })
+}
+
+/// The `core:subscribers` transaction of the queue, if it has an effect:
+/// the subscribers before, then `getPHIDList()`. Updates the subscribers
+/// of `facts`, as the edge query reads them (newest first): the edit's new
+/// edges (`subscribed`, numbered in order) and Herald's are all as old, so
+/// edges of the same number come by PHID, descending, as MySQL reads the
+/// `(src, type, dateCreated, seq)` index backwards.
+fn subscription(queue: &Queue, facts: &mut Facts, subscribed: &[String]) -> Option<Subscription> {
     let old = facts.subscribers.clone();
     let mut new = old.clone();
     for phid in &queue.add {
@@ -276,42 +459,63 @@ pub(super) fn subscription(
     })
 }
 
-/// Writes the Herald editor's transactions, which name the transcript.
+/// Writes the Herald editor's transactions, which name the transcript, and
+/// their effects.
 pub(super) async fn write(
     request: &ApiRequest<'_>,
     plan: &Plan,
     transcript_id: u64,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
-    let Some(subscription) = &plan.herald_subscription else {
-        return Ok(());
-    };
     let database = &request.context.database;
+    let edits = &plan.herald;
     let metadata = php::json_encode(&json!({
         "herald:transcriptID": transcript_id,
         "core.groupID": plan.group_id,
     }));
-    let (old, new) = (
-        php::json_encode(&json!(subscription.old)),
-        php::json_encode(&json!(subscription.new)),
-    );
-    phab_db::sqlx::query(&format!(
-        "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
-         commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
-         dateCreated, dateModified) VALUES (?, ?, ?, 'public', 'no-one', NULL, 0, \
-         'core:subscribers', ?, ?, ?, ?, ?, ?)",
-        database.table("differential", "differential_transaction")
-    ))
-    .bind(&subscription.phid)
-    .bind(HERALD_PHID)
-    .bind(plan.revision.phid.as_str())
-    .bind(&old)
-    .bind(&new)
-    .bind(HERALD_SOURCE)
-    .bind(&metadata)
-    .bind(request.now)
-    .bind(request.now)
-    .execute(&mut *connection)
-    .await?;
-    super::write_subscription_edges(request, plan, subscription, connection).await
+    for planned in &edits.transactions {
+        let (phid, kind, old, new) = match planned {
+            Planned::Subscription(edit) => (
+                &edit.phid,
+                "core:subscribers",
+                php::json_encode(&json!(edit.old)),
+                php::json_encode(&json!(edit.new)),
+            ),
+            Planned::Reviewers(edit) => (
+                &edit.phid,
+                "differential.revision.reviewers",
+                super::reviewers::encode(&edit.old),
+                super::reviewers::encode(&edit.new),
+            ),
+        };
+        phab_db::sqlx::query(&format!(
+            "INSERT INTO {} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
+             commentVersion, transactionType, oldValue, newValue, contentSource, metadata, \
+             dateCreated, dateModified) VALUES (?, ?, ?, 'public', 'no-one', NULL, 0, ?, ?, ?, \
+             ?, ?, ?, ?)",
+            database.table("differential", "differential_transaction")
+        ))
+        .bind(phid)
+        .bind(HERALD_PHID)
+        .bind(plan.revision.phid.as_str())
+        .bind(kind)
+        .bind(&old)
+        .bind(&new)
+        .bind(HERALD_SOURCE)
+        .bind(&metadata)
+        .bind(request.now)
+        .bind(request.now)
+        .execute(&mut *connection)
+        .await?;
+    }
+    for planned in &edits.transactions {
+        if let Planned::Subscription(edit) = planned {
+            super::write_subscription_edges(request, plan, edit, connection).await?;
+        }
+    }
+    if let Some(edit) = &edits.reviewers {
+        let revision = plan.revision.phid.as_str();
+        super::reviewers::write(connection, database, revision, edit, request.now).await?;
+    }
+    Ok(())
 }

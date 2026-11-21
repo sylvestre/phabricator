@@ -190,7 +190,45 @@ pub(super) async fn plan(
     if !added.is_empty() {
         check_added(request, revision, &added).await?;
     }
-    // The rows as reloaded: removed ones go, new ones come last.
+    Ok(apply(revision, rows, old, new))
+}
+
+/// The reviewers of `rows`, as a map.
+pub(super) fn current(rows: &[ReviewerRow]) -> Map {
+    rows.iter()
+        .map(|row| (row.reviewer.clone(), row.status.clone()))
+        .collect()
+}
+
+/// The new value of a reviewers transaction the Herald editor applies
+/// (`+` of `tokens`) to `old`, if it has an effect.
+pub(super) fn herald_value(old: &Map, tokens: Vec<(String, String)>) -> Option<Map> {
+    let wanted = Wanted {
+        operation: Operation::Add,
+        tokens,
+    };
+    let new = new_value(old, &wanted);
+    has_effect(old, &new).then_some(new)
+}
+
+/// `$map[$phid] = $status` for the reviewers `new` changes from `old`:
+/// what applying a transaction does to the reviewers it finds.
+pub(super) fn apply_changes(state: &mut Map, old: &Map, new: &Map) {
+    for (phid, status) in new {
+        if status_of(old, phid) != Some(status.as_str()) {
+            put(state, phid, status);
+        }
+    }
+}
+
+/// Updates the revision's reviewers and their rows to `new`, as reloaded:
+/// removed ones go, new ones come last.
+pub(super) fn apply(
+    revision: &mut Revision,
+    rows: &mut Vec<ReviewerRow>,
+    old: Map,
+    new: Map,
+) -> Planned {
     revision
         .reviewers
         .retain(|reviewer| status_of(&new, reviewer.phid.as_str()).is_some());
@@ -211,11 +249,11 @@ pub(super) async fn plan(
             None => rows.push(ReviewerRow::new(phid.clone(), status.clone())),
         }
     }
-    Ok(Planned {
+    Planned {
         phid: super::transaction_phid(),
         old,
         new,
-    })
+    }
 }
 
 /// `applyExternalEffects()`: deletes the removed reviewers' rows, then

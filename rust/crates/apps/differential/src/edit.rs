@@ -63,7 +63,12 @@ impl Adapter for RevisionAdapter {
     fn has_action(&self, action: &str) -> bool {
         matches!(
             action,
-            "email.must-encrypt" | "projects.add" | "subscribers.add" | "subscribers.remove"
+            "email.must-encrypt"
+                | "projects.add"
+                | "subscribers.add"
+                | "subscribers.remove"
+                | "differential.reviewers.add"
+                | "differential.reviewers.blocking"
         )
     }
 }
@@ -1071,8 +1076,8 @@ struct Plan {
     /// The revisions whose merge conflicts to recheck, with those stacked
     /// above them: the linked revisions' sub-editors', then the edit's.
     merge_checks: Vec<String>,
-    /// The Herald editor's `core:subscribers` transaction.
-    herald_subscription: Option<Subscription>,
+    /// The Herald editor's transactions.
+    herald: herald_actions::Edits,
     /// Every transaction, in the order PHP applies them.
     applied_phids: Vec<String>,
     group_id: String,
@@ -1115,6 +1120,16 @@ async fn run_herald(
     let mut queue = herald_actions::Queue::default();
     for effect in &evaluation.effects {
         match effect.action.as_str() {
+            action @ ("differential.reviewers.add" | "differential.reviewers.blocking") => {
+                let target = (&effect.target, action == "differential.reviewers.blocking");
+                let reasons =
+                    herald_actions::review(request, (revision, facts), target, &mut queue).await?;
+                applied.push(Applied {
+                    effect: effect.clone(),
+                    applied: true,
+                    reasons,
+                });
+            }
             action @ ("subscribers.add" | "subscribers.remove") => {
                 let is_add = action == "subscribers.add";
                 // The unsubscribers the edit makes come in edge order.
@@ -1695,8 +1710,8 @@ fn transaction_phid() -> String {
 /// What Herald and the publish task need of the planned edit.
 struct Publication {
     must_encrypt: Vec<String>,
-    /// The Herald editor's `core:subscribers` transaction.
-    herald_subscription: Option<Subscription>,
+    /// The Herald editor's transactions.
+    herald: herald_actions::Edits,
     rules: Vec<Rule>,
     transcript: engine::TranscriptRow,
     herald_header: String,
@@ -1733,7 +1748,7 @@ fn herald_input<'a>(
 /// too and sees its effect.
 async fn publication(
     request: &ApiRequest<'_>,
-    revision: &Revision,
+    revision: &mut Revision,
     facts: &mut Facts,
     input: &herald_fields::Input<'_>,
     applied_phids: &[String],
@@ -1751,10 +1766,14 @@ async fn publication(
         saved_header(database, &revision.phid).await?.as_deref(),
         &engine::rules_header(&outcome.applied),
     );
-    let herald_subscription =
-        herald_actions::subscription(&outcome.queue, facts, &input.subscribed);
+    let herald = herald_actions::edits(
+        outcome.queue,
+        (revision, facts),
+        &input.subscribed,
+        sticky_accept(request),
+    )?;
     let mut published: Vec<String> = applied_phids.to_vec();
-    published.extend(herald_subscription.iter().map(|edit| edit.phid.clone()));
+    published.extend(herald.phids());
     let state = worker_state(
         revision,
         facts,
@@ -1770,7 +1789,7 @@ async fn publication(
     }));
     Ok(Publication {
         must_encrypt: outcome.must_encrypt,
-        herald_subscription,
+        herald,
         rules: outcome.rules,
         transcript,
         herald_header,
@@ -2090,7 +2109,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         .collect();
     let merge_checks = plan_merge_checks(request, &revision, &actions, &links).await?;
     let input = herald_input(&actor, &actions, subscription.as_ref());
-    let published = publication(request, &revision, &mut facts, &input, &applied_phids).await?;
+    let published = publication(request, &mut revision, &mut facts, &input, &applied_phids).await?;
     let tasks = link_tasks(database, links, &actor, &published.must_encrypt).await?;
     Ok(Plan {
         actor,
@@ -2107,7 +2126,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         transcript: published.transcript,
         herald_header: published.herald_header,
         worker_data: published.worker_data,
-        herald_subscription: published.herald_subscription,
+        herald: published.herald,
         revision,
     })
 }
