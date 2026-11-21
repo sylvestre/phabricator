@@ -28,3 +28,9 @@ INSERT IGNORE INTO phabricator_repository.repository_commitdata (commitID,
 (101, 'alice <alice@example.com>', 'Bug 1002 - Add the Git README', '{}'),
 (102, 'nobody <nobody@example.com>', 'Update the Git README', '{}'),
 (103, 'nobody <nobody@example.com>', 'Draft the Git README', '{}');
+
+-- D1 lands in R2, which merge conflict detection checks (with
+-- merge.conflict.enabled; seed-dev-stack.sh sets both), so the editor's
+-- merge-conflict tasks show in the parity scenarios.
+UPDATE phabricator_differential.differential_revision
+  SET repositoryPHID = 'PHID-REPO-paritygit000000' WHERE id = 1;

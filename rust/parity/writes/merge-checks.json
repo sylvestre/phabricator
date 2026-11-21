@@ -1,0 +1,10 @@
+[
+  {"name": "abandon D1, which D2 depends on", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "abandon", "value": true}]}},
+  {"name": "D1 gets the parent D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "parents.add", "value": ["PHID-DREV-kfjm6nxt3s47z5w747zx"]}]}},
+  {"name": "D7 gets the child D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "children.add", "value": ["PHID-DREV-edjtusnk22iepdwjfktk"]}]}},
+  {"name": "D1's summary depends on D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Depends on D7."}]}},
+  {"name": "D1 loses its child D2", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "children.remove", "value": ["PHID-DREV-pw4eh5zhfr66pkgngvgf"]}]}},
+  {"name": "comment on D1 with merge checks on", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "comment", "value": "Nothing to recheck."}]}},
+  {"name": "D1's summary reverts D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "summary", "value": "Reverts D7."}]}},
+  {"name": "abandon D1 and comment", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "abandon", "value": true}, {"type": "comment", "value": "Superseded."}]}}
+]

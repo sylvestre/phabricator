@@ -22,6 +22,7 @@ mod commits;
 mod dependencies;
 mod files;
 mod lists;
+mod merge_checks;
 mod monograms;
 mod reverts;
 mod reviewers;
@@ -1062,6 +1063,9 @@ struct Plan {
     /// The implicit `core:file` transaction of the files the texts
     /// reference.
     file_edit: Option<files::Planned>,
+    /// The revisions whose merge conflicts to recheck, with those stacked
+    /// above them: the linked revisions' sub-editors', then the edit's.
+    merge_checks: Vec<String>,
     /// Every transaction, in the order PHP applies them.
     applied_phids: Vec<String>,
     group_id: String,
@@ -1468,8 +1472,7 @@ async fn reviewer_updates(
 /// The author's actions (`DifferentialRevisionPlanChangesTransaction`,
 /// `...AbandonTransaction`, `...RequestReviewTransaction`,
 /// `...ReclaimTransaction`): the new status, once PHP's validation passes.
-/// Abandoning a revision with a repository may queue merge conflict checks,
-/// and drafts promote or demote: those are left to PHP.
+/// Drafts promote or demote: those are left to PHP.
 fn plan_author_action(
     request: &ApiRequest<'_>,
     action: AuthorAction,
@@ -1493,7 +1496,7 @@ fn plan_author_action(
                     .config
                     .value("differential.always-allow-abandon")
                     .is_some_and(php::is_truthy);
-            allowed && !revision.is_closed() && revision.repository_phid.is_none()
+            allowed && !revision.is_closed()
         }
         // Members of #secure-revision may request review of drafts.
         AuthorAction::RequestReview => {
@@ -1898,6 +1901,35 @@ async fn plan_reviewer_edit(
     ))
 }
 
+/// `queueMergeConflictChecks()` of the editor and of the linked
+/// revisions' sub-editors: abandoning a revision, or re-wiring its stack,
+/// rechecks it, when its repository is checked.
+async fn plan_merge_checks(
+    request: &ApiRequest<'_>,
+    revision: &Revision,
+    actions: &Actions,
+    links: &[Link],
+) -> Result<Vec<String>, MethodError> {
+    let mut checks = Vec::new();
+    let rewiring = links
+        .iter()
+        .filter(|link| merge_checks::rewires_stack(link.edge_type));
+    for link in rewiring.clone() {
+        for target in &link.targets {
+            if let Linked::Revision { revision, .. } = &target.object
+                && merge_checks::enabled(request, revision).await?
+            {
+                checks.push(revision.phid.as_str().to_owned());
+            }
+        }
+    }
+    let abandons = matches!(actions.author_action, Some((AuthorAction::Abandon, _)));
+    if (abandons || rewiring.count() > 0) && merge_checks::enabled(request, revision).await? {
+        checks.push(revision.phid.as_str().to_owned());
+    }
+    Ok(checks)
+}
+
 async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Plan, MethodError> {
     let wanted = wanted(request)?;
     let mut revision = load_revision(request).await?;
@@ -1977,6 +2009,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
         .chain(status.iter().map(|(phid, _)| phid.clone()))
         .collect();
+    let merge_checks = plan_merge_checks(request, &revision, &actions, &links).await?;
     let published = publication(database, &revision, &facts, &actor, &applied_phids).await?;
     let tasks = link_tasks(database, links, &actor, &published.must_encrypt).await?;
     Ok(Plan {
@@ -1986,6 +2019,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         actions,
         links: tasks,
         file_edit,
+        merge_checks,
         comment,
         status,
         applied_phids,
@@ -2107,6 +2141,7 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
         );
         insert_transaction(request, plan, connection, row).await?;
     }
+    merge_checks::queue(request, connection, &plan.merge_checks).await?;
     write_herald(request, plan, connection).await?;
     queue_publishing(request, plan, connection).await?;
     transaction.commit().await?;
