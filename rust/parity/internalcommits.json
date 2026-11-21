@@ -1,0 +1,12 @@
+[
+  {"name": "internal.commit.search: no constraint", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "internal.commit.search: empty repositories", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": []}}},
+  {"name": "internal.commit.search: two repositories", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": ["PHID-REPO-tk2tekowvewl4wfqh24m", "PHID-REPO-paritygit000000"]}}},
+  {"name": "internal.commit.search: repository string", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": "PHID-REPO-tk2tekowvewl4wfqh24m"}}},
+  {"name": "internal.commit.search: unknown repository", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": ["PHID-REPO-doesnotexist00000000"]}}},
+  {"name": "internal.commit.search: unknown repository, paged", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": ["PHID-REPO-doesnotexist00000000"]}, "limit": "5", "order": "oldest"}},
+  {"name": "internal.commit.search: unknown repository, bad order", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": ["PHID-REPO-doesnotexist00000000"]}, "order": "nope"}},
+  {"name": "internal.commit.search: unknown repository, bad constraint", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": ["PHID-REPO-doesnotexist00000000"], "nope": 1}}},
+  {"name": "internal.commit.search: unknown repository, huge limit", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": ["PHID-REPO-doesnotexist00000000"]}, "limit": 1000}},
+  {"name": "internal.commit.search: repository with commits", "method": "internal.commit.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"repositoryPHIDs": ["PHID-REPO-paritygit000000"]}, "limit": 1}}
+]
