@@ -10,6 +10,7 @@ mod bugzilla;
 mod code;
 mod comments;
 mod events;
+mod other;
 mod paging;
 mod recipients;
 mod store;

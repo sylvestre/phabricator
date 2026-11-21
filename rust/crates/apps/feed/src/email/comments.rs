@@ -187,33 +187,96 @@ pub(crate) struct PublicComments {
     pub(crate) inlines: Vec<Value>,
 }
 
+/// Whether a logged-out viewer can see any of the objects `prepared`
+/// references, which the email engine (`new PhabricatorUser()` as viewer)
+/// would then render as tags. Without `policy.allow-public`, it sees none.
+async fn references_visible_objects(
+    store: &Store<'_>,
+    prepared: &phab_remarkup::Prepared<'_>,
+) -> Result<bool> {
+    // Handles of objects the viewer can't see still render, as
+    // restricted handles.
+    if !prepared.handle_phids().is_empty() {
+        return Err(Fail::Unsupported("a comment with {PHID} handles"));
+    }
+    if !store.config.allow_public() {
+        return Ok(false);
+    }
+    let usernames: Vec<String> = prepared
+        .mentioned_usernames()
+        .into_iter()
+        .map(|name| String::from_utf8_lossy(&name).into_owned())
+        .collect();
+    if !usernames.is_empty() {
+        let names: Vec<&str> = usernames.iter().map(String::as_str).collect();
+        // Users are public with policy.allow-public.
+        if !phab_auth::user::load_users_by_username(store.database, &names)
+            .await?
+            .is_empty()
+        {
+            return Ok(true);
+        }
+    }
+    if !prepared.repository_identifiers().is_empty() {
+        return Err(Fail::Unsupported("a public comment with source links"));
+    }
+    let mut ids = Vec::new();
+    for (prefix, id) in prepared.object_references() {
+        if prefix != "D" {
+            return Err(Fail::Unsupported("a public comment referencing objects"));
+        }
+        if let Some(id) = std::str::from_utf8(&id)
+            .ok()
+            .and_then(|id| id.parse::<i64>().ok())
+        {
+            ids.push(id);
+        }
+    }
+    if ids.is_empty() {
+        return Ok(false);
+    }
+    let revisions =
+        phab_app_differential::storage::load_revisions_by_id(store.database, &ids).await?;
+    let visible = phab_app_differential::storage::visible_revisions(
+        store.database,
+        store.config,
+        &phab_policy::Viewer::anonymous(),
+        revisions,
+        store.now,
+    )
+    .await
+    .map_err(|error| Fail::Internal(error.to_string()))?;
+    Ok(!visible.is_empty())
+}
+
 /// `ResolveComments::renderCommentMarkup()`: an `EmailCommentMessage`.
-fn render(config: &phab_core::Config, text: &str) -> Result<Value> {
+///
+/// The engine's viewer is a logged-out user: references to objects it
+/// can't see stay as written and mentions of users it can't see are
+/// "unknown", which the engine renders like PHP when nothing is resolved.
+/// The tags of objects it can see are not ported.
+async fn render(store: &Store<'_>, text: &str) -> Result<Value> {
+    let config = store.config;
     let engine_config = phab_remarkup::Config {
         uri_base: Some(production_uri(config, "/")?),
         uri_full: true,
         ..phab_app_differential::markup::engine_config(config)
     };
     let engine = phab_remarkup::phabricator::engine(engine_config);
-    let mut outputs = Vec::new();
-    for mode in [Mode::Text, Mode::Html] {
-        let prepared = engine.prepare(text.as_bytes(), mode);
-        // The engine's viewer is a logged-out user: what it may see of the
-        // referenced objects is not ported.
-        if !prepared.object_references().is_empty()
-            || !prepared.mentioned_usernames().is_empty()
-            || !prepared.handle_phids().is_empty()
-            || !prepared.repository_identifiers().is_empty()
-        {
-            return Err(Fail::Unsupported("a comment referencing objects"));
-        }
-        let rendered = engine.finish(prepared, phab_remarkup::Resolved::default());
-        let output = String::from_utf8(rendered.output.into_bytes())
-            .map_err(|_| Fail::Unsupported("a comment rendering to invalid UTF-8"))?;
-        outputs.push(output);
+    let prepared = engine.prepare(text.as_bytes(), Mode::Html);
+    if references_visible_objects(store, &prepared).await? {
+        return Err(Fail::Unsupported(
+            "a comment referencing objects a logged-out viewer can see",
+        ));
     }
-    let html = outputs.pop().unwrap_or_default();
-    let text = outputs.pop().unwrap_or_default();
+    let html = engine.finish(prepared, phab_remarkup::Resolved::default());
+    let plain = engine.markup(text.as_bytes(), Mode::Text);
+    let utf8 = |markup: phab_remarkup::Markup| {
+        String::from_utf8(markup.into_bytes())
+            .map_err(|_| Fail::Unsupported("a comment rendering to invalid UTF-8"))
+    };
+    let html = utf8(html.output)?;
+    let text = utf8(plain.output)?;
     // Code blocks are highlighted by Pygments when it is enabled.
     if config.truthy("pygments.enabled") && html.contains("remarkup-code") {
         return Err(Fail::Unsupported("a code block highlighted by Pygments"));
@@ -315,7 +378,7 @@ pub(crate) async fn public_comments(
     let mut main = Value::Null;
     if let Some(transaction) = transactions.attempt_with_type("core:comment")? {
         let comment = transaction_comment(store, transaction).await?;
-        let message = render(store.config, &comment.content)?;
+        let message = render(store, &comment.content).await?;
         for user in pinged_users(store, &comment.content).await? {
             pings.ping(&user).main = message.clone();
         }
@@ -351,7 +414,7 @@ pub(crate) async fn public_comments(
                     .strftime("%Y-%m-%dT%H:%M:%S+00:00")
                     .to_string();
                 let author = store.user(&other.author_phid).await?;
-                let message = render(store.config, &other.content)?;
+                let message = render(store, &other.content).await?;
                 (
                     "reply",
                     json!({
@@ -364,7 +427,7 @@ pub(crate) async fn public_comments(
             None => ("code", code_context(&changeset, &comment)),
         };
         let (has_suggestion, suggestion_text) = suggestion(&comment)?;
-        let message = render(store.config, &comment.content)?;
+        let message = render(store, &comment.content).await?;
         let inline = json!({
             "fileContext": format!("{filename}:{}", comment.line_number),
             "link": link,
@@ -397,18 +460,31 @@ mod tests {
         config
     }
 
-    #[test]
-    fn renders_comments_without_references() {
+    async fn render_text(text: &str) -> Result<Value> {
+        let pool = phab_db::sqlx::mysql::MySqlPool::connect_lazy("mysql://nobody@127.0.0.1:1/none")
+            .expect("a lazy pool");
+        let database = phab_db::Database::from_pool(pool, "none");
+        let config = config();
+        let store = Store::with(&database, &config, 0);
+        render(&store, text).await
+    }
+
+    #[tokio::test]
+    async fn renders_comments_for_a_logged_out_viewer() {
         assert_eq!(
-            render(&config(), "Looks **good**").unwrap(),
+            render_text("Looks **good**").await.unwrap(),
             json!({"asText": "Looks **good**\n", "asHtml": "<p>Looks <strong>good</strong></p>"})
         );
+        // Without policy.allow-public, the viewer sees no user or object.
+        assert_eq!(
+            render_text("Thanks @Alice, see D12").await.unwrap(),
+            json!({
+                "asText": "Thanks @Alice, see D12\n",
+                "asHtml": "<p>Thanks <span class=\"phabricator-remarkup-mention-unknown\">@Alice</span>, see D12</p>",
+            })
+        );
         assert!(matches!(
-            render(&config(), "Thanks @alice"),
-            Err(Fail::Unsupported(_))
-        ));
-        assert!(matches!(
-            render(&config(), "See D12"),
+            render_text("{PHID-DREV-1}").await,
             Err(Fail::Unsupported(_))
         ));
     }

@@ -54,6 +54,49 @@ pub(crate) async fn project_members(
     .await
 }
 
+/// `PhabricatorProjectQuery` with `needMembers()` and `needWatchers()`,
+/// as the omnipotent viewer: `None` if the project doesn't exist or its
+/// ancestors can't be loaded. Milestones take their name and members from
+/// their parent.
+pub(crate) async fn load_project(
+    database: &Database,
+    config: &Config,
+    now: i64,
+    phid: &Phid,
+) -> Result<Option<ProjectInfo>> {
+    let projects =
+        phab_app_project::storage::load_by_phid(database, std::slice::from_ref(phid)).await?;
+    let (visible, graph) = phab_app_project::policy::visible_projects(
+        database,
+        config,
+        &phab_policy::Viewer::omnipotent(),
+        projects,
+        now,
+    )
+    .await
+    .map_err(|error| Fail::Internal(error.to_string()))?;
+    let Some(project) = visible.into_iter().next() else {
+        return Ok(None);
+    };
+    let parent = graph.parent(&project);
+    let source = match parent {
+        Some(parent) if project.is_milestone() => parent.phid.clone(),
+        _ => project.phid.clone(),
+    };
+    let members = project_members(database, &source).await?;
+    let watchers = phab_app_project::storage::load_edge_destinations(
+        database,
+        &project.phid,
+        phab_app_project::storage::OBJECT_HAS_WATCHER,
+    )
+    .await?;
+    Ok(Some(ProjectInfo {
+        name: project.display_name(parent),
+        members,
+        watchers,
+    }))
+}
+
 /// A project as `PhabricatorUserStore::fetchProject()` loads it.
 #[derive(Debug, Clone)]
 pub(crate) struct ProjectInfo {
@@ -379,32 +422,7 @@ impl<'a> Store<'a> {
         if let Some(project) = self.projects.get(phid) {
             return Ok(project.clone());
         }
-        let project =
-            phab_app_project::storage::load_by_phid(self.database, std::slice::from_ref(phid))
-                .await?
-                .into_iter()
-                .next();
-        let info = match project {
-            None => None,
-            Some(project) => {
-                // Milestones and subprojects need the project graph.
-                if project.parent_phid.is_some() {
-                    return Err(Fail::Unsupported("a subproject or milestone reviewer"));
-                }
-                let members = project_members(self.database, &project.phid).await?;
-                let watchers = phab_app_project::storage::load_edge_destinations(
-                    self.database,
-                    &project.phid,
-                    phab_app_project::storage::OBJECT_HAS_WATCHER,
-                )
-                .await?;
-                Some(ProjectInfo {
-                    name: project.name,
-                    members,
-                    watchers,
-                })
-            }
-        };
+        let info = load_project(self.database, self.config, self.now, phid).await?;
         self.projects.insert(phid.clone(), info.clone());
         Ok(info)
     }

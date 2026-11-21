@@ -25,6 +25,7 @@ const DATABASES: &[&str] = &[
     "policy",
     "spaces",
     "conduit",
+    "application",
 ];
 const EPOCH: u64 = 1_700_000_000;
 const NOW: i64 = 1_700_000_000;
@@ -1007,7 +1008,7 @@ async fn leaves_what_is_not_ported_to_php() {
     let Some((test_db, context)) = setup().await else {
         return;
     };
-    // A public comment mentioning a user: its rendering needs the mention.
+    // A public comment with a handle: PHP renders it restricted.
     add_transaction(
         &test_db,
         11,
@@ -1017,14 +1018,14 @@ async fn leaves_what_is_not_ported_to_php() {
         "null",
         "null",
         "{}",
-        Some("Thanks @alice"),
+        Some("See {PHID-DREV-2}"),
     )
     .await;
     add_story(&test_db, 1, "PHID-DREV-1", CAROL, &[11]).await;
     assert!(
         fallback(&context, "feed.for_email.query_id", "")
             .await
-            .contains("referencing")
+            .contains("handles")
     );
 
     // A story about another kind of object.
@@ -1050,5 +1051,295 @@ async fn leaves_what_is_not_ported_to_php() {
         fallback(&context, "feed.for_email.query_id", "storyLimit=abc")
             .await
             .contains("parameter")
+    );
+}
+
+/// A transaction of a project or an application.
+async fn add_other_transaction(
+    test_db: &TestDatabase,
+    table: &str,
+    phid: &str,
+    object: &str,
+    kind: &str,
+    old: &str,
+    new: &str,
+    metadata: &str,
+) {
+    test_db
+        .execute(&format!(
+            "INSERT INTO {table} (phid, authorPHID, objectPHID, viewPolicy, editPolicy, \
+               commentPHID, commentVersion, transactionType, oldValue, newValue, contentSource, \
+               metadata, dateCreated, dateModified) VALUES \
+             ('{phid}', 'PHID-USER-alice', '{object}', 'users', 'users', NULL, 0, '{kind}', \
+               '{old}', '{new}', '{{}}', '{metadata}', 1, 1)"
+        ))
+        .await;
+}
+
+/// A story of alice about a project or an application.
+async fn add_other_story(test_db: &TestDatabase, id: u64, object: &str, transaction: &str) {
+    let data =
+        json!({"objectPHID": object, "transactionPHIDs": {transaction: transaction}}).to_string();
+    let key = key(id);
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_feed`.feed_storydata (id, phid, chronologicalKey, storyType, \
+               storyData, authorPHID, dateCreated, dateModified) VALUES \
+             ({id}, 'PHID-STRY-{id}', {key}, '{STORY}', '{data}', '{ALICE}', 1, 1); \
+             INSERT INTO `{{ns}}_feed`.feed_storyreference (objectPHID, chronologicalKey) \
+             VALUES ('{object}', {key})"
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn counts_project_and_application_stories() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    let projects = "`{ns}_project`.project_transaction";
+    let applications = "`{ns}_application`.application_applicationtransaction";
+    add_transaction(
+        &test_db,
+        11,
+        "PHID-DREV-1",
+        ALICE,
+        "differential.revision.abandon",
+        "null",
+        "true",
+        "{}",
+        None,
+    )
+    .await;
+    add_story(&test_db, 1, "PHID-DREV-1", ALICE, &[11]).await;
+    // 2: a project renamed: shown in feed.
+    add_other_transaction(
+        &test_db,
+        projects,
+        "PHID-XACT-PROJ-2",
+        "PHID-PROJ-group",
+        "project:name",
+        r#""a""#,
+        r#""b""#,
+        "{}",
+    )
+    .await;
+    add_other_story(&test_db, 2, "PHID-PROJ-group", "PHID-XACT-PROJ-2").await;
+    // 3: a project silenced: hidden.
+    add_other_transaction(
+        &test_db,
+        projects,
+        "PHID-XACT-PROJ-3",
+        "PHID-PROJ-group",
+        "core:edge",
+        "[]",
+        "[]",
+        r#"{"edge:type":61}"#,
+    )
+    .await;
+    add_other_story(&test_db, 3, "PHID-PROJ-group", "PHID-XACT-PROJ-3").await;
+    // 4: an application's policy changed: shown.
+    add_other_transaction(
+        &test_db,
+        applications,
+        "PHID-XACT-APPS-4",
+        "PHID-APPS-PhabricatorDifferentialApplication",
+        "application.policy",
+        r#""users""#,
+        r#""admin""#,
+        r#"{"capability.name":"view"}"#,
+    )
+    .await;
+    add_other_story(
+        &test_db,
+        4,
+        "PHID-APPS-PhabricatorDifferentialApplication",
+        "PHID-XACT-APPS-4",
+    )
+    .await;
+    // 5: an application which this fork removed: the story doesn't load.
+    add_other_transaction(
+        &test_db,
+        applications,
+        "PHID-XACT-APPS-5",
+        "PHID-APPS-PhabricatorManiphestApplication",
+        "application.policy",
+        r#""users""#,
+        r#""admin""#,
+        "{}",
+    )
+    .await;
+    add_other_story(
+        &test_db,
+        5,
+        "PHID-APPS-PhabricatorManiphestApplication",
+        "PHID-XACT-APPS-5",
+    )
+    .await;
+    // 6: a project whose transaction is gone: the story doesn't load.
+    add_other_story(&test_db, 6, "PHID-PROJ-group", "PHID-XACT-PROJ-6").await;
+    add_transaction(
+        &test_db,
+        71,
+        "PHID-DREV-1",
+        ALICE,
+        "differential.revision.reclaim",
+        "null",
+        "true",
+        "{}",
+        None,
+    )
+    .await;
+    add_story(&test_db, 7, "PHID-DREV-1", ALICE, &[71]).await;
+
+    let method = "feed.for_email.query_id";
+    let events = |page: &Value| -> Vec<(u64, String)> {
+        page["data"]["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|event| {
+                (
+                    event["feedId"].as_u64().unwrap(),
+                    event["context"]["eventKind"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect()
+    };
+    // Stories 1 and 2 fill the page; the project's has no event.
+    let page = query(&context, method, "storyLimit=2").await;
+    assert_eq!(events(&page), vec![(1, "revision-abandoned".to_owned())]);
+    assert_eq!(page["cursor"], json!({"limit": 2, "after": 2}));
+    // Stories 3, 5 and 6 don't count: 4 and 7 fill the next page.
+    let page = query(&context, method, "storyLimit=2&after=2").await;
+    assert_eq!(events(&page), vec![(7, "revision-reclaimed".to_owned())]);
+    assert_eq!(page["cursor"], json!({"limit": 2, "after": 7}));
+
+    let page = query(&context, "feed.for_email.query", "storyLimit=2").await;
+    assert_eq!(
+        page["cursor"],
+        json!({"limit": 2, "after": key(2).to_string()})
+    );
+    let page = query(
+        &context,
+        "feed.for_email.query",
+        &format!("storyLimit=1&after={}", key(2)),
+    )
+    .await;
+    assert_eq!(page["data"]["events"], json!([]));
+    assert_eq!(
+        page["cursor"],
+        json!({"limit": 1, "after": key(4).to_string()})
+    );
+    // A hidden story can't be a cursor.
+    let envelope = answer(
+        &context,
+        "feed.for_email.query",
+        &format!("after={}", key(3)),
+    )
+    .await;
+    assert_eq!(envelope.error_code.as_deref(), Some("ERR-CONDUIT-CORE"));
+    assert_eq!(
+        answer(&context, "feed.for_email.status", "").await.result,
+        json!(key(7).to_string())
+    );
+
+    // A milestone loads with its parent, and shows in feed.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_project`.project (id, name, phid, authorPHID, dateCreated, \
+               dateModified, status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, \
+               hasWorkboard, hasMilestones, hasSubprojects, projectPath, projectDepth, \
+               projectPathKey, properties, subtype, parentProjectPHID, milestoneNumber, \
+               primarySlug) VALUES (9, 'Sprint 1', 'PHID-PROJ-sprint', 'PHID-USER-bob', 1, 1, \
+               '0', 'users', 'users', 'users', 'project', 'blue', 'k', 0, 0, 0, 'p3p9', 1, \
+               'k009', '{}', 'default', 'PHID-PROJ-group', 1, NULL)",
+        )
+        .await;
+    add_other_transaction(
+        &test_db,
+        projects,
+        "PHID-XACT-PROJ-8",
+        "PHID-PROJ-sprint",
+        "project:name",
+        r#""a""#,
+        r#""b""#,
+        "{}",
+    )
+    .await;
+    add_other_story(&test_db, 8, "PHID-PROJ-sprint", "PHID-XACT-PROJ-8").await;
+    assert_eq!(
+        answer(&context, "feed.for_email.status", "").await.result,
+        json!(key(8).to_string())
+    );
+    let page = query(&context, method, "after=7").await;
+    assert_eq!(page["cursor"], json!({"limit": 100, "after": 8}));
+}
+
+#[tokio::test]
+async fn renders_mentions_for_a_logged_out_viewer() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    let bugzilla = bugzilla_of(&context);
+    add_transaction(
+        &test_db,
+        11,
+        "PHID-DREV-1",
+        CAROL,
+        "core:comment",
+        "null",
+        "null",
+        "{}",
+        Some("Thanks @Alice, see D2"),
+    )
+    .await;
+    add_story(&test_db, 1, "PHID-DREV-1", CAROL, &[11]).await;
+
+    let alice = recipient("alice", 3600, false);
+    let message = json!({
+        "asText": "Thanks @Alice, see D2\n",
+        "asHtml": "<p>Thanks <span class=\"phabricator-remarkup-mention-unknown\">@Alice</span>, see D2</p>",
+    });
+    let minimal = minimal(1, json!([alice, recipient("carol", 0, true), alice]));
+    let page = query(&context, "feed.for_email.query", "").await;
+    assert_eq!(
+        page["data"]["events"],
+        json!([
+            event(
+                1,
+                false,
+                minimal.clone(),
+                email_context(
+                    "revision-commented",
+                    ("carol", "Carol C."),
+                    d1(&bugzilla),
+                    json!({
+                        "transactionLink": "http://phab.test/D1#11",
+                        "mainCommentMessage": message,
+                        "inlineComments": [],
+                        "subscribers": [alice],
+                        "reviewers": [carol_reviewer(true)],
+                        "author": alice,
+                    }),
+                ),
+            ),
+            event(
+                1,
+                false,
+                minimal,
+                email_context(
+                    "revision-comment-pinged",
+                    ("carol", "Carol C."),
+                    d1(&bugzilla),
+                    json!({
+                        "recipient": alice,
+                        "transactionLink": "http://phab.test/D1#11",
+                        "pingedMainCommentMessage": message,
+                        "pingedInlineComments": [],
+                    }),
+                ),
+            ),
+        ])
     );
 }

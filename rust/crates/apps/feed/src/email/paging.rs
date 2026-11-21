@@ -6,10 +6,9 @@
 use phab_conduit::pager::{self, Direction, PolicyAwareQuery};
 use phab_conduit::{ApiRequest, MethodError};
 use phab_db::{Database, DbError, rows};
-use phab_policy::Viewer;
 
 use super::Result;
-use crate::story::{self, StoryRow, Unported, VisibleStory};
+use crate::story::{StoryRow, VisibleStory};
 
 const QUERY_CLASS: &str = "PhabricatorFeedQuery";
 /// The largest page `PhabricatorPolicyAwareQuery::execute()` loads.
@@ -108,17 +107,7 @@ async fn load_rows(
 /// `willFilterPage()` as the omnipotent viewer: stories whose objects
 /// can't be loaded or which are hidden from feed are dropped.
 async fn filter(request: &ApiRequest<'_>, rows: Vec<StoryRow>) -> Result<Vec<VisibleStory>> {
-    let context = request.context;
-    let stories = story::load_visible(
-        &context.database,
-        &context.config,
-        &Viewer::omnipotent(),
-        rows,
-        request.now,
-        Unported::Fail,
-    )
-    .await?;
-    Ok(stories.visible)
+    super::other::filter(request, rows).await
 }
 
 /// `PhabricatorFeedQuery` ordered by chronological key.
