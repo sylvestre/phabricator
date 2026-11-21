@@ -1599,6 +1599,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-flag"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "phab-app-phid",
+ "phab-conduit",
+ "phab-core",
+ "phab-db",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "phab-app-herald"
 version = "0.1.0"
 dependencies = [
@@ -1797,6 +1810,7 @@ dependencies = [
  "phab-app-diffusion",
  "phab-app-feed",
  "phab-app-files",
+ "phab-app-flag",
  "phab-app-people",
  "phab-app-phid",
  "phab-app-policy",

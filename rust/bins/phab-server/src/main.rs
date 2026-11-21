@@ -30,6 +30,7 @@ fn methods() -> Registry {
     phab_app_phid::register(&mut registry);
     phab_app_policy::register(&mut registry);
     phab_app_files::register(&mut registry);
+    phab_app_flag::register(&mut registry);
     registry
 }
 

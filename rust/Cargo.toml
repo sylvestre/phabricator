@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth", "crates/phab-conduit", "crates/phab-parity", "crates/phab-web", "crates/phab-remarkup", "crates/phab-diff", "crates/apps/conduit", "crates/apps/people", "crates/apps/differential", "crates/apps/diffusion", "crates/apps/project", "crates/apps/feed", "crates/apps/files", "crates/apps/herald", "crates/apps/phid", "crates/apps/policy", "bins/phab-server", "bins/phab-replay"]
+members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth", "crates/phab-conduit", "crates/phab-parity", "crates/phab-web", "crates/phab-remarkup", "crates/phab-diff", "crates/apps/conduit", "crates/apps/people", "crates/apps/differential", "crates/apps/diffusion", "crates/apps/project", "crates/apps/feed", "crates/apps/files", "crates/apps/herald", "crates/apps/phid", "crates/apps/policy", "crates/apps/flag", "bins/phab-server", "bins/phab-replay"]
 
 [workspace.package]
 version = "0.1.0"
@@ -25,6 +25,7 @@ phab-app-policy = { path = "crates/apps/policy" }
 phab-app-feed = { path = "crates/apps/feed" }
 phab-app-files = { path = "crates/apps/files" }
 phab-app-herald = { path = "crates/apps/herald" }
+phab-app-flag = { path = "crates/apps/flag" }
 phab-parity = { path = "crates/phab-parity" }
 phab-web = { path = "crates/phab-web" }
 phab-remarkup = { path = "crates/phab-remarkup" }

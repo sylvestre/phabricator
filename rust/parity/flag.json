@@ -1,0 +1,15 @@
+[
+  {"name": "flag.query: everything", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "flag.query: limit", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 1}},
+  {"name": "flag.query: offset", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"offset": 1, "limit": 1}},
+  {"name": "flag.query: no limit", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 0}},
+  {"name": "flag.query: past the end", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"offset": 100000}},
+  {"name": "flag.query: by owner", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"ownerPHIDs": ["PHID-USER-smtgbo5evsea6efnaz7m"]}},
+  {"name": "flag.query: someone else's", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"ownerPHIDs": ["PHID-USER-gjsswwcaxvzc2p3qhkkk"]}},
+  {"name": "flag.query: revisions", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"types": ["DREV"]}},
+  {"name": "flag.query: users and projects", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"types": ["USER", "PROJ"]}},
+  {"name": "flag.query: by object", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"objectPHIDs": ["PHID-PROJ-sv7lxylfx3dmjxbkjkt4"]}},
+  {"name": "flag.query: unknown object", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"objectPHIDs": ["PHID-DREV-nope"]}},
+  {"name": "flag.query: empty lists", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"ownerPHIDs": [], "types": [], "objectPHIDs": null}},
+  {"name": "flag.query: unknown parameter", "method": "flag.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"nope": 1}}
+]
