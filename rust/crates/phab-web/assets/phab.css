@@ -334,6 +334,25 @@ li.hm-disabled a { color: var(--muted); }
 .portal-label { color: var(--muted); font-size: 13px; text-transform: uppercase; }
 .portal-divider { margin: 6px 0; padding: 0; border-top: 1px solid var(--border); }
 .portal-selected { font-weight: 600; }
+/* Diffusion. */
+.diffusion-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.diffusion-header h1 { margin: 0; font-size: 22px; }
+.diffusion-header .bucket-switch { flex-basis: 100%; }
+.diffusion-search input { font: inherit; padding: 2px 6px; }
+.path-divider { margin: 0 4px; color: var(--muted); }
+.tag-outline { border-style: dashed; }
+.diffusion-buttons ul { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0; list-style: none; }
+.diffusion-menu summary { cursor: pointer; color: var(--accent); }
+.diffusion-menu ul { display: block; margin: 4px 0; padding: 4px 8px; list-style: none; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.diffusion-box { margin: 16px 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.diffusion-box > h2 { margin: 0 0 8px; font-size: 16px; }
+.diffusion-browse { width: 100%; }
+.diffusion-details { width: 100%; color: var(--muted); }
+.diffusion-date h3 { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.diffusion-source th.n { padding: 0 6px; font-weight: normal; vertical-align: top; }
+.diffusion-source th.n a { color: inherit; text-decoration: none; }
+.diffusion-selected td, .diffusion-selected th { background: var(--warning-bg); }
+.readme-text { white-space: pre-wrap; }
 @media (max-width: 640px) {
   .dashboard-columns { flex-direction: column; }
   .portal-menu { width: auto; }

@@ -54,6 +54,11 @@ pub(crate) fn buildable(status: &str) -> Status {
     }
 }
 
+/// What `DiffusionCommitGraphView` shows of a commit without builds.
+pub(crate) fn no_builds() -> Status {
+    Status::new("No Builds", "fa-times", "grey")
+}
+
 /// `HarbormasterBuildStatus`, with the pending statuses of commands.
 pub(crate) fn build(status: &str) -> Status {
     let (name, icon, color) = match status {

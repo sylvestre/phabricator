@@ -65,11 +65,20 @@ impl Scope {
     }
 
     pub(crate) fn request(&self) -> ApiRequest<'_> {
+        self.request_with(serde_json::Map::new())
+    }
+
+    /// A request with these parameters, to call a Conduit method as the
+    /// viewer.
+    pub(crate) fn request_with(
+        &self,
+        params: serde_json::Map<String, serde_json::Value>,
+    ) -> ApiRequest<'_> {
         ApiRequest {
             context: &self.context,
             user: Some(self.user.clone()),
             viewer: self.user.viewer(),
-            params: serde_json::Map::new(),
+            params,
             strictly_typed: true,
             now: self.now,
             writes: phab_auth::Writes::Skipped,

@@ -21,8 +21,24 @@ static LOCAL_BRANCH: Pattern = Pattern::new(r"^[* ]*(\(no branch\)|\S+)\s+([a-z0
 /// `PhabricatorRepository::shouldTrackBranch()`: whether the branch
 /// filter lets `branch` through.
 pub fn tracks_branch(repository: &Repository, branch: &str) -> Result<bool, MethodError> {
+    in_branch_filter(repository, branch, "branch-filter")
+}
+
+/// `PhabricatorRepository::isBranchPermanentRef()`: whether the permanent
+/// ref rules let `branch` through.
+pub fn is_permanent_branch(repository: &Repository, branch: &str) -> Result<bool, MethodError> {
+    in_branch_filter(repository, branch, "close-commits-filter")
+}
+
+/// `isBranchInFilter()` of a Git repository, for the filter in the
+/// `filter_key` detail.
+fn in_branch_filter(
+    repository: &Repository,
+    branch: &str,
+    filter_key: &str,
+) -> Result<bool, MethodError> {
     // (name, whether isset() sees it).
-    let names: Vec<(String, bool)> = match repository.detail("branch-filter") {
+    let names: Vec<(String, bool)> = match repository.detail(filter_key) {
         None | Some(Value::Null) => return Ok(true),
         Some(filter) if !core_php::is_truthy(filter) => return Ok(true),
         Some(Value::Object(filter)) => filter

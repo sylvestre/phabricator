@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+{% include "diffusion_header.html" %}
+{% include "diffusion_buttons.html" %}
+{%- if let Some((name, message)) = tag %}
+<section class="diffusion-box">
+  <h2>Details</h2>
+  <dl class="properties"><dt>Tag</dt><dd>{{ name }}</dd></dl>
+  {%- if let Some(message) = message %}
+  <h3><span class="fa fa-tag" aria-hidden="true"></span> Tag Content</h3>
+  <div class="remarkup">{{ message|safe }}</div>
+  {%- endif %}
+</section>
+{%- endif %}
+{%- if let Some((title, message)) = empty %}
+<div class="notice"><strong>{{ title }}</strong><p>{{ message|safe }}</p></div>
+{%- endif %}
+{%- if let Some(table) = table %}
+<section class="diffusion-box">
+  <h2><span class="fa fa-folder-open" aria-hidden="true"></span> {{ title }}</h2>
+  {% include "diffusion_table.html" %}
+  {% include "diffusion_pager.html" %}
+</section>
+{%- endif %}
+{% include "diffusion_revisions.html" %}
+{%- if let Some(readme) = readme %}
+{% include "diffusion_readme.html" %}
+{%- endif %}
+{% endblock %}

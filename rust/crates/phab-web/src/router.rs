@@ -6,8 +6,8 @@ use axum::{Router, routing};
 
 use crate::state::WebState;
 use crate::{
-    actions, assets, dashboards, feed, harbormaster, herald, login, opt_in, people, preview,
-    projects, queue, revision, typeahead,
+    actions, assets, dashboards, diffusion, feed, harbormaster, herald, login, opt_in, people,
+    preview, projects, queue, revision, typeahead,
 };
 
 /// The pages, the static files and the interface switch. nginx decides
@@ -69,6 +69,22 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
             routing::get(dashboards::dashboard::<S>),
         )
         .route("/portal/view/{id}/", routing::get(dashboards::portal::<S>))
+        .route(
+            "/source/{short}/",
+            routing::get(diffusion::source_root::<S>),
+        )
+        .route(
+            "/source/{short}/{*rest}",
+            routing::get(diffusion::source::<S>),
+        )
+        .route(
+            "/diffusion/{identifier}/",
+            routing::get(diffusion::diffusion_root::<S>),
+        )
+        .route(
+            "/diffusion/{identifier}/{*rest}",
+            routing::get(diffusion::diffusion::<S>),
+        )
         .route("/auth/start/", routing::any(login::start::<S>))
         .route("/login/", routing::any(login::start::<S>))
         .route("/auth/loggedout/", routing::any(login::logged_out::<S>))

@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="diffusion-header">
+  <h1><span class="fa fa-code-fork" aria-hidden="true"></span> {{ title }}</h1>
+  <ul class="tags"><li class="tag"><a href="{{ commit_href }}">{{ name }}</a></li></ul>
+</header>
+<nav class="hm-actions diffusion-buttons" aria-label="Commit actions">
+  <ul>
+    <li><a href="{{ edit_href }}"><span class="fa fa-pencil" aria-hidden="true"></span> Edit Commit</a></li>
+    <li><a href="{{ raw_diff_href }}"><span class="fa fa-download" aria-hidden="true"></span> Download Raw Diff</a></li>
+  </ul>
+</nav>
+<section class="diffusion-box">
+  <h2>Description</h2>
+  <div class="remarkup diffusion-commit-message">{{ message_html|safe }}</div>
+</section>
+<section class="diffusion-box">
+  <h2>Details</h2>
+  <dl class="properties">
+    <dt>Provenance</dt>
+    <dd><ul class="build-status">{% for (who, note) in provenance %}<li>{{ who|safe }} <span class="muted">{{ note }}</span></li>{% endfor %}</ul></dd>
+    {%- for (name, value) in properties %}
+    <dt>{{ name }}</dt><dd>{{ value|safe }}</dd>
+    {%- endfor %}
+    {%- if let Some(uri) = branches_uri %}
+    <dt>Branches</dt><dd><span data-php-fragment="{{ uri }}">Unknown</span></dd>
+    {%- endif %}
+    {%- if let Some(uri) = tags_uri %}
+    <dt>Tags</dt><dd><span data-php-fragment="{{ uri }}">Unknown</span></dd>
+    {%- endif %}
+  </dl>
+</section>
+<section class="timeline">
+  <h2>Timeline</h2>
+  {%- for entry in timeline %}
+  <article class="timeline-entry"><p class="timeline-title">{{ entry.title_html|safe }} <time class="muted">{{ entry.date }}</time></p></article>
+  {%- endfor %}
+</section>
+{%- if !merges.is_empty() %}
+<section class="diffusion-box">
+  <h2>Merged Changes</h2>
+  {%- if merges_limited %}
+  <div class="notice">This commit merges a very large number of changes. Only the first 50 are shown.</div>
+  {%- endif %}
+  {% let items = merges %}
+  {% include "diffusion_commits.html" %}
+</section>
+{%- endif %}
+{%- if let Some((title, message)) = info %}
+<div class="notice"><strong>{{ title }}</strong><p>{{ message }}</p></div>
+{%- endif %}
+{%- if !toc.is_empty() %}
+<section class="diffusion-box">
+  <h2>Changes ({{ toc.len() }})</h2>
+  <table class="hm-table">
+    <tbody>
+      {%- for file in toc %}
+      <tr><td>{{ file.change }}</td><td class="hm-pri">{{ file.path }}</td><td class="hm-right"><a href="{{ file.history_href }}" title="History" aria-label="History"><span class="fa fa-history" aria-hidden="true"></span></a> <a href="{{ file.browse_href }}" title="Browse" aria-label="Browse"><span class="fa fa-code" aria-hidden="true"></span></a></td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</section>
+<section class="diff-section">
+  {%- for changeset in changesets %}
+  {{ changeset|safe }}
+  {%- endfor %}
+</section>
+{%- endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block content %}
+{% include "diffusion_header.html" %}
+{% include "diffusion_buttons.html" %}
+<section class="diffusion-box">
+  <h2><span class="fa fa-file-code-o" aria-hidden="true"></span> {{ name }}</h2>
+  <table class="diff diffusion-source">
+    <tbody>
+      {%- for line in lines %}
+      <tr{% if line.selected %} class="diffusion-selected"{% endif %}><th class="n"><a href="{{ line.href }}">{{ line.number }}</a></th><td class="code">{{ line.html|safe }}</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</section>
+{% include "diffusion_revisions.html" %}
+{% endblock %}

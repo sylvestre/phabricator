@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use askama::Template;
-use axum::extract::{Path, State};
-use axum::http::Uri;
+use axum::extract::{Path, RawQuery, State};
+use axum::http::{HeaderMap, Uri};
 use axum::response::{IntoResponse, Response};
 use phab_app_differential::details;
 use phab_app_differential::repository::{self, Repository};
@@ -94,7 +94,7 @@ impl RevisionPage {
 }
 
 /// `DifferentialRevisionStatus` names.
-fn status_name(status: &str) -> &'static str {
+pub(crate) fn status_name(status: &str) -> &'static str {
     match status {
         "needs-review" => "Needs Review",
         "needs-revision" => "Needs Revision",
@@ -369,7 +369,7 @@ async fn warnings<S: WebState>(
 /// The `diff` program realignment runs: `PHAB_DIFF_COMMAND`, like
 /// `busybox diff`, as PHP's image runs the `BusyBox` one, whose alignment can
 /// differ from GNU diff's.
-fn diff_command() -> phab_diff::realign::DiffCommand {
+pub(crate) fn diff_command() -> phab_diff::realign::DiffCommand {
     static COMMAND: std::sync::OnceLock<phab_diff::realign::DiffCommand> =
         std::sync::OnceLock::new();
     COMMAND
@@ -602,13 +602,20 @@ async fn people<S: WebState>(
 }
 
 /// `GET /{monogram}`: path parameters can't share a segment with text, so
-/// revisions (`D123`) and buildables (`B123`) share the route.
+/// revisions (`D123`), buildables (`B123`), Herald rules (`H123`) and
+/// commits (`rXYZabc`, `R12:abc`) share the route.
 pub(crate) async fn by_monogram<S: WebState>(
     State(state): State<Arc<S>>,
     viewer: WebUser,
     Path(monogram): Path<String>,
     uri: Uri,
+    headers: HeaderMap,
+    query: RawQuery,
 ) -> Result<Response, PageError> {
+    if crate::diffusion::parse_commit_monogram(&monogram).is_some() {
+        return crate::diffusion::commit(State(state), viewer, Path(monogram), uri, headers, query)
+            .await;
+    }
     if let Some(id) = crate::harbormaster::parse_buildable_monogram(&monogram) {
         return Ok(crate::harbormaster::buildable(state, viewer, id, uri)
             .await?

@@ -11,6 +11,7 @@ mod actions;
 pub mod assets;
 mod dashboards;
 mod diff_html;
+mod diffusion;
 mod error;
 mod feed;
 mod harbormaster;

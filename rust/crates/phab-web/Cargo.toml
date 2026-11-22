@@ -13,6 +13,7 @@ axum.workspace = true
 form_urlencoded.workspace = true
 hex.workspace = true
 phab-app-differential.workspace = true
+phab-app-diffusion.workspace = true
 phab-app-feed.workspace = true
 phab-app-files.workspace = true
 phab-app-dashboard.workspace = true
@@ -43,6 +44,7 @@ serde_json.workspace = true
 phab-remarkup.workspace = true
 phab-db = { workspace = true, features = ["test-support"] }
 rstest.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["net"] }
 tower.workspace = true
 

@@ -265,3 +265,64 @@ if (diffSection && actionForm) {
   }
   save();
 }
+
+// Parts of Diffusion pages PHP computes, loaded from PHP as its own pages
+// load them: the last change of each entry of a directory (a table with
+// data-lastmodified), and the branches and tags of a commit (elements
+// with data-php-fragment). PHP answers "for (;;);" and a JSON envelope.
+async function phpPayload(uri, body) {
+  const response = await fetch(uri, {
+    method: body ? "POST" : "GET",
+    body,
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    return null;
+  }
+  const text = (await response.text()).replace(/^for \(;;\);/, "");
+  const envelope = JSON.parse(text);
+  return envelope.error ? null : envelope.payload;
+}
+
+const phpToken = document.querySelector('meta[name="csrf-token"]');
+for (const table of document.querySelectorAll("table[data-lastmodified]")) {
+  const rows = new Map();
+  for (const row of table.querySelectorAll("tr[data-path]")) {
+    rows.set(row.dataset.path, row);
+  }
+  if (rows.size === 0 || !phpToken) {
+    continue;
+  }
+  const body = new URLSearchParams({
+    __csrf__: phpToken.content,
+    __ajax__: "1",
+    __wflow__: "true",
+    paths: JSON.stringify([...rows.keys()]),
+  });
+  phpPayload(table.dataset.lastmodified, body)
+    .then((payload) => {
+      for (const [path, columns] of Object.entries(payload || {})) {
+        const row = rows.get(path);
+        for (const cell of row ? row.querySelectorAll("[data-column]") : []) {
+          // PHP escapes the columns: they are HTML of its own pages.
+          if (columns[cell.dataset.column] !== undefined) {
+            cell.innerHTML = columns[cell.dataset.column];
+          }
+        }
+      }
+    })
+    .catch(() => {
+      // The columns stay empty, as on PHP's page when the request fails.
+    });
+}
+for (const element of document.querySelectorAll("[data-php-fragment]")) {
+  const uri = new URL(element.dataset.phpFragment, window.location.href);
+  uri.searchParams.set("__ajax__", "1");
+  phpPayload(uri)
+    .then((payload) => {
+      if (typeof payload === "string") {
+        element.innerHTML = payload;
+      }
+    })
+    .catch(() => {});
+}

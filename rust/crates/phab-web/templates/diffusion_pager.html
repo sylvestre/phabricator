@@ -1,0 +1,3 @@
+{%- if pager.previous.is_some() || pager.next.is_some() %}
+<nav class="pager">{% if let Some(previous) = pager.previous %}<a href="{{ previous }}">Previous Page</a>{% endif %}{% if let Some(next) = pager.next %} <a href="{{ next }}">Next Page</a>{% endif %}</nav>
+{%- endif %}

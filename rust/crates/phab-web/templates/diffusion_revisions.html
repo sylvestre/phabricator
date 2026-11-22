@@ -1,0 +1,10 @@
+{%- if !open_revisions.is_empty() %}
+<section class="diffusion-box">
+  <h2>Recent Open Revisions</h2>
+  <ul class="hm-list">
+    {%- for revision in open_revisions %}
+    <li><p class="hm-item"><span class="muted">D{{ revision.id }}</span> <a href="/D{{ revision.id }}">{{ revision.title }}</a> <span class="tag">{{ revision.status }}</span></p></li>
+    {%- endfor %}
+  </ul>
+</section>
+{%- endif %}

@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% block content %}
+{% include "diffusion_header.html" %}
+{%- if items.is_empty() %}
+<p class="muted">No commits.</p>
+{%- else %}
+{% include "diffusion_commits.html" %}
+{%- endif %}
+{% include "diffusion_pager.html" %}
+{% endblock %}

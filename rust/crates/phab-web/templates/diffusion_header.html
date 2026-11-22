@@ -1,0 +1,22 @@
+<header class="diffusion-header">
+  <h1>{% if !header.icon.is_empty() %}<span class="fa {{ header.icon }}" aria-hidden="true"></span> {% endif %}{{ header.title_html|safe }}</h1>
+  {%- if !header.tags.is_empty() %}
+  <ul class="tags">
+    {%- for tag in header.tags %}
+    <li class="tag{% if tag.outline %} tag-outline{% endif %}">{% if let Some(icon) = tag.icon %}<span class="fa {{ icon }}" aria-hidden="true"></span> {% endif %}{% if let Some(href) = tag.href %}<a href="{{ href }}">{{ tag.text }}</a>{% else %}{{ tag.text }}{% endif %}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  {%- if let Some(uri) = header.search_uri %}
+  <form class="diffusion-search" method="get" action="{{ uri }}" role="search">
+    <input type="text" name="grep" placeholder="Pattern Search" aria-label="Pattern Search">
+  </form>
+  {%- endif %}
+  {%- if !header.tabs.is_empty() %}
+  <nav class="bucket-switch" aria-label="Repository">
+    {%- for tab in header.tabs %}
+    <a href="{{ tab.href }}"{% if tab.selected %} aria-current="page"{% endif %}><span class="fa {{ tab.icon }}" aria-hidden="true"></span> {{ tab.name }}</a>
+    {%- endfor %}
+  </nav>
+  {%- endif %}
+</header>

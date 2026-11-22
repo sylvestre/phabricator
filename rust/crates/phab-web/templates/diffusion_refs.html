@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block content %}
+{% include "diffusion_header.html" %}
+{%- if let Some((title, message)) = empty %}
+<div class="notice"><strong>{{ title }}</strong><p>{{ message }}</p></div>
+{%- else %}
+<section class="diffusion-box">
+  <h2>{{ box_title }}</h2>
+  <ul class="hm-list diffusion-history">
+    {%- for item in items %}
+    <li>
+      <p class="hm-item">{% if let Some((icon, label)) = item.status %}<span class="fa {{ icon }}" title="{{ label }}" aria-label="{{ label }}"></span> {% endif %}<a href="{{ item.href }}">{{ item.name }}</a>
+        <span class="hm-right">{% if let Some((build, href)) = item.build %}<a href="{{ href }}">{{ build.html()|safe }}</a> {% endif %}{% if let Some(href) = item.compare_href %}<a href="{{ href }}" title="Compare" aria-label="Compare"><span class="fa fa-balance-scale" aria-hidden="true"></span></a> {% endif %}<a href="{{ item.browse_href }}" title="Browse" aria-label="Browse"><span class="fa fa-code" aria-hidden="true"></span></a></span></p>
+      <p class="hm-attribute"><a class="tag" href="{{ item.commit_href }}">{{ item.commit_name }}</a>{% if let Some(details) = item.details %} {{ details }}{% endif %}</p>
+      {%- for attribute in item.attributes_html %}
+      <p class="hm-attribute muted">{{ attribute|safe }}</p>
+      {%- endfor %}
+    </li>
+    {%- endfor %}
+  </ul>
+  {% include "diffusion_pager.html" %}
+</section>
+{%- endif %}
+{% endblock %}

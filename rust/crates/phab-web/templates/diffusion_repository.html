@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% block content %}
+{% include "diffusion_header.html" %}
+{%- if let Some(message) = read_only %}
+<div class="notice">{{ message|safe }}</div>
+{%- endif %}
+<nav class="hm-actions diffusion-buttons" aria-label="Repository actions">
+  <ul>
+    {%- if let Some(menu) = branches %}
+    <li><details class="diffusion-menu"><summary><span class="fa fa-code-fork" aria-hidden="true"></span> {{ menu.label }}</summary>
+      <ul>
+        {%- for (name, href) in menu.branches %}
+        <li><a href="{{ href }}"><span class="fa fa-code-fork" aria-hidden="true"></span> {{ name }}</a></li>
+        {%- endfor %}
+        {%- if let Some(more) = menu.more %}
+        <li><a href="{{ more }}"><span class="fa fa-external-link" aria-hidden="true"></span> See More Branches</a></li>
+        {%- endif %}
+      </ul>
+    </details></li>
+    {%- endif %}
+    <li><details class="diffusion-menu"><summary><span class="fa fa-bars" aria-hidden="true"></span> Actions</summary>
+      <ul>
+        {%- for (name, icon, href) in actions %}
+        <li><a href="{{ href }}"><span class="fa {{ icon }}" aria-hidden="true"></span> {{ name }}</a></li>
+        {%- endfor %}
+      </ul>
+    </details></li>
+    <li><a href="{{ clone_uri }}"><span class="fa fa-download" aria-hidden="true"></span> Clone</a></li>
+  </ul>
+</nav>
+{%- if let Some(description) = description %}
+<section class="diffusion-box"><div class="remarkup">{{ description|safe }}</div></section>
+{%- endif %}
+{%- if let Some((title, message)) = empty %}
+<div class="notice"><strong>{{ title }}</strong><p>{{ message }}</p></div>
+{%- endif %}
+{%- if let Some(table) = table %}
+<section class="diffusion-box">
+  {%- if let Some((title, href)) = listing %}
+  <h2><a href="{{ href }}">{{ title }}</a></h2>
+  {%- endif %}
+  {% include "diffusion_table.html" %}
+  {% include "diffusion_pager.html" %}
+</section>
+{%- endif %}
+{%- if let Some(readme) = readme %}
+{% include "diffusion_readme.html" %}
+{%- endif %}
+{% endblock %}

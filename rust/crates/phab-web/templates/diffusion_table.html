@@ -1,0 +1,12 @@
+<table class="hm-table diffusion-browse" data-lastmodified="{{ table.lastmodified_uri }}">
+  <tbody>
+    {%- for entry in table.entries %}
+    <tr data-path="{{ entry.full_path }}">
+      <td class="hm-pri"><a href="{{ entry.href }}">{% if entry.strong %}<strong>{% endif %}<span class="fa {{ entry.icon }}" aria-hidden="true"></span> {{ entry.name }}{% if entry.strong %}</strong>{% endif %}</a></td>
+      <td class="diffusion-details" data-column="details"></td>
+      <td class="hm-right" data-column="date"></td>
+      <td class="hm-right"><a href="{{ entry.history_href }}" title="History" aria-label="History of {{ entry.name }}"><span class="fa fa-history" aria-hidden="true"></span></a></td>
+    </tr>
+    {%- endfor %}
+  </tbody>
+</table>
