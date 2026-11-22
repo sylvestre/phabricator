@@ -284,3 +284,18 @@ INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
   (SELECT CONCAT('["PHID-PROJ-sv7lxylfx3dmjxbkjkt4","', d.phid, '","', b.phid, '"]')
    FROM phabricator_user.user d, phabricator_user.user b
    WHERE d.userName = 'dave' AND b.userName = 'bob'));
+
+-- Herald changing the review status: rule 27 makes Build Reviewers a
+-- blocking reviewer, which takes accepted revisions back to review.
+INSERT IGNORE INTO phabricator_herald.herald_rule (id, name, authorPHID,
+  contentType, mustMatchAll, configVersion, dateCreated, dateModified,
+  repetitionPolicy, ruleType, phid, isDisabled, triggerObjectPHID)
+SELECT 27, 'Status: block on Build Reviewers', phid, 'differential', 1, 38,
+  1794600000, 1794600000, 'every', 'global', 'PHID-HRUL-statusblock00027', 0,
+  NULL FROM phabricator_user.user WHERE userName = 'admin';
+INSERT IGNORE INTO phabricator_herald.herald_condition (id, ruleID, fieldName,
+  fieldCondition, value) VALUES
+(227, 27, 'differential.revision.title', 'contains', '"act-blockproj"');
+INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
+  target) VALUES
+(227, 27, 'differential.reviewers.blocking', '["PHID-PROJ-fw4ppopw3mj73juscyek"]');

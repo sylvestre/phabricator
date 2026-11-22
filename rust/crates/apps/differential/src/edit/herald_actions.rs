@@ -72,6 +72,9 @@ enum Planned {
     Subscription(Subscription),
     Reviewers(super::reviewers::Planned),
     Tags(super::tags::Planned),
+    /// `updateReviewStatus()` in the Herald editor's final effects: the
+    /// transaction and the status before.
+    Status(String, String),
 }
 
 /// The Herald editor's transactions, in the order it applies them, and
@@ -95,6 +98,7 @@ impl Edits {
                 Planned::Subscription(edit) => edit.phid.clone(),
                 Planned::Reviewers(edit) => edit.phid.clone(),
                 Planned::Tags(edit) => edit.phid.clone(),
+                Planned::Status(phid, _) => phid.clone(),
             })
             .collect()
     }
@@ -623,13 +627,13 @@ async fn unsubscribers(
 
 /// The Herald editor's transactions of the queue, those with an effect,
 /// applied to the revision and its facts as PHP's Herald editor applies
-/// them. A review status they would change is left to PHP.
+/// them, ending with the review status the new reviewers call for.
 pub(super) fn edits(
     queue: Queue,
     (revision, facts): (&mut Revision, &mut Facts),
     (subscribed, tagged): (&[String], &[String]),
     sticky_accept: bool,
-) -> Result<Edits, MethodError> {
+) -> Edits {
     // populateTransaction() reads every old value before applying any.
     let before = super::reviewers::current(&facts.reviewers);
     let mut after = before.clone();
@@ -657,20 +661,21 @@ pub(super) fn edits(
     }
     let reviewers = (after != before)
         .then(|| super::reviewers::apply(revision, &mut facts.reviewers, before, after));
+    // The Herald editor's applyFinalEffects() updates the review status the
+    // new reviewers call for.
     if reviewers.is_some()
-        && super::new_review_status(revision, sticky_accept)
-            .is_some_and(|status| status != revision.status)
+        && let Some(status) = super::new_review_status(revision, sticky_accept)
+        && status != revision.status
     {
-        return Err(MethodError::Unsupported(
-            "review statuses Herald's reviewers change",
-        ));
+        let old = std::mem::replace(&mut revision.status, status);
+        transactions.push(Planned::Status(super::transaction_phid(), old));
     }
-    Ok(Edits {
+    Edits {
         transactions,
         reviewers,
         email: queue.email,
         forced_email: queue.forced_email,
-    })
+    }
 }
 
 /// A list of edges as the edge query reads it (newest first) after Herald:
@@ -786,9 +791,18 @@ pub(super) async fn write(
                 php::json_encode(&json!(edit.removed)),
                 php::json_encode(&json!(edit.added)),
             ),
+            Planned::Status(phid, old) => (
+                phid,
+                "differential.revision.status",
+                php::json_encode(&json!(old)),
+                php::json_encode(&json!(plan.revision.status)),
+            ),
         };
-        // Edge transactions name their type first.
-        let metadata = if matches!(planned, Planned::Tags(_)) {
+        // Edge transactions name their type first; populateTransaction()
+        // gives the status no metadata.
+        let metadata = if matches!(planned, Planned::Status(..)) {
+            "[]".to_owned()
+        } else if matches!(planned, Planned::Tags(_)) {
             php::json_encode(&json!({
                 "edge:type": edges::OBJECT_HAS_PROJECT,
                 "herald:transcriptID": transcript_id,
@@ -825,7 +839,7 @@ pub(super) async fn write(
             Planned::Tags(edit) => {
                 super::tags::write_edges(request, plan, edit, connection).await?;
             }
-            Planned::Reviewers(_) => {}
+            Planned::Reviewers(_) | Planned::Status(..) => {}
         }
     }
     if let Some(edit) = &edits.reviewers {

@@ -43,5 +43,8 @@
   {"name": "On-change rule no longer matches D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "title", "value": "D7 retitled"}]}},
   {"name": "Herald acts on several targets on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-many"}]}},
   {"name": "Herald acts on several targets on D3", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "title", "value": "D3 act-many"}]}},
-  {"name": "Herald acts on several targets on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "D1 act-many"}]}}
+  {"name": "Herald acts on several targets on D1", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "D1 act-many"}]}},
+  {"name": "Herald blocks accepted D2 on a project", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "title", "value": "D2 act-blockproj"}]}},
+  {"name": "Herald blocks accepted D2 on a project, with a comment", "method": "differential.revision.edit", "params": {"objectIdentifier": "D2", "transactions": [{"type": "title", "value": "D2 act-blockproj"}, {"type": "comment", "value": "Needs a build review."}]}},
+  {"name": "Herald blocks D1 on a project", "method": "differential.revision.edit", "params": {"objectIdentifier": "D1", "transactions": [{"type": "title", "value": "D1 act-blockproj"}]}}
 ]

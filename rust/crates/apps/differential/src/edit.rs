@@ -1783,7 +1783,7 @@ async fn publication(
         (revision, facts),
         (&input.subscribed, &input.tagged),
         sticky_accept(request),
-    )?;
+    );
     let mut published: Vec<String> = applied_phids.to_vec();
     published.extend(herald.phids());
     let mut state = worker_state(
