@@ -41,7 +41,18 @@ pub async fn last_modified(
     paths: &[(Key, String)],
 ) -> Result<Array, MethodError> {
     let database = &request.context.database;
-    // loadCommitsFromCache().
+    // loadCommitsFromCache(): `DiffusionPathIDQuery` can't build its query
+    // without paths.
+    if paths.is_empty() {
+        return Err(MethodError::Conduit {
+            code: "ERR-CONDUIT-CORE".to_owned(),
+            info: Some(
+                "Array for %Ls conversion is empty. Query: SELECT * FROM %s WHERE pathHash IN \
+                 (%Ls)"
+                    .to_owned(),
+            ),
+        });
+    }
     let mut known_path = false;
     for (path, _) in paths {
         if history::path_id(database, &history::normalize_path(&path.text()))
