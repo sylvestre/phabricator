@@ -121,6 +121,26 @@ function seed_step(
     }
     $xactions[] = $xaction;
   }
+  // The implementation's settings (URI, method) are custom fields, which
+  // the editor validates from their transactions, as the controller's
+  // buildFieldTransactionsFromRequest() makes them.
+  $field_list = PhabricatorCustomField::getObjectFields(
+    $step,
+    PhabricatorCustomField::ROLE_EDIT);
+  $field_list
+    ->setViewer($admin)
+    ->readFieldsFromStorage($step);
+  $role = PhabricatorCustomField::ROLE_APPLICATIONTRANSACTIONS;
+  foreach ($field_list->getFields() as $field) {
+    if (!$field->shouldEnableForRole($role)) {
+      continue;
+    }
+    $xactions[] = id(new HarbormasterBuildStepTransaction())
+      ->setTransactionType($field->getApplicationTransactionType())
+      ->setMetadataValue('customfield:key', $field->getFieldKey())
+      ->setOldValue(null)
+      ->setNewValue($field->getNewValueForApplicationTransactions());
+  }
   id(new HarbormasterBuildStepEditor())
     ->setActor($admin)
     ->setContentSource(content_source())
