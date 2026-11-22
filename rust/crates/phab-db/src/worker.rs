@@ -8,6 +8,8 @@ use crate::{Database, DbError};
 
 /// `PhabricatorWorker::PRIORITY_ALERTS`.
 pub const PRIORITY_ALERTS: i64 = 1000;
+/// `PhabricatorWorker::PRIORITY_DEFAULT`, for tasks queued without one.
+pub const PRIORITY_DEFAULT: i64 = 2000;
 
 /// A task to queue.
 #[derive(Debug, Clone, Copy)]
@@ -31,6 +33,18 @@ pub async fn schedule_task(
     task: Task<'_>,
     now: i64,
 ) -> Result<u64, DbError> {
+    schedule_contained_task(connection, database, task, None, now).await
+}
+
+/// [`schedule_task()`] with a `containerPHID`: the object containing the
+/// one the task is about, like the buildable of a build.
+pub async fn schedule_contained_task(
+    connection: &mut MySqlConnection,
+    database: &Database,
+    task: Task<'_>,
+    container_phid: Option<&str>,
+    now: i64,
+) -> Result<u64, DbError> {
     let data_id = sqlx::query(&format!(
         "INSERT INTO {} (data) VALUES (?)",
         database.table("worker", "worker_taskdata")
@@ -50,7 +64,7 @@ pub async fn schedule_task(
     sqlx::query(&format!(
         "INSERT INTO {} (id, taskClass, leaseOwner, leaseExpires, failureCount, dataID, \
          failureTime, priority, objectPHID, dateCreated, dateModified, containerPHID) VALUES \
-         (?, ?, NULL, NULL, 0, ?, NULL, ?, ?, ?, ?, NULL)",
+         (?, ?, NULL, NULL, 0, ?, NULL, ?, ?, ?, ?, ?)",
         database.table("worker", "worker_activetask")
     ))
     .bind(id)
@@ -60,6 +74,7 @@ pub async fn schedule_task(
     .bind(task.object_phid)
     .bind(now)
     .bind(now)
+    .bind(container_phid)
     .execute(&mut *connection)
     .await?;
     Ok(id)

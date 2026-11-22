@@ -211,7 +211,7 @@ pub fn embedded_files<'a>(
 /// visible through its policy, its author, an attached object the viewer
 /// can see, or its original when it is a thumbnail (which also needs the
 /// original to be visible).
-pub(crate) async fn visible_files(
+pub async fn visible_files(
     request: &ApiRequest<'_>,
     candidates: Vec<File>,
 ) -> Result<Vec<File>, MethodError> {

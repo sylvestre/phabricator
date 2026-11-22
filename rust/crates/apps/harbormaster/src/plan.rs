@@ -42,26 +42,42 @@ const BEHAVIORS: &[(&str, &[&str], &str)] = &[
     ("runnable", &["edit", "view"], "edit"),
 ];
 
-/// `getPlanOption()` of each behavior: the stored option if it is one,
-/// the default otherwise.
+/// `HarbormasterBuildPlanBehavior::getPlanOption()`: the stored option of
+/// a behavior if it is one, the default otherwise.
+fn option(
+    plan: &Plan,
+    (key, options, default): (&str, &[&'static str], &'static str),
+) -> Result<&'static str, MethodError> {
+    match plan.properties.get(&format!("behavior.{key}")) {
+        Some(Value::String(value)) => Ok(options
+            .iter()
+            .find(|option| *option == value)
+            .copied()
+            .unwrap_or(default)),
+        // isset() with an array offset raises a TypeError.
+        Some(Value::Array(_) | Value::Object(_)) => {
+            Err(MethodError::Unsupported("unusual plan behaviors"))
+        }
+        // Integer keys (booleans and floats cast to them) are never
+        // options.
+        _ => Ok(default),
+    }
+}
+
+/// [`option()`] of the behavior `key`.
+pub(crate) fn behavior(plan: &Plan, key: &str) -> Result<&'static str, MethodError> {
+    let (key, options, default) = BEHAVIORS
+        .iter()
+        .find(|(known, _, _)| *known == key)
+        .ok_or_else(|| MethodError::internal(format!("no plan behavior \"{key}\"")))?;
+    option(plan, (key, options, default))
+}
+
+/// `getPlanOption()` of each behavior.
 fn behaviors(plan: &Plan) -> Result<Value, MethodError> {
     let mut map = Map::new();
     for (key, options, default) in BEHAVIORS {
-        let stored = plan.properties.get(&format!("behavior.{key}"));
-        let option = match stored {
-            Some(Value::String(value)) => options
-                .iter()
-                .find(|option| *option == value)
-                .copied()
-                .unwrap_or(default),
-            // isset() with an array offset raises a TypeError.
-            Some(Value::Array(_) | Value::Object(_)) => {
-                return Err(MethodError::Unsupported("unusual plan behaviors"));
-            }
-            // Integer keys (booleans and floats cast to them) are never
-            // options.
-            _ => *default,
-        };
+        let option = option(plan, (key, options, default))?;
         map.insert((*key).to_owned(), json!({"value": option}));
     }
     Ok(Value::Object(map))

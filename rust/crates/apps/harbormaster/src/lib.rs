@@ -1,25 +1,32 @@
 //! Harbormaster (`PhabricatorHarbormasterApplication`): the read-only
 //! Conduit methods, `harbormaster.*.search` and the legacy
 //! `harbormaster.querybuildables`, `harbormaster.querybuilds` and
-//! `harbormaster.queryautotargets`.
+//! `harbormaster.queryautotargets`, and the writes of build systems:
+//! `harbormaster.sendmessage` and `harbormaster.createartifact`.
 //!
 //! Harbormaster objects inherit their policies along a chain: a buildable
 //! from the object it builds (a diff or a commit), a build from its
 //! buildable, a target from its build, artifacts and logs from their
 //! target; a step from its build plan, which has policies of its own. The
-//! write methods (`*.edit`, `createartifact`, `sendmessage`) stay in PHP.
-//! [`web`] is what the web pages read.
+//! `*.edit` methods stay in PHP: `harbormaster.build.edit` and
+//! `harbormaster.buildable.edit` have no field but `mfa` (their commands
+//! are messages, sent by `sendmessage`). The build workers stay in PHP
+//! too: the write methods queue their tasks. [`web`] is what the web pages
+//! read.
 
+pub mod artifact;
 pub mod autotargets;
 pub mod build;
 pub mod buildable;
 mod constraints;
+pub mod message;
 pub mod plan;
 mod query;
 mod storage;
 pub mod target;
 mod visibility;
 pub mod web;
+mod writes;
 
 use phab_conduit::{ApiRequest, Application, MethodError, Registry};
 use phab_core::Config;
@@ -45,6 +52,8 @@ pub fn register(registry: &mut Registry) {
     registry.register(target::ArtifactSearch);
     registry.register(target::LogSearch);
     registry.register(autotargets::QueryAutotargets);
+    registry.register(message::SendMessage);
+    registry.register(artifact::CreateArtifact);
 }
 
 /// The parameters of every `*.search` method

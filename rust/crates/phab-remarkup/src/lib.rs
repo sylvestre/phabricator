@@ -21,7 +21,7 @@ pub mod preg;
 pub mod rule;
 pub mod rules;
 pub mod storage;
-pub(crate) mod uri;
+pub mod uri;
 
 pub use engine::{Config, Context, Engine, Highlighter, Mode, Prepared, Rendered};
 pub use markup::Markup;
