@@ -257,20 +257,20 @@ async fn creates_and_edits_projects_like_php() {
         transactions(&test_db, &project).await,
         [
             format!(
-                "core:create null null {{\"core.groupID\":\"G\"}} {}",
+                "core:create null null {{\"core.create\":true,\"core.groupID\":\"G\"}} {}",
                 row("PHID-XACT-PROJ-")
             ),
             format!(
-                "project:name null \"Release Team\" {{\"core.groupID\":\"G\"}} {}",
+                "project:name null \"Release Team\" {{\"core.create\":true,\"core.groupID\":\"G\"}} {}",
                 row("PHID-XACT-PROJ-")
             ),
             format!(
                 "core:edge [] [\"PHID-USER-bob\",\"PHID-USER-alice\"] \
-                 {{\"edge:type\":13,\"core.groupID\":\"G\"}} {}",
+                 {{\"edge:type\":13,\"core.create\":true,\"core.groupID\":\"G\"}} {}",
                 row("PHID-XACT-PROJ-")
             ),
             format!(
-                "project:icon \"project\" \"tag\" {{\"core.groupID\":\"G\"}} {}",
+                "project:icon \"project\" \"tag\" {{\"core.create\":true,\"core.groupID\":\"G\"}} {}",
                 row("PHID-XACT-PROJ-")
             ),
         ]

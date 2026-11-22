@@ -1137,13 +1137,22 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<i64, MethodError
     write_tokens(connection, database, (id, state)).await?;
 
     let table = database.table("project", "project_transaction");
+    // `applyTransactions()` marks every transaction of an edit with a
+    // `core:create` one, before it sets the group.
+    let create = plan
+        .transactions
+        .iter()
+        .any(|planned| matches!(planned.change, Change::Create));
     for planned in &plan.transactions {
-        let metadata = match &planned.edge {
-            Some(_) => {
-                json!({"edge:type": edges::PROJECT_HAS_MEMBER, "core.groupID": plan.group_id})
-            }
-            None => json!({"core.groupID": plan.group_id}),
-        };
+        let mut metadata = serde_json::Map::new();
+        if planned.edge.is_some() {
+            metadata.insert("edge:type".to_owned(), json!(edges::PROJECT_HAS_MEMBER));
+        }
+        if create {
+            metadata.insert("core.create".to_owned(), json!(true));
+        }
+        metadata.insert("core.groupID".to_owned(), json!(plan.group_id));
+        let metadata = Value::Object(metadata);
         let (old, new, metadata) = (
             php::json_encode(&planned.old),
             php::json_encode(&planned.new),
