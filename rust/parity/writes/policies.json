@@ -1,0 +1,17 @@
+[
+  {"name": "a revision policy: reviewers and alice", "method": "policy.create", "params": {"objectType": "DREV", "default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorDifferentialReviewersPolicyRule", "value": null}, {"action": "allow", "rule": "PhabricatorUsersPolicyRule", "value": ["PHID-USER-smtgbo5evsea6efnaz7m"]}]}},
+  {"name": "a revision policy: subscribers and a project, an empty user rule dropped", "method": "policy.create", "params": {"objectType": "DREV", "default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorSubscriptionsSubscribersPolicyRule"}, {"action": "allow", "rule": "PhabricatorUsersPolicyRule", "value": []}, {"action": "deny", "rule": "PhabricatorProjectsPolicyRule", "value": ["PHID-PROJ-sv7lxylfx3dmjxbkjkt4"]}]}},
+  {"name": "a project policy: its members", "method": "policy.create", "params": {"objectType": "PROJ", "default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorProjectMembersPolicyRule", "value": null}]}},
+  {"name": "a user policy: administrators and the full moon, allowed by default", "method": "policy.create", "params": {"objectType": "USER", "default": "allow", "policy": [{"action": "allow", "rule": "PhabricatorAdministratorsPolicyRule", "value": null}, {"action": "deny", "rule": "PhabricatorLunarPhasePolicyRule", "value": "full"}]}},
+  {"name": "a policy without an object type", "method": "policy.create", "params": {"default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorAdministratorsPolicyRule"}]}},
+  {"name": "a policy with an unknown action", "method": "policy.create", "params": {"objectType": "DREV", "default": "deny", "policy": [{"action": "maybe", "rule": "PhabricatorAdministratorsPolicyRule"}]}},
+  {"name": "a policy without an action", "method": "policy.create", "params": {"objectType": "DREV", "default": "deny", "policy": [{"rule": "PhabricatorAdministratorsPolicyRule"}]}},
+  {"name": "a revision policy with a project rule", "method": "policy.create", "params": {"objectType": "DREV", "default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorProjectMembersPolicyRule"}]}},
+  {"name": "a policy whose rules have no effect", "method": "policy.create", "params": {"objectType": "DREV", "default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorUsersPolicyRule", "value": []}]}},
+  {"name": "a policy without rules", "method": "policy.create", "params": {"objectType": "DREV", "default": "deny", "policy": []}},
+  {"name": "a task policy", "method": "policy.create", "params": {"objectType": "TASK", "default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorAdministratorsPolicyRule"}]}},
+  {"name": "a policy for an unknown type", "method": "policy.create", "params": {"objectType": "NOPE", "default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorAdministratorsPolicyRule"}]}},
+  {"name": "a user rule with a string value", "method": "policy.create", "params": {"objectType": "DREV", "default": "deny", "policy": [{"action": "allow", "rule": "PhabricatorUsersPolicyRule", "value": "PHID-USER-smtgbo5evsea6efnaz7m"}]}},
+  {"name": "a policy without a default", "method": "policy.create", "params": {"objectType": "DREV", "policy": [{"action": "allow", "rule": "PhabricatorAdministratorsPolicyRule"}]}},
+  {"name": "a policy with an odd default", "method": "policy.create", "params": {"objectType": "DREV", "default": "sometimes", "policy": [{"action": "allow", "rule": "PhabricatorAdministratorsPolicyRule"}]}}
+]

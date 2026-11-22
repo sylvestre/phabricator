@@ -1,9 +1,11 @@
 //! `policy.query` (moz-extensions `PolicyQueryConduitAPIMethod`): what
-//! phab-bot reads of custom policies.
+//! phab-bot reads of custom policies. `policy.create` is in [`create`].
 //!
 //! Ported: custom policies (`PHID-PLCY-...`), which are not policy
 //! filtered. Left to PHP: global, project and user policies (named from
 //! handles), and more policies than the limit (the cursor).
+
+pub mod create;
 
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture, Registry};
 use phab_core::php;
@@ -114,5 +116,6 @@ impl Method for PolicyQuery {
 
 /// Registers the policy methods.
 pub fn register(registry: &mut Registry) {
+    registry.register(create::PolicyCreate);
     registry.register(PolicyQuery);
 }
