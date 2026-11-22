@@ -7,7 +7,10 @@
 //! alignment and the same intraline ranges, so a review shows the same
 //! changes in both interfaces.
 
+pub mod arcanist;
+pub mod build;
 mod changeset;
+pub mod deflate;
 pub mod edit_distance;
 pub mod git_patch;
 mod hunk;

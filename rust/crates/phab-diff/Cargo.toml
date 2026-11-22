@@ -9,6 +9,8 @@ publish.workspace = true
 
 [dependencies]
 flate2.workspace = true
+phab-core.workspace = true
+pcre2.workspace = true
 phab-db.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

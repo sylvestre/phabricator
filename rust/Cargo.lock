@@ -1840,6 +1840,8 @@ name = "phab-diff"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "pcre2",
+ "phab-core",
  "phab-db",
  "rstest",
  "serde_json",
