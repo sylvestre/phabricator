@@ -22,6 +22,8 @@ fn rules() -> Vec<Rule> {
             rule_type: "global".to_owned(),
             must_match_all: true,
             config_version: 38,
+            author_valid: true,
+            author_can_view: true,
             conditions: vec![Condition {
                 id: "1".to_owned(),
                 field: "new-object".to_owned(),
@@ -41,6 +43,8 @@ fn rules() -> Vec<Rule> {
             rule_type: "global".to_owned(),
             must_match_all: false,
             config_version: 38,
+            author_valid: true,
+            author_can_view: true,
             conditions: vec![
                 Condition {
                     id: "2".to_owned(),
@@ -105,6 +109,7 @@ fn writes_the_transcript_php_wrote() {
                 "do.must-encrypt".to_owned(),
                 Php::list([Php::str(&effect.rule_phid)]),
             )],
+            standard: false,
         })
         .collect();
     let row = evaluation.transcript(&subject, &applied);

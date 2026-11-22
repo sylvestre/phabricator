@@ -13,8 +13,9 @@ use phab_db::phpser::{Key, Value as Php};
 use phab_db::{edges, rows};
 use serde_json::json;
 
-use phab_app_herald::engine::Effect;
+use phab_app_herald::engine::{Applied, Effect, Rule};
 
+use super::herald_fields::Input;
 use super::{Facts, Plan, Subscription};
 use crate::storage::Revision;
 
@@ -112,55 +113,169 @@ fn list(phids: &[String]) -> Php {
     Php::list(phids.iter().map(|phid| Php::str(phid)))
 }
 
-/// Applies one effect of a rule which matched: logs it and queues what it
-/// does. `removes_subscribers` says whether the edit unsubscribes anyone:
-/// the unsubscribers it makes come in edge order, so adding subscribers
-/// then is left to PHP.
+/// `supportsRuleType()` of the ported actions: the self actions are
+/// personal, the tags global, the others anything but personal.
+fn supports_rule_type(action: &str, rule_type: &str) -> bool {
+    match action {
+        "nothing" => true,
+        "projects.add" | "projects.remove" => rule_type == "global",
+        "subscribers.self.add"
+        | "subscribers.self.remove"
+        | "differential.reviewers.self.add"
+        | "differential.reviewers.self.blocking"
+        | "email.self" => rule_type == "personal",
+        _ => rule_type != "personal",
+    }
+}
+
+/// Applies one effect of a rule which matched (`applyStandardEffect()`):
+/// logs it and queues what it does, as the edit described by `input`
+/// leaves the revision. Adding subscribers when the edit unsubscribes
+/// anyone is left to PHP: the unsubscribers it makes come in edge order.
 pub(super) async fn apply(
     request: &ApiRequest<'_>,
     subject: (&Revision, &Facts),
-    effect: &Effect,
-    removes_subscribers: bool,
+    (rule, effect): (&Rule, &Effect),
+    input: &Input<'_>,
     (queue, must_encrypt): (&mut Queue, &mut Vec<String>),
-) -> Result<Vec<(String, Php)>, MethodError> {
-    let target = &effect.target;
-    match effect.action.as_str() {
+) -> Result<Applied, MethodError> {
+    let action = effect.action.as_str();
+    if !supports_rule_type(action, &rule.rule_type) {
+        return Ok(Applied {
+            effect: effect.clone(),
+            applied: false,
+            reasons: vec![(
+                "do.standard.wrong-rule-type".to_owned(),
+                Php::str(&rule.rule_type),
+            )],
+            standard: true,
+        });
+    }
+    // The self actions act on the rule's author.
+    let author = Php::list([Php::str(&rule.author_phid)]);
+    let target = if action.contains(".self") {
+        &author
+    } else {
+        &effect.target
+    };
+    let reasons = match action {
         "email.must-encrypt" => {
             must_encrypt.push(effect.rule_phid.clone());
-            Ok(vec![(
+            vec![(
                 "do.must-encrypt".to_owned(),
                 Php::list([Php::str(&effect.rule_phid)]),
-            )])
+            )]
         }
-        "nothing" => Ok(vec![("do.nothing".to_owned(), Php::Null)]),
-        "email.other" => email(request, subject.0, target, queue).await,
-        action @ ("projects.add" | "projects.remove") => {
-            tag(request, subject, (target, action == "projects.add"), queue).await
+        "nothing" => vec![("do.nothing".to_owned(), Php::Null)],
+        "email.other" | "email.self" => {
+            email(request, subject, (target, action == "email.self"), queue).await?
         }
-        action @ ("differential.reviewers.add" | "differential.reviewers.blocking") => {
-            let blocking = action == "differential.reviewers.blocking";
-            review(request, subject, (target, blocking), queue).await
+        "projects.add" | "projects.remove" => {
+            tag(request, subject, (target, action == "projects.add"), queue).await?
         }
-        action @ ("subscribers.add" | "subscribers.remove") => {
-            let is_add = action == "subscribers.add";
-            if is_add && removes_subscribers {
+        "differential.reviewers.add"
+        | "differential.reviewers.blocking"
+        | "differential.reviewers.self.add"
+        | "differential.reviewers.self.blocking" => {
+            let blocking = matches!(
+                action,
+                "differential.reviewers.blocking" | "differential.reviewers.self.blocking"
+            );
+            review(request, subject, (target, blocking), queue).await?
+        }
+        "subscribers.add"
+        | "subscribers.remove"
+        | "subscribers.self.add"
+        | "subscribers.self.remove" => {
+            let is_add = matches!(action, "subscribers.add" | "subscribers.self.add");
+            if is_add && input.removes_subscribers {
                 return Err(MethodError::Unsupported(
                     "Herald subscriptions of edits which unsubscribe",
                 ));
             }
-            subscribe(request, subject, (target, is_add), queue).await
+            subscribe(request, subject, (target, is_add), queue).await?
         }
-        _ => Err(MethodError::Unsupported(
-            "Herald effects which edit the revision",
-        )),
+        _ => {
+            return Err(MethodError::Unsupported(
+                "Herald effects which edit the revision",
+            ));
+        }
+    };
+    Ok(Applied {
+        effect: effect.clone(),
+        applied: true,
+        reasons,
+        standard: false,
+    })
+}
+
+/// `hasValidAuthor()` and `canAuthorViewObject()` of a personal rule: its
+/// author is an activated user (`isUserActivated()`), and can see the
+/// revision.
+pub(super) async fn check_author(
+    request: &ApiRequest<'_>,
+    subject: (&Revision, &Facts),
+    rule: &mut Rule,
+) -> Result<(), MethodError> {
+    let context = request.context;
+    let database = &context.database;
+    let sql = format!(
+        "SELECT isAdmin, isDisabled, isApproved, isEmailVerified FROM {} WHERE phid = ?",
+        database.table("user", "user")
+    );
+    let Some(row) = phab_db::sqlx::query(&sql)
+        .bind(&rule.author_phid)
+        .fetch_optional(database.pool())
+        .await?
+    else {
+        rule.author_valid = false;
+        return Ok(());
+    };
+    let verification = context
+        .config
+        .value("auth.require-email-verification")
+        .is_some_and(php::is_truthy);
+    rule.author_valid = !rows::flag(&row, "isDisabled")?
+        && rows::flag(&row, "isApproved")?
+        && (!verification || rows::flag(&row, "isEmailVerified")?);
+    if rule.author_valid {
+        let admin = rows::flag(&row, "isAdmin")?;
+        rule.author_can_view = can_view(request, subject, &rule.author_phid, admin).await?;
     }
+    Ok(())
+}
+
+/// `PhabricatorPolicyFilter::hasCapability()` of `user` on the revision as
+/// the edit leaves it (`facts`).
+async fn can_view(
+    request: &ApiRequest<'_>,
+    (revision, facts): (&Revision, &Facts),
+    user: &str,
+    admin: bool,
+) -> Result<bool, MethodError> {
+    let viewer = phab_policy::Viewer::user(Phid::new(user), admin);
+    let reviewers: Vec<String> = facts
+        .reviewers
+        .iter()
+        .map(|reviewer| reviewer.reviewer.clone())
+        .collect();
+    let context = request.context;
+    crate::storage::visible_after_edit(
+        &context.database,
+        &context.config,
+        &viewer,
+        (revision, &facts.subscribers, &reviewers),
+        request.now,
+    )
+    .await
+    .map_err(MethodError::internal)
 }
 
 /// `loadStandardTargets()` for users and projects: the targets which can
 /// be acted on, and the log of those which can't.
 async fn standard_targets(
     request: &ApiRequest<'_>,
-    revision: &Revision,
+    subject: (&Revision, &Facts),
     (phids, projects_only): (Vec<String>, bool),
     log: &mut Vec<(String, Php)>,
 ) -> Result<Vec<String>, MethodError> {
@@ -211,25 +326,12 @@ async fn standard_targets(
         return Ok(Vec::new());
     }
     // Users who can't see the revision are no targets.
-    let context = request.context;
     let mut targets = Vec::new();
     let mut no_permission = Vec::new();
     for (phid, admin) in loaded {
-        if phid.starts_with("PHID-USER-") {
-            let viewer = phab_policy::Viewer::user(Phid::new(phid.clone()), admin);
-            let visible = crate::storage::visible_revisions(
-                database,
-                &context.config,
-                &viewer,
-                vec![revision.clone()],
-                request.now,
-            )
-            .await
-            .map_err(MethodError::internal)?;
-            if visible.is_empty() {
-                no_permission.push(phid);
-                continue;
-            }
+        if phid.starts_with("PHID-USER-") && !can_view(request, subject, &phid, admin).await? {
+            no_permission.push(phid);
+            continue;
         }
         targets.push(phid);
     }
@@ -255,7 +357,7 @@ pub(super) async fn subscribe(
             "Herald actions on several targets",
         ));
     }
-    let mut phids = standard_targets(request, revision, (phids, false), &mut log).await?;
+    let mut phids = standard_targets(request, (revision, facts), (phids, false), &mut log).await?;
     if phids.is_empty() {
         return Ok(log);
     }
@@ -378,7 +480,7 @@ pub(super) async fn review(
             return Ok(log);
         }
     }
-    let targets = standard_targets(request, revision, (phids, false), &mut log).await?;
+    let targets = standard_targets(request, (revision, facts), (phids, false), &mut log).await?;
     if targets.is_empty() {
         return Ok(log);
     }
@@ -412,7 +514,7 @@ pub(super) async fn tag(
             "Herald actions on several targets",
         ));
     }
-    let phids = standard_targets(request, revision, (phids, true), &mut log).await?;
+    let phids = standard_targets(request, (revision, facts), (phids, true), &mut log).await?;
     if phids.is_empty() {
         return Ok(log);
     }
@@ -446,11 +548,12 @@ pub(super) async fn tag(
     Ok(log)
 }
 
-/// `applyEmail()`: `email.other`. Returns the log.
+/// `applyEmail()`: `email.other`, or `email.self`, which forces real mail
+/// whatever the recipient's preferences (`force`). Returns the log.
 pub(super) async fn email(
     request: &ApiRequest<'_>,
-    revision: &Revision,
-    targets: &Php,
+    (revision, facts): (&Revision, &Facts),
+    (targets, force): (&Php, bool),
     queue: &mut Queue,
 ) -> Result<Vec<(String, Php)>, MethodError> {
     let mut log = Vec::new();
@@ -460,7 +563,7 @@ pub(super) async fn email(
             "Herald actions on several targets",
         ));
     }
-    let phids = standard_targets(request, revision, (phids, false), &mut log).await?;
+    let phids = standard_targets(request, (revision, facts), (phids, false), &mut log).await?;
     if phids.is_empty() {
         return Ok(log);
     }
@@ -468,8 +571,12 @@ pub(super) async fn email(
         if !queue.email.contains(phid) {
             queue.email.push(phid.clone());
         }
+        if force && !queue.forced_email.contains(phid) {
+            queue.forced_email.push(phid.clone());
+        }
     }
-    log.push(("do.send".to_owned(), keyed(&phids)));
+    let code = if force { "do.force" } else { "do.send" };
+    log.push((code.to_owned(), keyed(&phids)));
     Ok(log)
 }
 

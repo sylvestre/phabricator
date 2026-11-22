@@ -71,6 +71,11 @@ impl Adapter for RevisionAdapter {
                 | "subscribers.remove"
                 | "differential.reviewers.add"
                 | "differential.reviewers.blocking"
+                | "subscribers.self.add"
+                | "subscribers.self.remove"
+                | "differential.reviewers.self.add"
+                | "differential.reviewers.self.blocking"
+                | "email.self"
         )
     }
 }
@@ -1105,6 +1110,22 @@ async fn run_herald(
         .await
         .map_err(unsupported)?;
     engine::check_supported(&rules, &RevisionAdapter).map_err(unsupported)?;
+    // Drafts forbid the mailable state (`setForbiddenAction()`), which the
+    // email actions require: PHP records those rules as forbidden.
+    let mails = |rule: &Rule| {
+        rule.actions
+            .iter()
+            .any(|action| matches!(action.action.as_str(), "email.other" | "email.self"))
+    };
+    if !facts.should_broadcast && rules.iter().any(mails) {
+        return Err(MethodError::Unsupported(
+            "Herald mail rules on drafts, which forbid them",
+        ));
+    }
+    let mut rules = rules;
+    for rule in rules.iter_mut().filter(|rule| rule.rule_type == "personal") {
+        herald_actions::check_author(request, (revision, facts), rule).await?;
+    }
     let subject = Subject {
         phid: revision.phid.as_str().to_owned(),
         content_type: "differential".to_owned(),
@@ -1123,14 +1144,11 @@ async fn run_herald(
     for effect in &evaluation.effects {
         let subject = (revision, facts);
         let state = (&mut queue, &mut must_encrypt);
-        let reasons =
-            herald_actions::apply(request, subject, effect, input.removes_subscribers, state)
-                .await?;
-        applied.push(Applied {
-            effect: effect.clone(),
-            applied: true,
-            reasons,
-        });
+        let Some(rule) = rules.iter().find(|rule| rule.phid == effect.rule_phid) else {
+            return Err(MethodError::internal("an effect without its rule"));
+        };
+        let reasons = herald_actions::apply(request, subject, (rule, effect), input, state).await?;
+        applied.push(reasons);
     }
     Ok(HeraldOutcome {
         rules,

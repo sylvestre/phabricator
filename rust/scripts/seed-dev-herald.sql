@@ -181,3 +181,45 @@ INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
   (SELECT CONCAT('["', phid, '"]') FROM phabricator_user.user WHERE userName = 'dave')),
 (207, 15, 'nothing', 'null'),
 (209, 17, 'projects.remove', '["PHID-PROJ-sv7lxylfx3dmjxbkjkt4"]');
+
+-- Personal rules (H5): dave subscribes himself, alice reviews, carol gets
+-- mail, on titles saying act-mine; act-wrong fires a global rule with a
+-- self action and a personal rule with a tag, both of the wrong rule type.
+INSERT IGNORE INTO phabricator_herald.herald_rule (id, name, authorPHID,
+  contentType, mustMatchAll, configVersion, dateCreated, dateModified,
+  repetitionPolicy, ruleType, phid, isDisabled, triggerObjectPHID)
+SELECT 18, 'Mine: dave subscribes', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'personal', 'PHID-HRUL-minedave0000018', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'dave'
+UNION ALL
+SELECT 19, 'Mine: alice reviews', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'personal', 'PHID-HRUL-minealice000019', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'alice'
+UNION ALL
+SELECT 20, 'Mine: carol gets mail', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'personal', 'PHID-HRUL-minecarol000020', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'carol'
+UNION ALL
+SELECT 21, 'Wrong: global self subscribe', phid, 'differential', 1, 38,
+  1794600000, 1794600000, 'every', 'global', 'PHID-HRUL-wrongglobal00021', 0,
+  NULL FROM phabricator_user.user WHERE userName = 'admin'
+UNION ALL
+SELECT 22, 'Wrong: personal tag', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'personal', 'PHID-HRUL-wrongpersonal022', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'bob';
+
+INSERT IGNORE INTO phabricator_herald.herald_condition (id, ruleID, fieldName,
+  fieldCondition, value) VALUES
+(218, 18, 'differential.revision.title', 'contains', '"act-mine"'),
+(219, 19, 'differential.revision.title', 'contains', '"act-mine"'),
+(220, 20, 'differential.revision.title', 'contains', '"act-mine"'),
+(221, 21, 'differential.revision.title', 'contains', '"act-wrong"'),
+(222, 22, 'differential.revision.title', 'contains', '"act-wrong"');
+
+INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
+  target) VALUES
+(218, 18, 'subscribers.self.add', 'null'),
+(219, 19, 'differential.reviewers.self.add', 'null'),
+(220, 20, 'email.self', 'null'),
+(221, 21, 'subscribers.self.add', 'null'),
+(222, 22, 'projects.add', '["PHID-PROJ-fw4ppopw3mj73juscyek"]');

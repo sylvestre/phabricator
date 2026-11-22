@@ -314,6 +314,45 @@ pub async fn visible_revisions(
     visible_revisions_in_query(database, config, viewer, revisions, now, &mut memory).await
 }
 
+/// Whether `viewer` can see `revision` as an edit leaves it, before it is
+/// saved: with these subscribers and reviewers (any status), as Herald
+/// checks policies after the edit's transactions apply. The policy filter's
+/// other facts don't change with an edit.
+pub async fn visible_after_edit(
+    database: &Database,
+    config: &phab_core::Config,
+    viewer: &phab_policy::Viewer,
+    (revision, subscribers, reviewers): (&Revision, &[String], &[String]),
+    now: i64,
+) -> Result<bool, VisibilityError> {
+    let subject = revision.subject();
+    let refs = [&subject];
+    let mut facts = phab_policy::loader::load_facts(
+        database,
+        config,
+        viewer,
+        &refs,
+        &Repositories { database },
+        now,
+    )
+    .await?;
+    let mut sources: Vec<&str> = facts.viewer_projects.iter().map(Phid::as_str).collect();
+    sources.extend(viewer.phid.as_ref().map(Phid::as_str));
+    let named = |list: &[String]| list.iter().any(|phid| sources.contains(&phid.as_str()));
+    let (subscribed, reviewing) = (named(subscribers), named(reviewers));
+    for (set, now_in) in [
+        (&mut facts.subscribed, subscribed),
+        (&mut facts.reviewing, reviewing),
+    ] {
+        set.remove(&revision.phid);
+        if now_in {
+            set.insert(revision.phid.clone());
+        }
+    }
+    let passed = phab_policy::filter(viewer, &refs, &[Capability::VIEW], &facts)?;
+    Ok(passed.first().copied().unwrap_or(false))
+}
+
 /// [`visible_revisions()`] for one page of a query which loads several,
 /// with what the policy filter kept from the earlier pages.
 pub async fn visible_revisions_in_query(

@@ -1,11 +1,12 @@
 //! `HeraldEngine`: evaluating Herald rules against an object, the effects
 //! of the rules which match, and the transcript of it all.
 //!
-//! Ported: global rules repeating on every edit, the fields and actions an
-//! [`Adapter`] provides, and every condition but the bit tests. Anything else is [`HeraldError::Unsupported`], found
-//! before evaluation starts, so the caller can leave the edit to PHP; a
-//! regular expression which fails while matching sets
-//! [`Evaluation::unsupported`] instead.
+//! Ported: global and personal rules repeating on every edit, the fields
+//! and actions an [`Adapter`] provides, and every condition but the bit
+//! tests. Anything else is [`HeraldError::Unsupported`], found before
+//! evaluation starts, so the caller can leave the edit to PHP; a regular
+//! expression which fails while matching sets [`Evaluation::unsupported`]
+//! instead.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -75,6 +76,12 @@ pub struct Rule {
     pub conditions: Vec<Condition>,
     /// The actions, in ID order.
     pub actions: Vec<ActionRecord>,
+    /// `hasValidAuthor()`: a personal rule's author exists and is an
+    /// activated user. The caller decides; global rules always have one.
+    pub author_valid: bool,
+    /// `canAuthorViewObject()`: a personal rule's author can see the
+    /// object. The caller decides.
+    pub author_can_view: bool,
 }
 
 impl Rule {
@@ -109,8 +116,8 @@ pub async fn load_rules(database: &Database, content_type: &str) -> Result<Vec<R
         .await?;
     let mut rules = Vec::new();
     for row in &found {
-        if rows::text(row, "ruleType")? != "global" {
-            return Err(HeraldError::Unsupported("personal and object Herald rules"));
+        if !matches!(rows::text(row, "ruleType")?.as_str(), "global" | "personal") {
+            return Err(HeraldError::Unsupported("object Herald rules"));
         }
         if rows::text(row, "repetitionPolicy")? != "every" {
             return Err(HeraldError::Unsupported(
@@ -127,6 +134,8 @@ pub async fn load_rules(database: &Database, content_type: &str) -> Result<Vec<R
             config_version: rows::int(row, "configVersion")?,
             conditions: Vec::new(),
             actions: Vec::new(),
+            author_valid: true,
+            author_can_view: true,
         });
     }
     if rules.is_empty() {
@@ -480,6 +489,10 @@ impl<'a> Engine<'a> {
             "version"
         } else if rule.conditions.is_empty() {
             "empty"
+        } else if !rule.author_valid {
+            "owner"
+        } else if !rule.author_can_view {
+            "view-policy"
         } else {
             let mut code = None;
             for condition in &rule.conditions {
@@ -1007,16 +1020,24 @@ pub struct Applied {
     pub applied: bool,
     /// `appliedReason`: what `logEffect()` recorded.
     pub reasons: Vec<(String, Php)>,
+    /// Whether the reasons are a standard failure's (`applyStandardEffect()`
+    /// rejecting the action), recorded as `[code, data]` pairs instead of
+    /// `{type, data}` maps.
+    pub standard: bool,
 }
 
 impl Applied {
     fn to_php(&self) -> Php {
         let private = |name| phpser::private("HeraldApplyTranscript", name);
         let reasons = Php::list(self.reasons.iter().map(|(kind, data)| {
-            Php::Array(vec![
-                (Key::from("type"), Php::str(kind)),
-                (Key::from("data"), data.clone()),
-            ])
+            if self.standard {
+                Php::list([Php::str(kind), data.clone()])
+            } else {
+                Php::Array(vec![
+                    (Key::from("type"), Php::str(kind)),
+                    (Key::from("data"), data.clone()),
+                ])
+            }
         }));
         Php::Object {
             class: "HeraldApplyTranscript".to_owned(),
@@ -1113,6 +1134,8 @@ mod tests {
             config_version: 38,
             conditions,
             actions,
+            author_valid: true,
+            author_can_view: true,
         }
     }
 
