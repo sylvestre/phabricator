@@ -91,6 +91,10 @@ fn default_values() -> Map<String, Value> {
         "uri.allowed-protocols": {"http": true, "https": true, "mailto": true},
         "remarkup.ignored-object-names": r"/^(Q|V|M|P)\d$/",
         "bugzilla.url": "https://bugzilla.allizom.org",
+        "bugzilla.require_mfa": true,
+        "security.require-https": false,
+        "phabricator.allowed-uris": [],
+        "recaptcha.enabled": false,
     });
     match defaults {
         Value::Object(map) => map,

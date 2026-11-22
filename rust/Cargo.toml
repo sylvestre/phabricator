@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth", "crates/phab-conduit", "crates/phab-parity", "crates/phab-web", "crates/phab-remarkup", "crates/phab-diff", "crates/apps/conduit", "crates/apps/people", "crates/apps/differential", "crates/apps/diffusion", "crates/apps/project", "crates/apps/feed", "crates/apps/files", "crates/apps/herald", "crates/apps/phid", "crates/apps/policy", "crates/apps/flag", "crates/apps/remarkup", "crates/apps/harbormaster", "crates/apps/dashboard", "bins/phab-server", "bins/phab-replay", "bins/phab-worker"]
+members = ["crates/phab-core", "crates/phab-db", "crates/phab-policy", "crates/phab-auth", "crates/phab-conduit", "crates/phab-parity", "crates/phab-web", "crates/phab-remarkup", "crates/phab-diff", "crates/apps/auth", "crates/apps/conduit", "crates/apps/people", "crates/apps/differential", "crates/apps/diffusion", "crates/apps/project", "crates/apps/feed", "crates/apps/files", "crates/apps/herald", "crates/apps/phid", "crates/apps/policy", "crates/apps/flag", "crates/apps/remarkup", "crates/apps/harbormaster", "crates/apps/dashboard", "bins/phab-server", "bins/phab-replay", "bins/phab-worker"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ phab-db = { path = "crates/phab-db" }
 phab-policy = { path = "crates/phab-policy" }
 phab-auth = { path = "crates/phab-auth" }
 phab-conduit = { path = "crates/phab-conduit" }
+phab-app-auth = { path = "crates/apps/auth" }
 phab-app-conduit = { path = "crates/apps/conduit" }
 phab-app-people = { path = "crates/apps/people" }
 phab-app-differential = { path = "crates/apps/differential" }
@@ -36,6 +37,7 @@ phab-diff = { path = "crates/phab-diff" }
 
 askama = "0.14"
 base64 = "0.22"
+bcrypt = "0.17"
 axum = "0.8"
 flate2 = "1"
 hex = "0.4"

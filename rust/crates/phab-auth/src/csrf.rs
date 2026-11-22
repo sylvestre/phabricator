@@ -20,6 +20,7 @@ const CYCLE_FREQUENCY: i64 = 60 * 60;
 /// Tokens from the six previous hours and the next one are accepted.
 const WINDOW_OFFSETS: std::ops::RangeInclusive<i64> = -6..=1;
 const CSRF_KEY: &str = "csrf";
+const ALTERNATE_KEY: &str = "csrf.alternate";
 
 /// What a user's tokens are made from: the user PHID, the account secret
 /// and the session key digest (`PhabricatorUser::newCSRFEngine()`).
@@ -33,6 +34,24 @@ impl CsrfSecret {
             "{}{account_secret}{session_key}",
             user_phid.as_str()
         ))
+    }
+
+    /// The secret of a logged-out viewer: the `csrf.alternate` digest of
+    /// their `phsid` cookie, which `PhabricatorController` attaches as the
+    /// alternate CSRF string. `Unsupported` until PHP created the key.
+    pub async fn for_logged_out(
+        database: &Database,
+        session_token: &str,
+    ) -> Result<Outcome<Self>, AuthError> {
+        let Some(key) = session::named_hmac_key(database, ALTERNATE_KEY).await? else {
+            return Ok(Outcome::Unsupported(
+                "the logged-out CSRF key does not exist yet",
+            ));
+        };
+        Ok(Outcome::Done(Self(hash::hmac_sha256(
+            session_token.as_bytes(),
+            &key,
+        )?)))
     }
 }
 

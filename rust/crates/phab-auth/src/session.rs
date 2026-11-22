@@ -5,11 +5,15 @@
 //! moves between the two stacks, so keys are looked up with the same digests
 //! and extended with the same rules.
 
-use phab_core::{Config, Phid, hash};
+use std::fmt;
+
+use phab_core::{Config, Phid, PhidType, hash, random};
 use phab_db::{Database, rows};
+use serde_json::{Map, json};
 
 use crate::csrf::CsrfSecret;
 use crate::user::{self, User as UserRecord};
+use crate::user_log::{self, LogEntry, LogType, RequestInfo};
 use crate::{AuthError, Outcome, User, Writes};
 
 /// The cookie holding web session tokens (`PhabricatorCookies`).
@@ -93,6 +97,10 @@ pub struct Session {
     pub high_security_until: Option<i64>,
     /// Whether multi-factor authentication is still pending.
     pub is_partial: bool,
+    /// The digest of the session token the row is stored under
+    /// (`PhabricatorAuthSession::newSessionDigest()`). Not a secret: PHP
+    /// writes it to the activity log.
+    pub key_digest: String,
 }
 
 /// The HMAC key PHP keeps in `phabricator_auth.auth_hmackey`, decoded from
@@ -179,6 +187,7 @@ pub async fn load_user_for_session(
         session_expires: rows::int(&row, "s_sessionExpires")?,
         high_security_until: rows::opt_int(&row, "s_highSecurityUntil")?,
         is_partial: rows::flag(&row, "s_isPartial")?,
+        key_digest: session_key.clone(),
     };
     let is_weak = rows::flag(&row, "s_weak")?;
     // PHP keeps the new digest on the session, even before upgrading a weak
@@ -243,6 +252,208 @@ async fn extend_session(database: &Database, session: &Session, now: i64) -> Res
     Ok(())
 }
 
+/// The `session.digest` HMAC key, loaded before a login writes anything so
+/// that no later step has to hand the request to PHP.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SessionDigest(Vec<u8>);
+
+impl fmt::Debug for SessionDigest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SessionDigest(<redacted>)")
+    }
+}
+
+impl SessionDigest {
+    /// Loads the key. Until PHP has created it, Rust can't issue sessions
+    /// PHP accepts.
+    pub async fn load(database: &Database) -> Result<Outcome<Self>, AuthError> {
+        Ok(match named_hmac_key(database, SESSION_DIGEST_KEY).await? {
+            Some(key) => Outcome::Done(Self(key)),
+            None => Outcome::Unsupported("the session digest key does not exist yet"),
+        })
+    }
+
+    /// A key from its raw bytes.
+    pub fn new(key: Vec<u8>) -> Self {
+        Self(key)
+    }
+
+    /// `PhabricatorAuthSession::newSessionDigest()`.
+    pub fn digest(&self, token: &str) -> Result<String, AuthError> {
+        Ok(hash::hmac_sha256(token.as_bytes(), &self.0)?)
+    }
+}
+
+/// A session token just issued, for the `phsid` cookie or a Conduit
+/// client. Never printed.
+#[derive(Clone, PartialEq, Eq)]
+pub struct IssuedSession {
+    token: String,
+    /// The digest the session is stored under.
+    pub digest: String,
+}
+
+impl IssuedSession {
+    /// The token to hand to the client.
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+}
+
+impl fmt::Debug for IssuedSession {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("IssuedSession(<redacted>)")
+    }
+}
+
+/// Length of the random part of session tokens
+/// (`Filesystem::readRandomCharacters(40)`).
+const SESSION_TOKEN_LENGTH: usize = 40;
+
+/// `establishSession()` without an identity: a logged-out session token,
+/// which only protects logged-out forms from CSRF and is not stored.
+pub fn anonymous_token() -> String {
+    format!("A/{}", random::random_characters(SESSION_TOKEN_LENGTH))
+}
+
+/// `PhabricatorAuthSessionEngine::establishSession()` for a user: stores a
+/// new session and logs the login. No session engine extension exists in
+/// this install, so none runs.
+pub async fn establish_session(
+    database: &Database,
+    keys: &SessionDigest,
+    session_type: SessionType,
+    user_phid: &Phid,
+    partial: bool,
+    now: i64,
+    request: &RequestInfo,
+) -> Result<IssuedSession, AuthError> {
+    let token = random::random_characters(SESSION_TOKEN_LENGTH);
+    let digest = keys.digest(&token)?;
+    let ttl = if partial {
+        session_type.partial_ttl()
+    } else {
+        session_type.ttl()
+    };
+    let sql = format!(
+        "INSERT INTO {} (userPHID, type, sessionKey, sessionStart, sessionExpires, \
+           highSecurityUntil, isPartial, signedLegalpadDocuments, phid) \
+         VALUES (?, ?, ?, ?, ?, NULL, ?, 0, ?)",
+        database.table("user", "phabricator_session")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(user_phid.as_str())
+        .bind(session_type.as_str())
+        .bind(&digest)
+        .bind(now)
+        .bind(now + ttl)
+        .bind(i32::from(partial))
+        .bind(Phid::generate(PhidType::SESSION, None).as_str())
+        .execute(database.pool())
+        .await?;
+
+    let details = Map::from_iter([("session_type".to_owned(), json!(session_type.as_str()))]);
+    user_log::insert(
+        database,
+        LogEntry {
+            actor: None,
+            session: Some(&digest),
+            user_phid: user_phid.as_str(),
+            action: if partial {
+                LogType::PartialLogin
+            } else {
+                LogType::Login
+            },
+            details,
+        },
+        request,
+        now,
+    )
+    .await?;
+    Ok(IssuedSession { token, digest })
+}
+
+/// `PhabricatorAuthSessionEngine::upgradePartialSession()`: the user
+/// passed multi-factor authentication, or has no factor to pass. The
+/// expiry is left alone; the next request extends it.
+pub async fn upgrade_partial_session(
+    database: &Database,
+    found: &SessionUser,
+    now: i64,
+    request: &RequestInfo,
+) -> Result<(), AuthError> {
+    let sql = format!(
+        "UPDATE {} SET isPartial = 0 WHERE id = ?",
+        database.table("user", "phabricator_session")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(found.session.id)
+        .execute(database.pool())
+        .await?;
+    user_log::insert(
+        database,
+        LogEntry {
+            actor: Some(&found.user.phid),
+            session: Some(&found.session.key_digest),
+            user_phid: found.user.phid.as_str(),
+            action: LogType::FullLogin,
+            details: Map::new(),
+        },
+        request,
+        now,
+    )
+    .await
+}
+
+/// `PhabricatorAuthSessionEngine::logoutSession()`: logs the logout and
+/// deletes the session.
+pub async fn logout_session(
+    database: &Database,
+    found: &SessionUser,
+    now: i64,
+    request: &RequestInfo,
+) -> Result<(), AuthError> {
+    user_log::insert(
+        database,
+        LogEntry {
+            actor: Some(&found.user.phid),
+            session: Some(&found.session.key_digest),
+            user_phid: found.user.phid.as_str(),
+            action: LogType::Logout,
+            details: Map::new(),
+        },
+        request,
+        now,
+    )
+    .await?;
+    let sql = format!(
+        "DELETE FROM {} WHERE id = ?",
+        database.table("user", "phabricator_session")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(found.session.id)
+        .execute(database.pool())
+        .await?;
+    Ok(())
+}
+
+/// `PhabricatorAuthSessionEngine::terminateLoginSessions()` without a
+/// session to keep: deletes every session of the user, of any type.
+pub async fn terminate_login_sessions(
+    database: &Database,
+    user_phid: &Phid,
+) -> Result<(), AuthError> {
+    let sql = format!(
+        "DELETE FROM {} WHERE userPHID = ?",
+        database.table("user", "phabricator_session")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(user_phid.as_str())
+        .execute(database.pool())
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -269,6 +480,7 @@ mod tests {
             session_expires: expires,
             high_security_until: None,
             is_partial,
+            key_digest: "digest".to_owned(),
         }
     }
 
