@@ -36,7 +36,7 @@ pub(crate) struct DiffRow {
     pub(crate) id: i64,
     pub(crate) phid: Phid,
     pub(crate) revision_id: Option<i64>,
-    author_phid: Option<String>,
+    pub(crate) author_phid: Option<String>,
     repository_phid: Option<String>,
     base: Option<String>,
     branch: Option<String>,

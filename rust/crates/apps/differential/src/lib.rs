@@ -5,7 +5,10 @@ pub mod buckets;
 pub mod changeset_search;
 pub mod commit;
 pub mod commit_message;
+pub mod create_diff;
+pub mod create_raw_diff;
 pub mod details;
+pub(crate) mod diff_editor;
 pub mod diff_search;
 pub mod edge_search;
 pub mod edit;
@@ -18,6 +21,7 @@ pub mod query_diffs;
 pub mod repository;
 pub mod revision_comments;
 pub mod search;
+pub mod set_diff_property;
 pub mod storage;
 pub mod title;
 pub mod transaction_search;
@@ -44,4 +48,7 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(visibility::RevisionVisibility);
     registry.register(commit_message::get::GetCommitMessage);
     registry.register(commit_message::parse::ParseCommitMessage);
+    registry.register(create_diff::CreateDiff);
+    registry.register(create_raw_diff::CreateRawDiff);
+    registry.register(set_diff_property::SetDiffProperty);
 }

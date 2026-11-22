@@ -1594,8 +1594,10 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "form_urlencoded",
+ "pcre2",
  "phab-app-herald",
  "phab-app-project",
+ "phab-auth",
  "phab-conduit",
  "phab-core",
  "phab-db",

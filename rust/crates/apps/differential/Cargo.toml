@@ -10,12 +10,14 @@ publish.workspace = true
 [dependencies]
 base64.workspace = true
 phab-app-herald.workspace = true
+phab-auth.workspace = true
 phab-app-project.workspace = true
 phab-remarkup.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
 phab-diff.workspace = true
+pcre2.workspace = true
 phab-policy.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
