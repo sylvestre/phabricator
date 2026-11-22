@@ -2,14 +2,14 @@
 FROM rust:1.91-slim-trixie AS build
 WORKDIR /src
 COPY . .
-RUN cargo build --release --locked -p phab-server
+RUN cargo build --release --locked -p phab-server -p phab-worker
 
 FROM debian:trixie-slim AS production
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends busybox ca-certificates file \
+    && apt-get install --yes --no-install-recommends busybox ca-certificates file git \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home app
-COPY --from=build /src/target/release/phab-server /usr/local/bin/phab-server
+COPY --from=build /src/target/release/phab-server /src/target/release/phab-worker /usr/local/bin/
 USER app
 # PHP's image (Alpine) realigns changesets with BusyBox's diff; using the
 # same program keeps the alignment of whitespace changes identical.
