@@ -5,13 +5,92 @@
 //! `UPDATE ... SET leaseOwner` of each phase only ever see those classes, so
 //! a task of any other class is never leased, not even for a moment, and
 //! PHP's taskmasters find the queue as they would without this worker.
+//!
+//! A class may be ported for only some of its tasks. With an
+//! [`Inspection`], the query shows each task it selects to its handler
+//! before the `UPDATE` ([`crate::Handler::inspect`]); a task the handler
+//! declines is not leased, so it stays exactly as PHP left it and PHP's
+//! next lease query takes it in its usual order. The worker remembers
+//! declined tasks for a while ([`Declined`]) and selects past them, so they
+//! neither block the tasks it can run nor get inspected on every query.
 
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
+use phab_core::Config;
 use phab_db::{Database, DbError, bind_all, placeholders, rows};
+use serde_json::Value;
 
-use crate::task::{ActiveTask, decode_data};
+use crate::handler::{Claim, Registry, Unleased};
+use crate::task::{ActiveTask, PriorLease, decode_data};
 use crate::time;
+
+/// How long a declined task is selected past before it is inspected again.
+pub const DECLINE_MEMORY: Duration = Duration::from_secs(10 * 60);
+
+/// The most declined tasks remembered; the oldest are forgotten first.
+const MAXIMUM_DECLINED: usize = 1000;
+
+/// The tasks handlers declined recently, with why.
+#[derive(Debug, Default)]
+pub struct Declined {
+    tasks: Mutex<HashMap<i64, (Instant, String)>>,
+}
+
+impl Declined {
+    fn tasks(&self) -> std::sync::MutexGuard<'_, HashMap<i64, (Instant, String)>> {
+        self.tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The tasks to select past, forgetting those declined too long ago.
+    pub fn ids(&self) -> Vec<i64> {
+        let mut tasks = self.tasks();
+        tasks.retain(|_, (declined, _)| declined.elapsed() < DECLINE_MEMORY);
+        let mut ids: Vec<i64> = tasks.keys().copied().collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    /// Remembers that task `id` was declined.
+    pub fn insert(&self, id: i64, reason: String) {
+        let mut tasks = self.tasks();
+        if tasks.len() >= MAXIMUM_DECLINED
+            && !tasks.contains_key(&id)
+            && let Some(oldest) = tasks
+                .iter()
+                .min_by_key(|(_, (declined, _))| *declined)
+                .map(|(id, _)| *id)
+        {
+            tasks.remove(&oldest);
+        }
+        tasks.insert(id, (Instant::now(), reason));
+    }
+
+    /// Why task `id` was declined, if it was recently.
+    pub fn reason(&self, id: i64) -> Option<String> {
+        self.tasks()
+            .get(&id)
+            .filter(|(declined, _)| declined.elapsed() < DECLINE_MEMORY)
+            .map(|(_, reason)| reason.clone())
+    }
+}
+
+/// What lets a lease query ask handlers about the tasks it selects.
+#[derive(Clone, Copy)]
+pub struct Inspection<'a> {
+    /// The handlers, by class.
+    pub registry: &'a Registry,
+    /// The databases, for the handlers.
+    pub database: &'a Database,
+    /// The configuration, for the handlers.
+    pub config: &'a Config,
+    /// Where declines are remembered.
+    pub declined: &'a Declined,
+}
 
 /// `PhabricatorWorkerLeaseQuery::getDefaultLeaseDuration()`: 2 hours.
 pub const DEFAULT_LEASE_DURATION: i64 = 2 * 60 * 60;
@@ -93,7 +172,7 @@ impl Phase {
 }
 
 /// A lease query; [`LeaseQuery::execute`] claims at most `limit` tasks.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LeaseQuery<'a> {
     /// Only these task classes (the registered handlers). Empty leases
     /// nothing.
@@ -104,17 +183,76 @@ pub struct LeaseQuery<'a> {
     pub object_phids: Option<&'a [String]>,
     /// `setLimit()`.
     pub limit: usize,
+    /// Asks the handlers before leasing; `None` leases whatever the query
+    /// selects, as PHP does.
+    pub inspection: Option<Inspection<'a>>,
 }
 
-/// A task selected in a phase: `SELECT id, leaseOwner`.
+/// A task selected in a phase: `SELECT id, leaseOwner`, and what the
+/// inspection and [`ActiveTask::release`] need.
 struct Candidate {
     id: i64,
-    lease_owner: Option<String>,
+    task_class: String,
+    data_id: i64,
+    prior: PriorLease,
+}
+
+impl Inspection<'_> {
+    /// The candidates the handlers take; remembers the others.
+    async fn claim(&self, candidates: Vec<Candidate>) -> Result<Vec<Candidate>, DbError> {
+        let mut data_ids: Vec<i64> = candidates.iter().map(|task| task.data_id).collect();
+        data_ids.sort_unstable();
+        data_ids.dedup();
+        let sql = format!(
+            "SELECT id, data FROM {} WHERE id IN ({})",
+            self.database.table("worker", "worker_taskdata"),
+            placeholders(data_ids.len())
+        );
+        let mut data: HashMap<i64, Value> = HashMap::new();
+        for row in bind_all(sqlx::query(&sql), data_ids.iter().copied())
+            .fetch_all(self.database.pool())
+            .await?
+        {
+            data.insert(
+                rows::int(&row, "id")?,
+                decode_data(rows::opt_text(&row, "data")?.as_deref()),
+            );
+        }
+        let mut taken = Vec::new();
+        for candidate in candidates {
+            let Some(handler) = self.registry.get(&candidate.task_class) else {
+                taken.push(candidate);
+                continue;
+            };
+            let task = Unleased {
+                id: candidate.id,
+                class: &candidate.task_class,
+                data: data.get(&candidate.data_id).unwrap_or(&Value::Null),
+                database: self.database,
+                config: self.config,
+            };
+            match handler.inspect(&task).await {
+                Claim::Take => taken.push(candidate),
+                Claim::Decline(reason) => {
+                    let (id, class) = (candidate.id, &candidate.task_class);
+                    tracing::info!(
+                        id,
+                        class,
+                        reason,
+                        "Task {id} ({class}) left to PHP: {reason}"
+                    );
+                    self.declined.insert(candidate.id, reason);
+                }
+            }
+        }
+        Ok(taken)
+    }
 }
 
 impl LeaseQuery<'_> {
-    /// `buildCustomWhereClause()`, plus the class filter.
-    fn where_clause(&self, phase: Phase) -> String {
+    /// `buildCustomWhereClause()`, plus the class filter, and the declined
+    /// tasks to select past.
+    fn where_clause(&self, phase: Phase, excluded: &[i64]) -> String {
         let mut conditions = vec![phase.condition().to_owned()];
         conditions.push(format!(
             "taskClass IN ({})",
@@ -126,6 +264,9 @@ impl LeaseQuery<'_> {
         if let Some(phids) = self.object_phids {
             conditions.push(format!("objectPHID IN ({})", placeholders(phids.len())));
         }
+        if !excluded.is_empty() {
+            conditions.push(format!("id NOT IN ({})", placeholders(excluded.len())));
+        }
         format!("WHERE {}", conditions.join(" AND "))
     }
 
@@ -134,11 +275,13 @@ impl LeaseQuery<'_> {
         database: &Database,
         phase: Phase,
         limit: usize,
+        excluded: &[i64],
     ) -> Result<Vec<Candidate>, DbError> {
         let sql = format!(
-            "SELECT id, leaseOwner FROM {} {} {} LIMIT {limit}",
+            "SELECT id, leaseOwner, leaseExpires, dateModified, taskClass, dataID FROM {} {} {} \
+             LIMIT {limit}",
             database.table("worker", "worker_activetask"),
-            self.where_clause(phase),
+            self.where_clause(phase, excluded),
             phase.order(),
         );
         let mut query = bind_all(sqlx::query(&sql), self.classes.iter().copied());
@@ -148,6 +291,7 @@ impl LeaseQuery<'_> {
         if let Some(phids) = self.object_phids {
             query = bind_all(query, phids.iter().map(String::as_str));
         }
+        query = bind_all(query, excluded.iter().copied());
         query
             .fetch_all(database.pool())
             .await?
@@ -155,7 +299,13 @@ impl LeaseQuery<'_> {
             .map(|row| {
                 Ok(Candidate {
                     id: rows::int(row, "id")?,
-                    lease_owner: rows::opt_text(row, "leaseOwner")?,
+                    task_class: rows::text(row, "taskClass")?,
+                    data_id: rows::int(row, "dataID")?,
+                    prior: PriorLease {
+                        owner: rows::opt_text(row, "leaseOwner")?,
+                        expires: rows::opt_int(row, "leaseExpires")?,
+                        date_modified: rows::int(row, "dateModified")?,
+                    },
                 })
             })
             .collect()
@@ -198,7 +348,7 @@ impl LeaseQuery<'_> {
                     // `%s` of `null` is `''`, which no row has either.
                     query = query
                         .bind(candidate.id)
-                        .bind(candidate.lease_owner.as_deref().unwrap_or(""));
+                        .bind(candidate.prior.owner.as_deref().unwrap_or(""));
                 }
                 query.execute(database.pool()).await?
             }
@@ -209,6 +359,9 @@ impl LeaseQuery<'_> {
     /// `execute()` without `setSkipLease()`: leases up to `limit` new tasks,
     /// then tasks with an expired lease, under a fresh name from `owner`,
     /// and loads the tasks this name holds with their data.
+    ///
+    /// With an inspection, a phase selects again past the tasks it
+    /// declined, until it declines none or finds nothing more.
     pub async fn execute(
         &self,
         database: &Database,
@@ -226,16 +379,39 @@ impl LeaseQuery<'_> {
         let mut leased: u64 = 0;
         let limit = self.limit as u64;
         let mut last_phase = Phase::Unleased;
-        for phase in [Phase::Unleased, Phase::Expired] {
+        let mut priors: HashMap<i64, PriorLease> = HashMap::new();
+        'phases: for phase in [Phase::Unleased, Phase::Expired] {
             last_phase = phase;
-            let remaining = usize::try_from(limit - leased).unwrap_or(usize::MAX);
-            let candidates = self.select(database, phase, remaining).await?;
-            if candidates.is_empty() {
-                continue;
-            }
-            leased += Self::lease(database, phase, &candidates, &name).await?;
-            if leased == limit {
-                break;
+            loop {
+                let remaining = usize::try_from(limit - leased).unwrap_or(usize::MAX);
+                let excluded = self
+                    .inspection
+                    .map(|inspection| inspection.declined.ids())
+                    .unwrap_or_default();
+                let selected = self.select(database, phase, remaining, &excluded).await?;
+                if selected.is_empty() {
+                    break;
+                }
+                let count = selected.len();
+                let candidates = match &self.inspection {
+                    Some(inspection) => inspection.claim(selected).await?,
+                    None => selected,
+                };
+                let declined_some = candidates.len() < count;
+                if !candidates.is_empty() {
+                    leased += Self::lease(database, phase, &candidates, &name).await?;
+                    priors.extend(
+                        candidates
+                            .into_iter()
+                            .map(|candidate| (candidate.id, candidate.prior)),
+                    );
+                }
+                if leased == limit {
+                    break 'phases;
+                }
+                if !declined_some {
+                    break;
+                }
             }
         }
         if leased == 0 {
@@ -258,8 +434,9 @@ impl LeaseQuery<'_> {
         let local_time = time();
         rows.iter()
             .map(|row| {
+                let id = rows::int(row, "id")?;
                 Ok(ActiveTask {
-                    id: rows::int(row, "id")?,
+                    id,
                     task_class: rows::text(row, "taskClass")?,
                     lease_owner: rows::opt_text(row, "leaseOwner")?,
                     lease_expires: rows::opt_int(row, "leaseExpires")?,
@@ -274,6 +451,7 @@ impl LeaseQuery<'_> {
                     data: decode_data(rows::opt_text(row, "_taskData")?.as_deref()),
                     server_time: rows::int(row, "_serverTime")?,
                     local_time,
+                    prior_lease: priors.remove(&id).unwrap_or_default(),
                 })
             })
             .collect()
@@ -314,14 +492,32 @@ mod tests {
             ids: Some(&[1]),
             object_phids: None,
             limit: 1,
+            inspection: None,
         };
         assert_eq!(
-            query.where_clause(Phase::Unleased),
+            query.where_clause(Phase::Unleased, &[]),
             "WHERE leaseOwner IS NULL AND taskClass IN (?, ?) AND id IN (?)"
         );
         assert_eq!(
-            query.where_clause(Phase::Expired),
-            "WHERE leaseExpires < UNIX_TIMESTAMP() AND taskClass IN (?, ?) AND id IN (?)"
+            query.where_clause(Phase::Expired, &[4, 5]),
+            "WHERE leaseExpires < UNIX_TIMESTAMP() AND taskClass IN (?, ?) AND id IN (?) \
+             AND id NOT IN (?, ?)"
         );
+    }
+
+    #[test]
+    fn remembers_declined_tasks() {
+        let declined = Declined::default();
+        declined.insert(7, "not ported".to_owned());
+        declined.insert(3, "no".to_owned());
+        assert_eq!(declined.ids(), [3, 7]);
+        assert_eq!(declined.reason(7).as_deref(), Some("not ported"));
+        assert_eq!(declined.reason(8), None);
+        for id in 100..(100 + i64::try_from(MAXIMUM_DECLINED).unwrap()) {
+            declined.insert(id, String::new());
+        }
+        assert_eq!(declined.ids().len(), MAXIMUM_DECLINED);
+        let newest = 99 + i64::try_from(MAXIMUM_DECLINED).unwrap();
+        assert!(declined.reason(newest).is_some());
     }
 }

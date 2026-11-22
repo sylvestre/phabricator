@@ -34,6 +34,14 @@ pub enum Executed {
         /// The failure message.
         message: String,
     },
+    /// Handed back to PHP with the lease it had before
+    /// ([`Failure::Decline`]).
+    Declined {
+        /// The task as released.
+        task: ActiveTask,
+        /// Why.
+        reason: String,
+    },
 }
 
 /// An exception PHP lets escape `executeTask()`: the daemon dies and the
@@ -66,6 +74,7 @@ enum Caught {
     Permanent(String),
     Yield(i64),
     Other(String),
+    Decline(String),
 }
 
 impl From<Failure> for Caught {
@@ -74,6 +83,7 @@ impl From<Failure> for Caught {
             Failure::Permanent(message) => Self::Permanent(message),
             Failure::Yield(duration) => Self::Yield(duration),
             Failure::Temporary(message) => Self::Other(message),
+            Failure::Decline(reason) => Self::Decline(reason),
         }
     }
 }
@@ -163,6 +173,12 @@ pub async fn execute(
             task.set_lease_duration(database, duration.max(MINIMUM_YIELD))
                 .await?;
             Ok(Executed::Yielded(task))
+        }
+        Err(Caught::Decline(reason)) => {
+            // Before anything of PHP's `catch` blocks: the row goes back to
+            // how the lease query found it.
+            task.release(database).await?;
+            Ok(Executed::Declined { task, reason })
         }
         Err(Caught::Other(message)) => {
             task.failure_count += 1;

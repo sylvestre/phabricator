@@ -67,6 +67,7 @@ impl Fixture {
             ids: None,
             object_phids: None,
             limit: 1,
+            inspection: None,
         }
         .execute(self.database(), &self.owner)
         .await
@@ -305,12 +306,12 @@ async fn never_leases_classes_without_a_handler() {
     }
 
     let ours = fixture.schedule_test(json!([])).await;
-    let worker = Worker {
-        database: fixture.database().clone(),
-        config: Config::default(),
-        registry: phab_worker::handlers::registry(),
-        owner: LeaseOwner::new("rust-test"),
-    };
+    let worker = Worker::new(
+        fixture.database().clone(),
+        Config::default(),
+        phab_worker::handlers::registry(),
+        LeaseOwner::new("rust-test"),
+    );
     assert!(worker.work_once().await.unwrap());
     assert!(fixture.archived(ours).await.is_some());
     assert!(!worker.work_once().await.unwrap());
@@ -672,6 +673,7 @@ async fn filters_on_ids_and_object_phids() {
         ids: None,
         object_phids: Some(&phids),
         limit: 5,
+        inspection: None,
     }
     .execute(fixture.database(), &fixture.owner)
     .await
@@ -685,6 +687,7 @@ async fn filters_on_ids_and_object_phids() {
         ids: Some(&[first, 3]),
         object_phids: None,
         limit: 5,
+        inspection: None,
     }
     .execute(fixture.database(), &fixture.owner)
     .await

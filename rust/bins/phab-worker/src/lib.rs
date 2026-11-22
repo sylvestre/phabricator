@@ -13,11 +13,13 @@ pub mod handlers;
 pub mod lease;
 pub mod task;
 
-pub use daemon::Worker;
+pub use daemon::{Ran, Worker};
 pub use execute::{ExecuteError, Executed, execute};
-pub use handler::{Failure, Handler, QueuedTask, Registry, Work, WorkFuture};
-pub use lease::{LeaseOwner, LeaseQuery};
-pub use task::{ActiveTask, ArchiveTask, TaskResult};
+pub use handler::{
+    Claim, ClaimFuture, Failure, Handler, QueuedTask, Registry, Unleased, Work, WorkFuture,
+};
+pub use lease::{Declined, Inspection, LeaseOwner, LeaseQuery};
+pub use task::{ActiveTask, ArchiveTask, PriorLease, TaskResult};
 
 /// `PhabricatorWorker::YIELD_OWNER`: the lease owner of a task which has
 /// yielded.
@@ -25,7 +27,6 @@ pub const YIELD_OWNER: &str = "(yield)";
 
 /// `PhabricatorWorker::PRIORITY_DEFAULT`.
 pub const PRIORITY_DEFAULT: i64 = 2000;
-
 /// PHP's `time()`.
 pub(crate) fn time() -> i64 {
     let elapsed = std::time::SystemTime::now()

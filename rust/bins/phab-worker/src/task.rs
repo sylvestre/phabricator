@@ -91,6 +91,21 @@ pub struct ActiveTask {
     pub server_time: i64,
     /// `time()` when the task was loaded.
     pub local_time: i64,
+    /// The lease the row had before the lease query took it, put back by
+    /// [`ActiveTask::release`].
+    pub prior_lease: PriorLease,
+}
+
+/// The columns of a task row the worker changes before `doWork()`, as they
+/// were before it leased the task.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PriorLease {
+    /// `leaseOwner`.
+    pub owner: Option<String>,
+    /// `leaseExpires`.
+    pub expires: Option<i64>,
+    /// `dateModified`, which only `setLeaseDuration()` changes.
+    pub date_modified: i64,
 }
 
 /// A row written to `worker_archivetask`.
@@ -179,6 +194,31 @@ impl ActiveTask {
         Ok(())
     }
 
+    /// Hands a declined task back: puts back the lease columns as the lease
+    /// query found them, if this lease still holds the row, so PHP's lease
+    /// query sees the row it would have seen without this worker (an
+    /// unleased task is taken by its next `PHASE_UNLEASED` query, a task
+    /// whose lease had expired by its `PHASE_EXPIRED` one, in the same
+    /// order). Nothing else of the row was written.
+    pub async fn release(&self, database: &Database) -> Result<(), DbError> {
+        let Some(owner) = self.lease_owner.as_deref() else {
+            return Ok(());
+        };
+        sqlx::query(&format!(
+            "UPDATE {} SET leaseOwner = ?, leaseExpires = ?, dateModified = ? \
+             WHERE id = ? AND leaseOwner = ?",
+            database.table("worker", "worker_activetask")
+        ))
+        .bind(&self.prior_lease.owner)
+        .bind(self.prior_lease.expires)
+        .bind(self.prior_lease.date_modified)
+        .bind(self.id)
+        .bind(owner)
+        .execute(database.pool())
+        .await?;
+        Ok(())
+    }
+
     /// `archiveTask()`: checks the lease, then, in one transaction, deletes
     /// the active row and inserts the archived one
     /// (`PhabricatorWorkerArchiveTask::save()`). The data row is kept.
@@ -254,6 +294,7 @@ mod tests {
             data: Value::Null,
             server_time: now,
             local_time: now,
+            prior_lease: PriorLease::default(),
         }
     }
 

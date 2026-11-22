@@ -109,8 +109,10 @@ fn is_self_subscription(transaction: &Transaction) -> Option<bool> {
     Some(affected == transaction.author_phid.as_str())
 }
 
-/// `PhabricatorApplicationTransaction::shouldHide()`.
-fn should_hide(transaction: &Transaction, comment: Option<&Comment>) -> FeedVisibility {
+/// `PhabricatorApplicationTransaction::shouldHide()`, which every
+/// application's transactions share; `comment` is the transaction's, if the
+/// viewer can see it.
+pub fn should_hide(transaction: &Transaction, comment: Option<&Comment>) -> FeedVisibility {
     if comment.is_some_and(|comment| !comment.is_empty()) {
         return FeedVisibility::Visible;
     }
@@ -179,6 +181,44 @@ fn should_hide(transaction: &Transaction, comment: Option<&Comment>) -> FeedVisi
     }
 }
 
+/// `PhabricatorApplicationTransaction::shouldHideForFeed()` up to its call
+/// to `shouldHide()`, which every application's transactions share: `Some`
+/// when it decides.
+pub fn hidden_for_feed_before_should_hide(transaction: &Transaction) -> Option<FeedVisibility> {
+    match is_self_subscription(transaction) {
+        None => return Some(FeedVisibility::Unknown),
+        Some(true) => return Some(FeedVisibility::Hidden),
+        Some(false) => {}
+    }
+    match transaction.transaction_type.as_str() {
+        "token:give" | "core:mfa" | "core:inlinestate" => Some(FeedVisibility::Hidden),
+        TYPE_SUBSCRIBERS if transaction.author_phid.as_str().starts_with("PHID-APPS-") => {
+            Some(FeedVisibility::Hidden)
+        }
+        TYPE_EDGE
+            if matches!(
+                edge_type(transaction),
+                Some(
+                    edges::OBJECT_MENTIONS_OBJECT
+                        | edges::OBJECT_MENTIONED_BY_OBJECT
+                        | edges::REVISION_DEPENDS_ON_REVISION
+                        | edges::REVISION_DEPENDED_ON_BY_REVISION
+                        | edges::COMMIT_HAS_REVISION
+                        | edges::REVISION_HAS_COMMIT
+                )
+            ) =>
+        {
+            Some(FeedVisibility::Hidden)
+        }
+        _ => None,
+    }
+}
+
+/// The `edge:type` of a transaction, which PHP compares loosely.
+pub fn transaction_edge_type(transaction: &Transaction) -> Option<i64> {
+    edge_type(transaction)
+}
+
 /// `shouldHideForFeed()` of a `DifferentialTransaction`, given its comment
 /// if the viewer can see it.
 pub fn feed_visibility(transaction: &Transaction, comment: Option<&Comment>) -> FeedVisibility {
@@ -197,32 +237,8 @@ pub fn feed_visibility(transaction: &Transaction, comment: Option<&Comment>) -> 
         _ => {}
     }
 
-    match is_self_subscription(transaction) {
-        None => return FeedVisibility::Unknown,
-        Some(true) => return FeedVisibility::Hidden,
-        Some(false) => {}
-    }
-    match kind {
-        "token:give" | "core:mfa" | "core:inlinestate" => return FeedVisibility::Hidden,
-        TYPE_SUBSCRIBERS if transaction.author_phid.as_str().starts_with("PHID-APPS-") => {
-            return FeedVisibility::Hidden;
-        }
-        TYPE_EDGE => {
-            if matches!(
-                edge_type(transaction),
-                Some(
-                    edges::OBJECT_MENTIONS_OBJECT
-                        | edges::OBJECT_MENTIONED_BY_OBJECT
-                        | edges::REVISION_DEPENDS_ON_REVISION
-                        | edges::REVISION_DEPENDED_ON_BY_REVISION
-                        | edges::COMMIT_HAS_REVISION
-                        | edges::REVISION_HAS_COMMIT
-                )
-            ) {
-                return FeedVisibility::Hidden;
-            }
-        }
-        _ => {}
+    if let Some(decided) = hidden_for_feed_before_should_hide(transaction) {
+        return decided;
     }
 
     // DifferentialTransaction::shouldHide(), then the modular type's.

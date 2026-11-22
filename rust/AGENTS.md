@@ -137,6 +137,19 @@ configuration as `phab-server` (`PHAB_CONFIG_DIR`), plus:
 To hand a class back to PHP, remove it from `PHAB_WORKER_CLASSES` and
 restart: tasks it holds are leased again by PHP once their lease expires.
 
+A class can be ported for only some of its tasks: its handler inspects
+each task before the lease and declines the others, which are never
+leased, so PHP's taskmasters take them as if `phab-worker` didn't exist
+(`Task N (...) left to PHP` in the log). `FeedPublisherWorker` declines
+stories about objects other than revisions, projects and users. A task
+declined after its lease (its story changed in between) gets its lease
+columns back as they were.
+
+`phab-worker --once [--id N]` leases and runs one task, prints the outcome
+as JSON and exits (3 when the task was left to PHP).
+`rust/scripts/worker-parity.py` compares its rows with PHP's
+`bin/worker execute --id` on the dev stack.
+
 ## Checking a deployment
 
 - `GET /status` on the service: 200 with `"database": "ok"` and the list of

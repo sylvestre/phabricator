@@ -24,12 +24,18 @@ pub enum Failure {
     /// Any other exception: counted as a failure and retried after
     /// [`Handler::wait_before_retry`].
     Temporary(String),
+    /// Not an outcome PHP has: the task needs code which is not ported, so
+    /// the worker puts the lease back as it found it and PHP's taskmasters
+    /// run the task (see [`Handler::inspect`]).
+    Decline(String),
 }
 
 impl std::fmt::Display for Failure {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Permanent(message) | Self::Temporary(message) => formatter.write_str(message),
+            Self::Permanent(message) | Self::Temporary(message) | Self::Decline(message) => {
+                formatter.write_str(message)
+            }
             Self::Yield(duration) => write!(formatter, "yielded for {duration} seconds"),
         }
     }
@@ -95,6 +101,32 @@ impl<'a> Work<'a> {
 /// The future [`Handler::do_work`] returns.
 pub type WorkFuture<'a> = Pin<Box<dyn Future<Output = Result<(), Failure>> + Send + 'a>>;
 
+/// A task the lease query found, before it leases it.
+pub struct Unleased<'a> {
+    /// `id`.
+    pub id: i64,
+    /// `taskClass`.
+    pub class: &'a str,
+    /// The task data, decoded as [`ActiveTask::data`].
+    pub data: &'a Value,
+    /// The databases.
+    pub database: &'a Database,
+    /// The configuration.
+    pub config: &'a Config,
+}
+
+/// Whether the worker leases a task it found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Claim {
+    /// Lease and run it.
+    Take,
+    /// Leave it to PHP, for this reason.
+    Decline(String),
+}
+
+/// The future [`Handler::inspect`] returns.
+pub type ClaimFuture<'a> = Pin<Box<dyn Future<Output = Claim> + Send + 'a>>;
+
 /// A task class ported to Rust (a subclass of `PhabricatorWorker`).
 ///
 /// The hooks get the task as it is when PHP calls them:
@@ -122,6 +154,16 @@ pub trait Handler: Send + Sync {
     /// minutes.
     fn wait_before_retry(&self, _task: &ActiveTask) -> Result<Option<i64>, Failure> {
         Ok(None)
+    }
+
+    /// Whether to lease `task`, called before the lease: a class ported for
+    /// only some of its tasks declines the others, which are then never
+    /// leased, so their rows stay as they are and PHP's lease query takes
+    /// them as if this worker didn't exist. What it reads may change before
+    /// [`Handler::do_work`] runs, which can still decline with
+    /// [`Failure::Decline`].
+    fn inspect<'a>(&'a self, _task: &'a Unleased<'a>) -> ClaimFuture<'a> {
+        Box::pin(std::future::ready(Claim::Take))
     }
 
     /// `doWork()`.

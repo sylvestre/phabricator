@@ -38,6 +38,8 @@ pub const OBJECT_MENTIONED_BY_OBJECT: i64 = 51;
 pub const OBJECT_MENTIONS_OBJECT: i64 = 52;
 /// `PhabricatorProjectMaterializedMemberEdgeType`.
 pub const PROJECT_MATERIALIZED_MEMBER: i64 = 60;
+/// `PhabricatorProjectSilencedEdgeType`.
+pub const PROJECT_SILENCED: i64 = 61;
 /// `PhabricatorMutedEdgeType`.
 pub const MUTED: i64 = 67;
 /// `PhabricatorMutedByEdgeType`.

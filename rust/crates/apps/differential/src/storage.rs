@@ -475,6 +475,26 @@ pub async fn load_transactions(
     rows.iter().map(transaction_from_row).collect()
 }
 
+/// The transactions with these PHIDs from the transaction table of another
+/// application (like `project`.`project_transaction`), whose columns are
+/// those of `PhabricatorApplicationTransaction` too.
+pub async fn load_application_transactions(
+    database: &Database,
+    application: &str,
+    table: &str,
+    phids: &[Phid],
+) -> Result<Vec<Transaction>, DbError> {
+    let rows = select_by_phid(
+        database,
+        TRANSACTION_COLUMNS,
+        &database.table(application, table),
+        "phid",
+        phids,
+    )
+    .await?;
+    rows.iter().map(transaction_from_row).collect()
+}
+
 pub(crate) const TRANSACTION_COLUMNS: &str = "phid, authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, \
      transactionType, oldValue, newValue, metadata, dateCreated";
 

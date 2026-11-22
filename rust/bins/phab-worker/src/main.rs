@@ -6,11 +6,104 @@ use std::sync::Arc;
 
 use phab_core::Config;
 use phab_db::Database;
-use phab_worker::{LeaseOwner, Worker, handlers};
+use phab_worker::{Executed, LeaseOwner, Worker, handlers};
 use tokio::sync::watch;
-use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
+
+const USAGE: &str = "usage: phab-worker [--once [--id <task id>]...]
+
+Without arguments, runs the ported task classes until SIGTERM. With --once,
+leases at most one task (among the --id ones if given), runs it, prints what
+happened as JSON and exits: 0 when it ran, 2 when there was no task to lease,
+3 when its handler left it to PHP, 1 on an error.";
+
+/// Exit status of `--once` when no task could be leased.
+const EXIT_NOTHING: u8 = 2;
+/// Exit status of `--once` when the handler left the task to PHP.
+const EXIT_DECLINED: u8 = 3;
+/// Exit status for bad arguments.
+const EXIT_USAGE: u8 = 64;
+
+/// `--once` and its `--id`s: `None` to run as a daemon, no IDs for one
+/// task of any ID.
+fn parse_arguments(arguments: impl Iterator<Item = String>) -> Result<Option<Vec<i64>>, String> {
+    let mut once = false;
+    let mut ids = Vec::new();
+    let mut arguments = arguments.peekable();
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--once" => once = true,
+            "--id" => {
+                let value = arguments.next().ok_or("--id needs a task ID")?;
+                ids.push(
+                    value
+                        .parse()
+                        .map_err(|_| format!("invalid task ID: {value}"))?,
+                );
+            }
+            "--help" | "-h" => return Err(String::new()),
+            other => return Err(format!("unknown argument: {other}")),
+        }
+    }
+    if !once {
+        if !ids.is_empty() {
+            return Err("--id needs --once".to_owned());
+        }
+        return Ok(None);
+    }
+    Ok(Some(ids))
+}
+
+/// `--once`: leases and runs at most one task, and says what happened.
+async fn work_once(worker: &Worker, ids: Option<&[i64]>) -> std::process::ExitCode {
+    let ran = match worker.work_on(ids).await {
+        Ok(ran) => ran,
+        Err(error) => {
+            println!(
+                "{}",
+                serde_json::json!({"outcome": "error", "message": error.to_string()})
+            );
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    let Some(ran) = ran else {
+        let declined = ids
+            .unwrap_or_default()
+            .iter()
+            .find_map(|id| Some((*id, worker.declined.reason(*id)?)));
+        if let Some((id, reason)) = declined {
+            println!(
+                "{}",
+                serde_json::json!({"id": id, "outcome": "declined", "message": reason})
+            );
+            return std::process::ExitCode::from(EXIT_DECLINED);
+        }
+        println!("{}", serde_json::json!({"outcome": "nothing"}));
+        return std::process::ExitCode::from(EXIT_NOTHING);
+    };
+    let (outcome, message, status) = match &ran.outcome {
+        Ok(Executed::Succeeded(_)) => ("succeeded", String::new(), 0),
+        Ok(Executed::FailedPermanently { message, .. }) => {
+            ("failed-permanently", message.clone(), 0)
+        }
+        Ok(Executed::Yielded(_)) => ("yielded", String::new(), 0),
+        Ok(Executed::Failed { message, .. }) => ("failed", message.clone(), 0),
+        Ok(Executed::Declined { reason, .. }) => ("declined", reason.clone(), EXIT_DECLINED),
+        Err(error) => ("error", error.to_string(), 1),
+    };
+    println!(
+        "{}",
+        serde_json::json!({
+            "id": ran.id,
+            "class": ran.class,
+            "outcome": outcome,
+            "message": message,
+        })
+    );
+    std::process::ExitCode::from(status)
+}
 
 /// Resolves on SIGTERM or Ctrl-C.
 async fn shutdown_signal() {
@@ -58,11 +151,28 @@ async fn connect(config_dir: &std::path::Path) -> Result<(Config, Database), Str
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
+    let once = match parse_arguments(std::env::args().skip(1)) {
+        Ok(once) => once,
+        Err(error) if error.is_empty() => {
+            println!("{USAGE}");
+            return std::process::ExitCode::SUCCESS;
+        }
+        Err(error) => {
+            eprintln!("{error}\n\n{USAGE}");
+            return std::process::ExitCode::from(EXIT_USAGE);
+        }
+    };
+    // With `--once`, stdout is for the outcome only.
+    let log = tracing_subscriber::fmt::layer().json();
+    let log = if once.is_some() {
+        log.with_writer(std::io::stderr).boxed()
+    } else {
+        log.boxed()
+    };
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .with(tracing_subscriber::fmt::layer().json())
+        .with(log)
         .init();
-
     let config_dir = std::env::var_os("PHAB_CONFIG_DIR").map_or_else(
         || PathBuf::from("/app/phabricator/conf/local"),
         PathBuf::from,
@@ -106,12 +216,15 @@ async fn main() -> std::process::ExitCode {
         .nodename()
         .to_string_lossy()
         .into_owned();
-    let worker = Arc::new(Worker {
+    let worker = Arc::new(Worker::new(
         database,
         config,
         registry,
-        owner: LeaseOwner::new(&host),
-    });
+        LeaseOwner::new(&host),
+    ));
+    if let Some(ids) = once {
+        return work_once(&worker, (!ids.is_empty()).then_some(&ids[..])).await;
+    }
     tracing::info!(
         classes = ?worker.registry.classes(),
         taskmasters,
