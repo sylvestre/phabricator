@@ -8,8 +8,8 @@
 //!
 //! - the user row (`PhabricatorUser::save()`), saved even when no
 //!   transaction has an effect;
-//! - the profile, which the edit engine's custom fields loaded
-//!   (`loadUserProfile()`): updated, or created with the defaults;
+//! - not the profile: `save()` saves it only once something called
+//!   `loadUserProfile()` on that user object, which Conduit edits don't;
 //! - the name tokens (`updateNameTokens()`);
 //! - a `PhabricatorSearchWorker` task (`queueDocumentForIndexing()`);
 //! - the transactions;
@@ -41,8 +41,6 @@ const DISABLE_USERS: Capability = Capability("people.disable.users");
 const ENGINE_KEY: &str = "people.user";
 /// `PhabricatorWorker::PRIORITY_INDEX`.
 const PRIORITY_INDEX: i64 = 3500;
-/// `PhabricatorPeopleIconSet::getDefaultIconKey()`.
-const DEFAULT_ICON: &str = "person";
 
 /// One transaction of the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,8 +130,6 @@ pub(crate) struct Plan {
     user: EditedUser,
     /// The new value of `isDisabled`.
     is_disabled: bool,
-    /// The ID of the profile row, if the user has one.
-    profile: Option<i64>,
     tokens: Vec<String>,
     transactions: Vec<Planned>,
     group_id: String,
@@ -263,20 +259,6 @@ async fn saved_header(database: &Database, phid: &str) -> Result<Option<String>,
         .transpose()?)
 }
 
-/// The profile row of a user, if any.
-async fn profile_id(database: &Database, phid: &str) -> Result<Option<i64>, MethodError> {
-    let sql = format!(
-        "SELECT id FROM {} WHERE userPHID = ?",
-        database.table("user", "user_profile")
-    );
-    Ok(phab_db::sqlx::query(&sql)
-        .bind(phid)
-        .fetch_optional(database.pool())
-        .await?
-        .map(|row| rows::int(&row, "id"))
-        .transpose()?)
-}
-
 /// The validation errors of `validateTransactions()`, in the order of the
 /// transaction types (`user.approve` before `user.disable`).
 async fn validate(
@@ -382,13 +364,11 @@ pub(crate) async fn plan(
         return Err(unsupported("users whose names aren't printable ASCII"));
     }
     let tokens = tokenize(&format!("{} {}", user.user_name, user.real_name));
-    let profile = profile_id(database, &user.phid).await?;
     let herald_header = saved_header(database, &user.phid).await?;
     Ok(Plan {
         actor,
         user,
         is_disabled,
-        profile,
         tokens,
         transactions,
         group_id: random::random_characters(32),
@@ -449,28 +429,6 @@ pub(crate) async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), M
     .bind(user.id)
     .execute(&mut *connection)
     .await?;
-    let profiles = database.table("user", "user_profile");
-    if let Some(id) = plan.profile {
-        phab_db::sqlx::query(&format!(
-            "UPDATE {profiles} SET dateModified = ? WHERE id = ?"
-        ))
-        .bind(now)
-        .bind(id)
-        .execute(&mut *connection)
-        .await?;
-    } else {
-        // `PhabricatorUserProfile::initializeNewProfile()`.
-        phab_db::sqlx::query(&format!(
-            "INSERT INTO {profiles} (userPHID, title, blurb, profileImagePHID, icon, dateCreated, \
-             dateModified) VALUES (?, '', '', NULL, ?, ?, ?)"
-        ))
-        .bind(&user.phid)
-        .bind(DEFAULT_ICON)
-        .bind(now)
-        .bind(now)
-        .execute(&mut *connection)
-        .await?;
-    }
     let name_tokens = database.table("user", "user_nametoken");
     phab_db::sqlx::query(&format!("DELETE FROM {name_tokens} WHERE userID = ?"))
         .bind(user.id)

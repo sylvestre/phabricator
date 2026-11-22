@@ -319,8 +319,8 @@ async fn edits_users_like_php() {
     assert_eq!(
         profiles(&test_db).await,
         vec![
+            // Conduit edits never load, so never save, the profile.
             "PHID-USER-bob Builder Builds - engineering 5 6",
-            "PHID-USER-alice - - - person 1700000000 1700000000",
         ]
     );
     assert_eq!(
@@ -376,7 +376,7 @@ async fn edits_users_like_php() {
     assert_eq!(users(&test_db).await[0], "PHID-USER-bob 0 1700000000");
     assert_eq!(
         profiles(&test_db).await[0],
-        "PHID-USER-bob Builder Builds - engineering 5 1700000000"
+        "PHID-USER-bob Builder Builds - engineering 5 6"
     );
     assert_eq!(
         name_tokens(&test_db).await,
