@@ -64,6 +64,18 @@ impl From<phab_auth::AuthError> for PageError {
     }
 }
 
+impl From<phab_core::config::ConfigError> for PageError {
+    fn from(error: phab_core::config::ConfigError) -> Self {
+        Self::Internal(Box::new(error))
+    }
+}
+
+impl From<phab_core::hash::HashError> for PageError {
+    fn from(error: phab_core::hash::HashError) -> Self {
+        Self::Internal(Box::new(error))
+    }
+}
+
 impl From<phab_db::DbError> for PageError {
     fn from(error: phab_db::DbError) -> Self {
         Self::Internal(Box::new(error))

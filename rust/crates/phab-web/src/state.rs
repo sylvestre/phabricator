@@ -22,4 +22,9 @@ pub trait WebState: Send + Sync + 'static {
     fn searchfox_trees(&self) -> &crate::searchfox::Trees {
         crate::searchfox::Trees::from_env()
     }
+    /// The web login settings, present only when Rust logs users in
+    /// (`PHAB_RUST_LOGIN=1`); without them the login pages go to PHP.
+    fn login(&self) -> Option<&crate::login::LoginSettings> {
+        None
+    }
 }

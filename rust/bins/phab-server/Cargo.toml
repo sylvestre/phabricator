@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 axum.workspace = true
+phab-app-auth.workspace = true
 phab-app-conduit.workspace = true
 phab-app-differential.workspace = true
 phab-app-diffusion.workspace = true

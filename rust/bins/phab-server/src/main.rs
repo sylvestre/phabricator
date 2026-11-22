@@ -19,8 +19,11 @@ fn init_logging() {
         .init();
 }
 
-fn methods() -> Registry {
+fn methods(login: bool) -> Registry {
     let mut registry = Registry::default();
+    if login {
+        phab_app_auth::register(&mut registry);
+    }
     phab_app_conduit::register(&mut registry);
     phab_app_people::register(&mut registry);
     phab_app_feed::register(&mut registry);
@@ -94,11 +97,13 @@ async fn main() -> std::process::ExitCode {
         }
     };
     let remarkup = phab_web::remarkup::new_engine(&context.config);
+    let login = phab_web::login::LoginSettings::from_env(context.hostname.clone());
     let state = Arc::new(AppState {
         remarkup,
         php: phab_web::php::PhpConduit::from_env(),
+        registry: methods(login.is_some()),
+        login,
         context,
-        registry: methods(),
         shadow: phab_server::shadow::Shadow::from_env(),
     });
 

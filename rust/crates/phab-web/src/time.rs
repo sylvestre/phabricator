@@ -52,6 +52,26 @@ pub fn format_long_utc(epoch: i64) -> String {
     )
 }
 
+/// The `expires` attribute PHP's `setcookie()` writes, like "Fri, 21 Nov
+/// 2031 14:50:15 GMT".
+pub fn format_cookie_expiry(epoch: i64) -> String {
+    const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let days = epoch.div_euclid(86_400);
+    let seconds = epoch.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    format!(
+        "{}, {day:02} {} {year:04} {:02}:{:02}:{:02} GMT",
+        DAYS[usize::try_from(days.rem_euclid(7)).unwrap_or_default()],
+        MONTHS[usize::try_from(month - 1).unwrap_or_default()],
+        seconds / 3600,
+        seconds % 3600 / 60,
+        seconds % 60
+    )
+}
+
 /// The proleptic Gregorian date of a day count since 1970-01-01 (Howard
 /// Hinnant's `civil_from_days`).
 fn civil_from_days(days: i64) -> (i64, i64, i64) {
@@ -84,5 +104,15 @@ mod tests {
         assert_eq!(format_long_utc(1_700_000_000), "November 14th, 10:13:20 PM");
         assert_eq!(format_long_utc(951_782_400), "February 29th, 12:00:00 AM");
         assert_eq!(format_long_utc(86_400 + 3_600), "January 2nd, 1:00:00 AM");
+    }
+
+    // Expected values come from PHP's setcookie().
+    #[test]
+    fn cookie_expiries_match_php() {
+        assert_eq!(format_cookie_expiry(1), "Thu, 01 Jan 1970 00:00:01 GMT");
+        assert_eq!(
+            format_cookie_expiry(1_953_039_015),
+            "Fri, 21 Nov 2031 14:50:15 GMT"
+        );
     }
 }

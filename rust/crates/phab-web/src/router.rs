@@ -6,8 +6,8 @@ use axum::{Router, routing};
 
 use crate::state::WebState;
 use crate::{
-    actions, assets, dashboards, feed, harbormaster, herald, opt_in, people, preview, projects,
-    queue, revision, typeahead,
+    actions, assets, dashboards, feed, harbormaster, herald, login, opt_in, people, preview,
+    projects, queue, revision, typeahead,
 };
 
 /// The pages, the static files and the interface switch. nginx decides
@@ -69,6 +69,20 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
             routing::get(dashboards::dashboard::<S>),
         )
         .route("/portal/view/{id}/", routing::get(dashboards::portal::<S>))
+        .route("/auth/start/", routing::any(login::start::<S>))
+        .route("/login/", routing::any(login::start::<S>))
+        .route("/auth/loggedout/", routing::any(login::logged_out::<S>))
+        .route(
+            "/auth/login/{pkey}/",
+            routing::any(login::provider_login::<S>),
+        )
+        .route(
+            "/auth/login/{pkey}/{extra}/",
+            routing::any(|| async { crate::fallback_response("a login URI with extra data") }),
+        )
+        .route("/auth/validate/", routing::any(login::validate::<S>))
+        .route("/auth/finish/", routing::any(login::finish::<S>))
+        .route("/logout/", routing::any(login::logout::<S>))
         .route("/rust-ui/on", routing::get(opt_in::on))
         .route("/rust-ui/off", routing::get(opt_in::off))
         .route("/rust-ui/preview", routing::post(preview::render::<S>))

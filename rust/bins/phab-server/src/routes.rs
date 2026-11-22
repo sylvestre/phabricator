@@ -41,6 +41,8 @@ pub struct AppState {
     pub remarkup: phab_remarkup::Engine,
     /// PHP's Conduit API, for the writes of the pages.
     pub php: Option<phab_web::php::PhpConduit>,
+    /// Web login, when `PHAB_RUST_LOGIN=1`.
+    pub login: Option<phab_web::login::LoginSettings>,
 }
 
 impl phab_web::WebState for AppState {
@@ -62,6 +64,10 @@ impl phab_web::WebState for AppState {
 
     fn php(&self) -> Option<&phab_web::php::PhpConduit> {
         self.php.as_ref()
+    }
+
+    fn login(&self) -> Option<&phab_web::login::LoginSettings> {
+        self.login.as_ref()
     }
 }
 

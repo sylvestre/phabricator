@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="login">
+  {%- if let Some(message) = self.custom_message() %}
+  <div class="remarkup auth-custom-message">{{ message|safe }}</div>
+  {%- endif %}
+  <h1>{{ heading }}</h1>
+  {%- if !errors.is_empty() %}
+  <ul class="errors" role="alert">
+    {%- for error in errors %}
+    <li>{{ error }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  {%- if let Some(html) = message_html %}
+  <p class="errors" role="alert">{{ html|safe }}</p>
+  {%- endif %}
+  {%- if let Some(form) = password %}
+  <form class="login-password" method="post" action="{{ form.action }}">
+    <input type="hidden" name="__csrf__" value="{{ form.csrf_token }}">
+    <input type="hidden" name="__form__" value="1">
+    <label>Username or Email <input type="text" name="username" value="{{ form.username }}" autocomplete="username" autofocus></label>
+    <label>Password <input type="password" name="password" autocomplete="current-password"></label>
+    <button type="submit">Log In</button>
+    {%- if form.allows_registration %}
+    <a href="/auth/register/">Register New Account</a>
+    {%- endif %}
+    <p><a href="/login/email/">Forgot your password?</a></p>
+  </form>
+  {%- endif %}
+  {%- if !buttons.is_empty() %}
+  <ul class="login-buttons">
+    {%- for button in buttons %}
+    <li><a class="button" href="{{ button.href }}">{{ button.label }} <small>{{ button.provider }}</small></a></li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  {%- if email_login %}
+  <p class="auth-custom-message">Trouble logging in? <a href="/login/email/">Send a login link to your email address.</a></p>
+  {%- endif %}
+  {%- if let Some(token) = logout_csrf %}
+  <form method="post" action="/logout/">
+    <input type="hidden" name="__csrf__" value="{{ token }}">
+    <input type="hidden" name="__form__" value="1">
+    <p>Are you sure you want to log out?</p>
+    <button type="submit">Log Out</button>
+    <a href="/">Cancel</a>
+  </form>
+  {%- endif %}
+</section>
+{% endblock %}

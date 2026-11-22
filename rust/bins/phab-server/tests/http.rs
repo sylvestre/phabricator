@@ -23,6 +23,7 @@ async fn app() -> Option<(TestDatabase, axum::Router)> {
         registry: Registry::default(),
         remarkup: phab_web::remarkup::new_engine(&Config::default()),
         php: None,
+        login: None,
         shadow: None,
     });
     Some((test_db, phab_server::router(state)))
@@ -62,6 +63,7 @@ async fn status_keeps_database_errors_to_the_log() {
         registry: Registry::default(),
         remarkup: phab_web::remarkup::new_engine(&Config::default()),
         php: None,
+        login: None,
         shadow: None,
     });
     let response = phab_server::router(state)

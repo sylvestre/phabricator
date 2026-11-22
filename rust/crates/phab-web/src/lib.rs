@@ -16,6 +16,7 @@ mod feed;
 mod harbormaster;
 mod herald;
 mod highlight;
+pub mod login;
 pub mod opt_in;
 mod people;
 pub mod php;
