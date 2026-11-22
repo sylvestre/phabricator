@@ -16,6 +16,7 @@ phab-app-feed.workspace = true
 phab-app-files.workspace = true
 phab-app-flag.workspace = true
 phab-app-remarkup.workspace = true
+phab-app-dashboard.workspace = true
 phab-app-harbormaster.workspace = true
 phab-app-people.workspace = true
 phab-app-phid.workspace = true

@@ -33,6 +33,7 @@ fn methods() -> Registry {
     phab_app_flag::register(&mut registry);
     phab_app_remarkup::register(&mut registry);
     phab_app_harbormaster::register(&mut registry);
+    phab_app_dashboard::register(&mut registry);
     registry
 }
 

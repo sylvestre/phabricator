@@ -1,0 +1,20 @@
+[
+  {"name": "portal.search: all", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "portal.search: limit", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 1}},
+  {"name": "portal.search: after", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 1, "after": "2"}},
+  {"name": "portal.search: before", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 1, "before": "1"}},
+  {"name": "portal.search: oldest", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "oldest"}},
+  {"name": "portal.search: created", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "created", "limit": 5}},
+  {"name": "portal.search: ids", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": [1, 2, 999]}}},
+  {"name": "portal.search: phids", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"phids": ["PHID-PRTL-unknown"]}}},
+  {"name": "portal.search: empty query", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"query": ""}}},
+  {"name": "portal.search: projects attachment", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"projects": true}}},
+  {"name": "portal.search: unknown attachment", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"attachments": {"bogus": true}}},
+  {"name": "portal.search: empty ids", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"ids": []}}},
+  {"name": "portal.search: bad constraint", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"statuses": ["active"]}}},
+  {"name": "portal.search: bad order", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "name"}},
+  {"name": "portal.search: limit too large", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 101}},
+  {"name": "portal.search: fulltext, to PHP", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"query": "portal"}}},
+  {"name": "portal.search: projects, to PHP", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"constraints": {"projects": ["PHID-PROJ-fw4ppopw3mj73juscyek"]}}},
+  {"name": "portal.search: relevance, to PHP", "method": "portal.search", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "relevance"}}
+]

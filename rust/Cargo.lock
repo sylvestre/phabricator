@@ -1575,6 +1575,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-dashboard"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "phab-conduit",
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "phab-app-differential"
 version = "0.1.0"
 dependencies = [
@@ -1886,6 +1900,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "phab-app-conduit",
+ "phab-app-dashboard",
  "phab-app-differential",
  "phab-app-diffusion",
  "phab-app-feed",
@@ -1926,6 +1941,7 @@ dependencies = [
  "flate2",
  "form_urlencoded",
  "hex",
+ "phab-app-dashboard",
  "phab-app-differential",
  "phab-app-feed",
  "phab-app-files",
