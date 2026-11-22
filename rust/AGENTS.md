@@ -121,6 +121,22 @@ reload nginx. Writes from Rust pages go through PHP's Conduit API
 (`PHAB_PHP_URL`) and must answer failures with 503, which nginx doesn't
 replay.
 
+## Running task classes in Rust
+
+`phab-worker` runs the task queue classes ported to Rust
+(`bins/phab-worker/src/handlers`) next to PHP's `phd`. Its lease query adds
+`taskClass IN (<ported classes>)` to PHP's, so it never leases another
+class and the two can run on the same queue. It reads the same
+configuration as `phab-server` (`PHAB_CONFIG_DIR`), plus:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PHAB_WORKER_CLASSES` | every ported class | Comma-separated classes to run; the others stay with PHP |
+| `PHAB_WORKER_TASKMASTERS` | `1` | Tasks run at once |
+
+To hand a class back to PHP, remove it from `PHAB_WORKER_CLASSES` and
+restart: tasks it holds are leased again by PHP once their lease expires.
+
 ## Checking a deployment
 
 - `GET /status` on the service: 200 with `"database": "ok"` and the list of
