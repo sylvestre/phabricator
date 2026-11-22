@@ -19,6 +19,7 @@ and are compared too; they are started again at the end.
 """
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -62,6 +63,24 @@ GROUP_ID = re.compile(r'(core\.groupID\\?":\\?")[a-z0-9]{32}')
 # whenever it loads the user (`rebuildAvailabilityCache()`), whatever the
 # edit; Calendar is not ported, so it holds no availability.
 AVAILABILITY = re.compile(r"'\{\\\"until\\\":[^']*\}',(?:\d+|NULL)")
+# A new project's random mail key.
+MAIL_KEY = re.compile(r"'[a-z0-9]{20}'")
+# A new file's random secret and mail keys, the handles of chunked data,
+# and the content hash of a chunked file allocated without a hash.
+FILE_KEY = re.compile(r"'[a-z2-7]{20}'")
+CHUNK_HANDLE = re.compile(r"'[0-9a-zA-Z._]{12}'")
+CHUNK_HASH = re.compile(r"_binary '[0-9a-f]{38}-C(?:\\0)*'")
+# The alphabet of `PhabricatorHash::digestForIndex()`.
+INDEX_DIGEST = (
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ._"
+)
+
+
+def digest_for_index(value):
+    digest = hashlib.sha1(value.encode()).digest()
+    return "".join(INDEX_DIGEST[byte & 0x3F] for byte in digest[:12])
+
+
 # How long something took, like a Herald transcript's duration.
 DURATION = re.compile(r"(?<![\w.])\d+\.\d{5,}(?![\w.])")
 
@@ -177,6 +196,17 @@ def normalize(changes, known, started, finished):
 
     normalized = set()
     for table, values in sorted(changes):
+        if table == "phabricator_project.project":
+            # The path key comes from the new project's random PHID.
+            for value in set(PHID.findall(values)) - set(known):
+                key = digest_for_index(value)[:4]
+                values = values.replace(f"'{key}'", "'<path key>'")
+            values = MAIL_KEY.sub("'<mail key>'", values)
+        if table == "phabricator_file.file":
+            values = FILE_KEY.sub("'<key>'", values)
+            values = CHUNK_HASH.sub("_binary '<chunk hash>'", values)
+        if table in ("phabricator_file.file", "phabricator_file.file_chunk"):
+            values = CHUNK_HANDLE.sub("'<handle>'", values)
         values = PHID.sub(phid, values)
         values = INTEGER.sub(now, values)
         values = DURATION.sub("<duration>", values)

@@ -6,7 +6,7 @@ RUN cargo build --release --locked -p phab-server
 
 FROM debian:trixie-slim AS production
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends busybox ca-certificates \
+    && apt-get install --yes --no-install-recommends busybox ca-certificates file \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home app
 COPY --from=build /src/target/release/phab-server /usr/local/bin/phab-server
