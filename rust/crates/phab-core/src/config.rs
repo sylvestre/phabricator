@@ -87,6 +87,7 @@ fn default_values() -> Map<String, Value> {
         "mysql.user": "root",
         "mysql.pass": null,
         "storage.default-namespace": "phabricator",
+        "storage.mysql-engine.max-size": 1_000_000,
         "uri.allowed-protocols": {"http": true, "https": true, "mailto": true},
         "remarkup.ignored-object-names": r"/^(Q|V|M|P)\d$/",
         "bugzilla.url": "https://bugzilla.allizom.org",

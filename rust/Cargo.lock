@@ -1651,15 +1651,21 @@ dependencies = [
 name = "phab-app-files"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "form_urlencoded",
+ "hex",
  "phab-app-differential",
+ "phab-auth",
  "phab-conduit",
  "phab-core",
  "phab-db",
  "phab-policy",
  "serde_json",
+ "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
+ "wait-timeout",
 ]
 
 [[package]]

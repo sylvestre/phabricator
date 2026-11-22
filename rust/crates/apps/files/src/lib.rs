@@ -1,10 +1,18 @@
 //! Files (`PhabricatorFile`): what pages show of them, and who may see
 //! them (`PhabricatorFileQuery`).
 //!
-//! The file contents are still served by PHP (`/file/data/...`).
+//! The file contents are still served by PHP (`/file/data/...`), but
+//! Conduit uploads them into the MySQL blob storage engine and downloads
+//! them from it.
 
+pub mod allocate;
+pub mod chunks;
+pub mod download;
 pub mod info;
+pub mod mime;
 pub mod search;
+pub mod storage;
+pub mod upload;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -20,10 +28,24 @@ use phab_policy::{
 };
 use serde_json::Value;
 
-/// Registers the Files methods.
+/// Registers the Files methods. Uploads detect MIME types with
+/// `PHAB_MIME_COMMAND` (see [`mime::MimeCommand::from_env()`]).
 pub fn register(registry: &mut phab_conduit::Registry) {
+    register_with(registry, mime::MimeCommand::from_env());
+}
+
+/// Registers the Files methods, detecting MIME types with `mime`; without
+/// it, uploads which need a MIME type detected are left to PHP.
+pub fn register_with(registry: &mut phab_conduit::Registry, mime: Option<mime::MimeCommand>) {
+    let mime = mime.map(std::sync::Arc::new);
     registry.register(info::FileInfo);
     registry.register(search::FileSearch);
+    registry.register(upload::FileUpload::new(mime.clone()));
+    registry.register(upload::FileUploadHash);
+    registry.register(allocate::FileAllocate);
+    registry.register(chunks::FileUploadChunk::new(mime));
+    registry.register(chunks::FileQueryChunks);
+    registry.register(download::FileDownload);
     // The editor finds the files remarkup references through this
     // application, which depends on it.
     registry.register(phab_app_differential::edit::RevisionEdit::with_files(
@@ -125,13 +147,7 @@ impl File {
 
     /// `isViewableImage()`.
     pub fn is_viewable_image(&self, config: &Config) -> bool {
-        self.is_viewable_in_browser(config)
-            && Self::mime_map_has(
-                config,
-                "files.image-mime-types",
-                IMAGE_DEFAULT,
-                &self.mime_type,
-            )
+        is_viewable_image_type(config, &self.mime_type)
     }
 
     /// `isAudio()`.
@@ -358,6 +374,14 @@ fn php_float(value: f64) -> String {
     }
 }
 
+/// `isViewableImage()` of a file of this MIME type: viewable without its
+/// parameters, and an image with them.
+pub fn is_viewable_image_type(config: &Config, mime_type: &str) -> bool {
+    let bare = mime_type.split(';').next().unwrap_or("").trim();
+    File::mime_map_has(config, "files.viewable-mime-types", VIEWABLE_DEFAULT, bare)
+        && File::mime_map_has(config, "files.image-mime-types", IMAGE_DEFAULT, mime_type)
+}
+
 /// `files.viewable-mime-types` by default.
 const VIEWABLE_DEFAULT: &[&str] = &[
     "image/jpeg",
@@ -453,7 +477,7 @@ pub async fn load_by_phids(database: &Database, phids: &[Phid]) -> Result<Vec<Fi
     .await
 }
 
-async fn load_where(
+pub(crate) async fn load_where(
     database: &Database,
     column: &str,
     values: Vec<String>,
