@@ -24,6 +24,8 @@ fn rules() -> Vec<Rule> {
             config_version: 38,
             author_valid: true,
             author_can_view: true,
+            repetition_policy: "every".to_owned(),
+            applied_before: false,
             conditions: vec![Condition {
                 id: "1".to_owned(),
                 field: "new-object".to_owned(),
@@ -45,6 +47,8 @@ fn rules() -> Vec<Rule> {
             config_version: 38,
             author_valid: true,
             author_can_view: true,
+            repetition_policy: "every".to_owned(),
+            applied_before: false,
             conditions: vec![
                 Condition {
                     id: "2".to_owned(),

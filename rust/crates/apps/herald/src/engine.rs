@@ -1,7 +1,7 @@
 //! `HeraldEngine`: evaluating Herald rules against an object, the effects
 //! of the rules which match, and the transcript of it all.
 //!
-//! Ported: global and personal rules repeating on every edit, the fields
+//! Ported: global and personal rules, every repetition policy, the fields
 //! and actions an [`Adapter`] provides, and every condition but the bit
 //! tests. Anything else is [`HeraldError::Unsupported`], found before
 //! evaluation starts, so the caller can leave the edit to PHP; a regular
@@ -82,6 +82,11 @@ pub struct Rule {
     /// `canAuthorViewObject()`: a personal rule's author can see the
     /// object. The caller decides.
     pub author_can_view: bool,
+    /// `every`, `first` or `change`.
+    pub repetition_policy: String,
+    /// `getRuleApplied()`: the rule applied to the object before (a
+    /// `herald_ruleapplied` row). The caller decides.
+    pub applied_before: bool,
 }
 
 impl Rule {
@@ -119,10 +124,9 @@ pub async fn load_rules(database: &Database, content_type: &str) -> Result<Vec<R
         if !matches!(rows::text(row, "ruleType")?.as_str(), "global" | "personal") {
             return Err(HeraldError::Unsupported("object Herald rules"));
         }
-        if rows::text(row, "repetitionPolicy")? != "every" {
-            return Err(HeraldError::Unsupported(
-                "Herald rules which remember where they applied",
-            ));
+        let repetition_policy = rows::text(row, "repetitionPolicy")?;
+        if !matches!(repetition_policy.as_str(), "every" | "first" | "change") {
+            return Err(HeraldError::Unsupported("Herald repetition policies"));
         }
         rules.push(Rule {
             id: rows::int(row, "id")?.to_string(),
@@ -136,6 +140,8 @@ pub async fn load_rules(database: &Database, content_type: &str) -> Result<Vec<R
             actions: Vec::new(),
             author_valid: true,
             author_can_view: true,
+            repetition_policy,
+            applied_before: false,
         });
     }
     if rules.is_empty() {
@@ -359,6 +365,9 @@ pub struct Evaluation {
     /// Something met while evaluating which PHP handles otherwise: a
     /// regular expression exceeding PCRE's limits, which PHP reports.
     pub unsupported: Option<&'static str>,
+    /// The IDs of the `change` rules which matched again, whose effects
+    /// were skipped: they stay marked as applied.
+    pub skipped: Vec<String>,
     object_transcript: Php,
     rule_transcripts: Php,
     condition_transcripts: Php,
@@ -375,6 +384,7 @@ struct Engine<'a> {
     rule_stack: Vec<String>,
     transcripts: Transcripts,
     unsupported: Option<&'static str>,
+    skipped: Vec<String>,
 }
 
 impl<'a> Engine<'a> {
@@ -516,7 +526,13 @@ impl<'a> Engine<'a> {
                 "all-failed"
             })
         };
-        let result = ResultMap::new(code);
+        let mut result = ResultMap::new(code);
+        // A rule acting "if it did not match the last time" which did
+        // records a match without its effects.
+        if result.should_apply() && rule.repetition_policy == "change" && rule.applied_before {
+            result = ResultMap::new("last-match");
+            self.skipped.push(rule.id.clone());
+        }
         self.set_rule_result(rule, result.clone());
         Ok(result)
     }
@@ -868,11 +884,18 @@ pub fn evaluate(rules: &[Rule], subject: &Subject, values: &[(String, Php)]) -> 
         rule_stack: Vec::new(),
         transcripts: Transcripts::default(),
         unsupported: None,
+        skipped: Vec::new(),
     };
     let mut effects = Vec::new();
     for rule in ordered {
         engine.rule_stack.clear();
-        let result = match engine.rule_match(rule) {
+        // A rule repeating only the first time which applied before.
+        let result = if rule.repetition_policy == "first" && rule.applied_before {
+            Ok(ResultMap::new("already-applied"))
+        } else {
+            engine.rule_match(rule)
+        };
+        let result = match result {
             Ok(result) => Some(result),
             Err(Interrupt::Recursion) => {
                 engine.fail_cycle(rule);
@@ -911,6 +934,7 @@ pub fn evaluate(rules: &[Rule], subject: &Subject, values: &[(String, Php)]) -> 
     Evaluation {
         effects,
         unsupported: engine.unsupported,
+        skipped: engine.skipped,
         object_transcript,
         rule_transcripts: keyed(engine.transcripts.rules),
         condition_transcripts: keyed(conditions),
@@ -1136,6 +1160,8 @@ mod tests {
             actions,
             author_valid: true,
             author_can_view: true,
+            repetition_policy: "every".to_owned(),
+            applied_before: false,
         }
     }
 

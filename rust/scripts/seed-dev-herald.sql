@@ -223,3 +223,34 @@ INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
 (220, 20, 'email.self', 'null'),
 (221, 21, 'subscribers.self.add', 'null'),
 (222, 22, 'projects.add', '["PHID-PROJ-fw4ppopw3mj73juscyek"]');
+
+-- Repetition policies: rule 23 subscribes dave the first time only, rule 24
+-- mails dave only when it did not match the last time. Both applied to D7
+-- before.
+INSERT IGNORE INTO phabricator_herald.herald_rule (id, name, authorPHID,
+  contentType, mustMatchAll, configVersion, dateCreated, dateModified,
+  repetitionPolicy, ruleType, phid, isDisabled, triggerObjectPHID)
+SELECT 23, 'Once: subscribe dave', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'first', 'global', 'PHID-HRUL-oncefirst000023', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin'
+UNION ALL
+SELECT 24, 'Change: mail dave', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'change', 'global', 'PHID-HRUL-oncechange00024', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin';
+
+INSERT IGNORE INTO phabricator_herald.herald_condition (id, ruleID, fieldName,
+  fieldCondition, value) VALUES
+(223, 23, 'differential.revision.title', 'contains', '"act-once"'),
+(224, 24, 'differential.revision.title', 'contains', '"act-change"');
+
+INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
+  target) VALUES
+(223, 23, 'subscribers.add',
+  (SELECT CONCAT('["', phid, '"]') FROM phabricator_user.user WHERE userName = 'dave')),
+(224, 24, 'email.other',
+  (SELECT CONCAT('["', phid, '"]') FROM phabricator_user.user WHERE userName = 'dave'));
+
+INSERT IGNORE INTO phabricator_herald.herald_ruleapplied (phid, ruleID)
+SELECT phid, 23 FROM phabricator_differential.differential_revision WHERE id = 7
+UNION ALL
+SELECT phid, 24 FROM phabricator_differential.differential_revision WHERE id = 7;

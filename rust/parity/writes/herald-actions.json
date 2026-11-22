@@ -35,5 +35,10 @@
   {"name": "Personal rules fire on D7, dave's", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "title", "value": "D7 act-mine"}]}},
   {"name": "Personal rules fire on D3", "method": "differential.revision.edit", "params": {"objectIdentifier": "D3", "transactions": [{"type": "title", "value": "D3 act-mine"}]}},
   {"name": "Rules of the wrong type on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-wrong"}]}},
-  {"name": "Personal rules fire with a comment on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-mine"}, {"type": "comment", "value": "Mine."}]}}
+  {"name": "Personal rules fire with a comment on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-mine"}, {"type": "comment", "value": "Mine."}]}},
+  {"name": "First-time rule fires on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-once"}]}},
+  {"name": "First-time rule already applied to D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "title", "value": "D7 act-once"}]}},
+  {"name": "On-change rule fires on D50", "method": "differential.revision.edit", "params": {"objectIdentifier": "D50", "transactions": [{"type": "title", "value": "Public parity act-change"}]}},
+  {"name": "On-change rule matched D7 last time", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "title", "value": "D7 act-change"}]}},
+  {"name": "On-change rule no longer matches D7", "method": "differential.revision.edit", "params": {"objectIdentifier": "D7", "transactions": [{"type": "title", "value": "D7 retitled"}]}}
 ]

@@ -1085,6 +1085,8 @@ struct Plan {
     merge_checks: Vec<String>,
     /// The Herald editor's transactions.
     herald: herald_actions::Edits,
+    /// The IDs of the rules to mark as applied to the revision.
+    herald_remembered: Vec<String>,
     /// Every transaction, in the order PHP applies them.
     applied_phids: Vec<String>,
     group_id: String,
@@ -1123,6 +1125,25 @@ async fn run_herald(
         ));
     }
     let mut rules = rules;
+    // needAppliedToPHIDs(): where the rules applied before.
+    if !rules.is_empty() {
+        let sql = format!(
+            "SELECT ruleID FROM {} WHERE phid = ? AND ruleID IN ({})",
+            database.table("herald", "herald_ruleapplied"),
+            phab_db::placeholders(rules.len())
+        );
+        let query = phab_db::sqlx::query(&sql).bind(revision.phid.as_str());
+        let applied: Vec<String> =
+            phab_db::bind_all(query, rules.iter().map(|rule| rule.id.as_str()))
+                .fetch_all(database.pool())
+                .await?
+                .iter()
+                .map(|row| rows::int(row, "ruleID").map(|id| id.to_string()))
+                .collect::<Result<_, _>>()?;
+        for rule in &mut rules {
+            rule.applied_before = applied.contains(&rule.id);
+        }
+    }
     for rule in rules.iter_mut().filter(|rule| rule.rule_type == "personal") {
         herald_actions::check_author(request, (revision, facts), rule).await?;
     }
@@ -1696,6 +1717,8 @@ struct Publication {
     must_encrypt: Vec<String>,
     /// The Herald editor's transactions.
     herald: herald_actions::Edits,
+    /// The IDs of the rules to mark as applied to the revision.
+    herald_remembered: Vec<String>,
     rules: Vec<Rule>,
     transcript: engine::TranscriptRow,
     herald_header: String,
@@ -1778,9 +1801,24 @@ async fn publication(
         "xactionPHIDs": published,
         "state": state,
     }));
+    // Rules repeating the first time or on change which acted, and those on
+    // change which matched again.
+    let remembers = |rule_id: &String| {
+        outcome.rules.iter().any(|rule| {
+            rule.id == *rule_id && matches!(rule.repetition_policy.as_str(), "first" | "change")
+        })
+    };
+    let mut herald_remembered: Vec<String> = outcome
+        .applied
+        .iter()
+        .map(|applied| applied.effect.rule_id.clone())
+        .filter(|rule_id| remembers(rule_id))
+        .collect();
+    herald_remembered.extend(outcome.evaluation.skipped.iter().cloned());
     Ok(Publication {
         must_encrypt: outcome.must_encrypt,
         herald,
+        herald_remembered,
         rules: outcome.rules,
         transcript,
         herald_header,
@@ -2118,6 +2156,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         herald_header: published.herald_header,
         worker_data: published.worker_data,
         herald: published.herald,
+        herald_remembered: published.herald_remembered,
         revision,
     })
 }
@@ -2780,17 +2819,35 @@ async fn write_herald(
     .execute(&mut *connection)
     .await?
     .last_insert_id();
-    // Rules repeating on every edit forget where they applied.
-    if !plan.rules.is_empty() {
+    // applyEffects(): rules repeating on every edit or on change forget
+    // where they applied; those repeating the first time or on change
+    // remember where they applied now.
+    let forget: Vec<&str> = plan
+        .rules
+        .iter()
+        .filter(|rule| rule.repetition_policy != "first")
+        .map(|rule| rule.id.as_str())
+        .collect();
+    if !forget.is_empty() {
         phab_db::bind_all(
             phab_db::sqlx::query(&format!(
                 "DELETE FROM {} WHERE phid = ? AND ruleID IN ({})",
                 database.table("herald", "herald_ruleapplied"),
-                phab_db::placeholders(plan.rules.len())
+                phab_db::placeholders(forget.len())
             ))
             .bind(revision.phid.as_str()),
-            plan.rules.iter().map(|rule| rule.id.as_str()),
+            forget.iter().copied(),
         )
+        .execute(&mut *connection)
+        .await?;
+    }
+    for rule_id in &plan.herald_remembered {
+        phab_db::sqlx::query(&format!(
+            "INSERT IGNORE INTO {} (phid, ruleID) VALUES (?, ?)",
+            database.table("herald", "herald_ruleapplied")
+        ))
+        .bind(revision.phid.as_str())
+        .bind(rule_id)
         .execute(&mut *connection)
         .await?;
     }
