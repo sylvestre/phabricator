@@ -205,7 +205,7 @@ async fn uploads_into_mysql() {
     assert_eq!(
         file_row(&test_db, &phid).await,
         format!(
-            "hello.txt | text/plain; charset=us-ascii | 6 | blob | raw | PHID-USER-bob | {hash} | \
+            "hello.txt | text/plain | 6 | blob | raw | PHID-USER-bob | {hash} | \
              {{\"storage\":[],\"integrity\":\"{}\",\"canCDN\":1}} | NULL | 1 | users | 0 | {NOW} | \
              20 | 20",
             integrity(b"hello\n")
@@ -248,7 +248,7 @@ async fn uploads_into_mysql() {
     assert_eq!(
         file_row(&test_db, &copy).await,
         format!(
-            "NULL | text/plain; charset=us-ascii | 6 | blob | raw | PHID-USER-bob | {hash} | \
+            "NULL | text/plain | 6 | blob | raw | PHID-USER-bob | {hash} | \
              {{\"storage\":[]}} | NULL | 1 | no-one | 0 | {NOW} | 20 | 20"
         )
     );
@@ -625,11 +625,7 @@ async fn uploads_chunks() {
             .await
             .split(" | ")
             .collect::<Vec<_>>()[1..4],
-        [
-            "text/plain; charset=us-ascii",
-            &length.to_string(),
-            "chunks"
-        ]
+        ["text/plain", &length.to_string(), "chunks"]
     );
     assert_eq!(
         rows(

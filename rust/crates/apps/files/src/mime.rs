@@ -40,8 +40,9 @@ impl MimeCommand {
         Self::parse(&std::env::var("PHAB_MIME_COMMAND").ok()?)
     }
 
-    /// The MIME type of `data`, trimmed as PHP trims `file`'s output;
-    /// `None` when the command fails.
+    /// The MIME type of `data`, trimmed as PHP trims `file`'s output and
+    /// without the encoding PHP strips off (`text/plain`, not
+    /// `text/plain; charset=us-ascii`); `None` when the command fails.
     pub fn detect(&self, data: &[u8]) -> Option<String> {
         let mut file = tempfile::NamedTempFile::new().ok()?;
         file.write_all(data).ok()?;
@@ -68,7 +69,13 @@ impl MimeCommand {
         std::io::Seek::rewind(&mut output).ok()?;
         std::io::Read::read_to_string(&mut output, &mut text).ok()?;
         let mime_type = text.trim();
-        (!mime_type.is_empty()).then(|| mime_type.to_owned())
+        if mime_type.is_empty() {
+            return None;
+        }
+        let mime_type = mime_type
+            .split_once(';')
+            .map_or(mime_type, |(mime_type, _)| mime_type);
+        Some(mime_type.to_owned())
     }
 }
 

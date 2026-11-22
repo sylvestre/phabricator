@@ -59,6 +59,18 @@ async fn partial_file(
 /// `file.allocate`.
 pub struct FileAllocate;
 
+/// `readPropertiesFromParameters()` type-checks the `name` the method always
+/// passes: `null` (no name given) is not an `optional string`.
+fn check_name(name: Option<&str>) -> Result<(), MethodError> {
+    match name {
+        Some(_) => Ok(()),
+        None => Err(storage::core_error(
+            "Parameter 'name' has invalid type. Expected type 'optional string', got type \
+             'null'.",
+        )),
+    }
+}
+
 impl FileAllocate {
     async fn run(request: &ApiRequest<'_>) -> Result<Value, MethodError> {
         storage::require_writes(request)?;
@@ -100,6 +112,7 @@ impl FileAllocate {
         let mut chunked_hash = None;
         if let Some(hash) = hash {
             if let Some(copy) = storage::copy_of_hash(request, hash, &properties).await? {
+                check_name(name)?;
                 let mut transaction = database.pool().begin().await?;
                 let phid = copy.write(&mut transaction, database, request.now).await?;
                 transaction.commit().await?;
@@ -132,6 +145,7 @@ impl FileAllocate {
             return Ok(json!({"upload": true, "filePHID": null}));
         }
         if engines.chunks_writable() {
+            check_name(name)?;
             let prepared =
                 storage::allocate_chunks(request, length, &properties, chunked_hash.as_deref())?;
             let mut transaction = database.pool().begin().await?;
