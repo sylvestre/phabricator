@@ -1615,14 +1615,20 @@ dependencies = [
 name = "phab-app-diffusion"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "form_urlencoded",
+ "indexmap",
+ "pcre2",
  "phab-app-differential",
  "phab-conduit",
  "phab-core",
  "phab-db",
  "phab-policy",
+ "phab-remarkup",
  "serde_json",
+ "tempfile",
  "tokio",
+ "wait-timeout",
 ]
 
 [[package]]

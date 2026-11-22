@@ -8,17 +8,23 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+flate2.workspace = true
+indexmap.workspace = true
+pcre2.workspace = true
 phab-app-differential.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
 phab-policy.workspace = true
+phab-remarkup.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
+wait-timeout.workspace = true
 
 [dev-dependencies]
 form_urlencoded.workspace = true
 phab-db = { workspace = true, features = ["test-support"] }
-tokio.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true
