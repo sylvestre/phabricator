@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+phab-app-herald.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true

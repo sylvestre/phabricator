@@ -221,3 +221,67 @@ pub async fn visible_projects(
         .collect();
     Ok((visible, graph))
 }
+
+/// Whether `viewer` has `capability` on `project`
+/// (`PhabricatorPolicyFilter::hasCapability()`). The automatic
+/// capabilities of editors (joining) and of parent editors (editing
+/// subprojects) are the callers' business.
+pub async fn has_capability(
+    database: &Database,
+    config: &Config,
+    viewer: &Viewer,
+    project: &Project,
+    capability: Capability,
+    now: i64,
+) -> Result<bool, VisibilityError> {
+    let graph = Graph::load(database, std::slice::from_ref(project)).await?;
+    let members = graph.members(database, viewer).await?;
+    let all_subjects: HashMap<Phid, PolicySubject> = graph
+        .projects
+        .values()
+        .map(|project| {
+            (
+                project.phid.clone(),
+                graph.subject(project, viewer, &members),
+            )
+        })
+        .collect();
+    let subject = &all_subjects[&project.phid];
+    let resolver = Parents {
+        subjects: &all_subjects,
+    };
+    let facts = loader::load_facts(database, config, viewer, &[subject], &resolver, now).await?;
+    Ok(phab_policy::has_capability(
+        viewer, subject, capability, &facts,
+    )?)
+}
+
+/// Whether `viewer` has the capability `capability` of the application
+/// `class`, like `project.create` (`requireApplicationCapability()`).
+pub async fn has_application_capability(
+    database: &Database,
+    config: &Config,
+    viewer: &Viewer,
+    (class, capability): (&str, Capability),
+    now: i64,
+) -> Result<bool, VisibilityError> {
+    let applications = phab_policy::ApplicationPolicies::from_config(config);
+    let mut subject = PolicySubject::new(
+        Some(Phid::new(format!("PHID-APPS-{class}"))),
+        ObjectKind::Other,
+    )
+    .with_policy(capability, applications.policy(class, capability, false));
+    subject.capabilities.push(capability);
+    let facts = loader::load_facts(
+        database,
+        config,
+        viewer,
+        &[&subject],
+        &loader::NoExtendedObjects,
+        now,
+    )
+    .await?;
+    Ok(phab_policy::has_capability(
+        viewer, &subject, capability, &facts,
+    )?)
+}

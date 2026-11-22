@@ -14,7 +14,7 @@ use std::fmt::Write;
 use phab_conduit::pager::{self, Direction, Paging, PolicyAwareQuery};
 use phab_conduit::search::{self, Clauses, Constraints};
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
-use phab_core::{Config, Phid};
+use phab_core::{Config, Phid, php};
 use phab_db::{Database, DbError, edges, rows};
 use serde_json::{Map, Value, json};
 
@@ -503,6 +503,19 @@ impl IconSet {
             .iter()
             .find(|icon| icon["special"] == "milestone")
             .map_or(Value::Null, |icon| icon["key"].clone())
+    }
+
+    /// `getDefaultIconKey()` and `getDefaultColorKey()`: the keys of the
+    /// first specifications marked `default`, if they are strings.
+    pub(crate) fn default_keys(&self) -> (Option<String>, Option<String>) {
+        let key = |specifications: &[Value]| {
+            specifications
+                .iter()
+                .find(|specification| php::is_truthy(&specification["default"]))
+                .and_then(|specification| specification["key"].as_str())
+                .map(str::to_owned)
+        };
+        (key(&self.icons), key(&self.colors))
     }
 
     /// `getIconSpec()`'s `name` and `icon`.

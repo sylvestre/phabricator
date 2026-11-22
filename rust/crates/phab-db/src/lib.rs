@@ -10,6 +10,7 @@
 
 mod database;
 pub mod edges;
+pub mod editor;
 mod error;
 pub mod phpser;
 pub mod rows;
