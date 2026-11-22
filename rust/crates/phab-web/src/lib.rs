@@ -9,6 +9,7 @@
 
 mod actions;
 pub mod assets;
+mod dashboards;
 mod diff_html;
 mod error;
 mod feed;

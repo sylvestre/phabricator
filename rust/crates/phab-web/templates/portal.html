@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-compass" aria-hidden="true"></span> {{ name }}</h1>
+  {%- if archived %}<ul class="tags"><li class="tag">Archived</li></ul>{% endif %}
+</header>
+<div class="columns">
+  <nav class="portal-menu" aria-label="{{ name }}">
+    <ul>
+      {%- for view in menu %}
+      {%- match view %}
+      {%- when MenuView::Divider %}
+      <li class="portal-divider" role="separator"></li>
+      {%- when MenuView::Label(label) %}
+      <li class="portal-label">{{ label }}</li>
+      {%- when MenuView::Link { name, uri, icon, tooltip, disabled, selected } %}
+      <li{% if *selected %} class="portal-selected"{% endif %}>{% if *disabled %}<span class="hm-disabled" aria-disabled="true"><span class="fa {{ icon }}" aria-hidden="true"></span> {{ name }}</span>{% else %}<a href="{{ uri }}"{% if let Some(tooltip) = tooltip %} title="{{ tooltip }}"{% endif %}{% if *selected %} aria-current="page"{% endif %}><span class="fa {{ icon }}" aria-hidden="true"></span> {{ name }}</a>{% endif %}</li>
+      {%- endmatch %}
+      {%- endfor %}
+    </ul>
+  </nav>
+  <section class="main-column">
+    <h2>{{ heading }}</h2>
+    {%- match content %}
+    {%- when Content::Dashboard(columns) %}
+    {% include "dashboard_columns.html" %}
+    {%- when Content::Empty(title, message) %}
+    <p class="notice"><strong>{{ title }}</strong> {{ message }}</p>
+    {%- endmatch %}
+  </section>
+</div>
+{% endblock %}

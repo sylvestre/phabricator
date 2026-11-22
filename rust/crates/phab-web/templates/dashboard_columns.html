@@ -1,0 +1,15 @@
+    <div class="dashboard-columns">
+      {%- for column in columns %}
+      <div class="dashboard-column dashboard-{{ column.class }}">
+        {%- for panel in column.panels %}
+        {{ panel|safe }}
+        {%- endfor %}
+        {%- if let Some((create, add)) = column.add %}
+        {%- if column.panels.is_empty() %}
+        <p class="muted dashboard-empty">This column does not have any panels yet.</p>
+        {%- endif %}
+        <p class="dashboard-add"><a class="hm-button" href="{{ create }}"><span class="fa fa-plus" aria-hidden="true"></span> Create Panel</a> <a class="hm-button" href="{{ add }}"><span class="fa fa-window-maximize" aria-hidden="true"></span> Add Existing Panel</a></p>
+        {%- endif %}
+      </div>
+      {%- endfor %}
+    </div>

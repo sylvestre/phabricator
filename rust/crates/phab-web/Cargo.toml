@@ -15,6 +15,7 @@ hex.workspace = true
 phab-app-differential.workspace = true
 phab-app-feed.workspace = true
 phab-app-files.workspace = true
+phab-app-dashboard.workspace = true
 phab-app-harbormaster.workspace = true
 phab-app-herald.workspace = true
 phab-app-people.workspace = true
