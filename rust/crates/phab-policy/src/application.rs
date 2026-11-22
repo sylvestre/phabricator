@@ -141,25 +141,40 @@ impl ApplicationPolicies {
     /// `PhabricatorApplication::getPolicy()` for view and edit.
     pub fn policy(&self, class: &str, capability: Capability, allow_public: bool) -> &str {
         let editable = capability != Capability::VIEW || can_uninstall(class);
-        if editable {
-            // `policy.locked` is keyed by the capability, as in PHP.
-            if let Some(policy) = self.locked.get(capability.as_str()) {
-                return policy;
-            }
-            let configured = self
-                .settings
-                .get(&format!("PHID-APPS-{class}"))
-                .and_then(|policies| policies.get(capability.as_str()))
-                .filter(|policy| !policy.is_empty());
-            if let Some(policy) = configured {
-                return policy;
-            }
+        if editable && let Some(policy) = self.configured(class, capability) {
+            return policy;
         }
         match capability {
             Capability::VIEW if allow_public => POLICY_PUBLIC,
             Capability::EDIT => POLICY_ADMIN,
             _ => POLICY_USER,
         }
+    }
+
+    /// `PhabricatorApplication::getPolicy()` for a custom capability of
+    /// `getCustomCapabilities()` which is editable and defaults to
+    /// `default`.
+    pub fn custom_policy<'a>(
+        &'a self,
+        class: &str,
+        capability: Capability,
+        default: &'a str,
+    ) -> &'a str {
+        self.configured(class, capability).unwrap_or(default)
+    }
+
+    /// `getCustomPolicySetting()`: the policy `policy.locked` or
+    /// `phabricator.application-settings` set.
+    fn configured(&self, class: &str, capability: Capability) -> Option<&str> {
+        // `policy.locked` is keyed by the capability, as in PHP.
+        if let Some(policy) = self.locked.get(capability.as_str()) {
+            return Some(policy);
+        }
+        self.settings
+            .get(&format!("PHID-APPS-{class}"))
+            .and_then(|policies| policies.get(capability.as_str()))
+            .filter(|policy| !policy.is_empty())
+            .map(String::as_str)
     }
 
     /// The application as a policy object.
@@ -237,5 +252,25 @@ mod tests {
         assert_eq!(policies.policy(diffusion, Capability::VIEW, true), "public");
         assert_eq!(policies.policy(diffusion, Capability::VIEW, false), "users");
         assert_eq!(policies.policy(diffusion, Capability::EDIT, true), "admin");
+    }
+
+    #[test]
+    fn custom_capabilities_default_to_their_own_policy() {
+        let disable = Capability("people.disable.users");
+        let people = "PhabricatorPeopleApplication";
+        assert_eq!(
+            policies(json!({})).custom_policy(people, disable, "admin"),
+            "admin"
+        );
+        let configured = policies(json!({
+            "phabricator.application-settings": {
+                "PHID-APPS-PhabricatorPeopleApplication": {
+                    "policy": {"people.disable.users": "users"}
+                }
+            },
+        }));
+        assert_eq!(configured.custom_policy(people, disable, "admin"), "users");
+        let locked = policies(json!({"policy.locked": {"people.disable.users": "no-one"}}));
+        assert_eq!(locked.custom_policy(people, disable, "admin"), "no-one");
     }
 }

@@ -1,0 +1,15 @@
+[
+  {"name": "admin disables bob", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": [{"type": "disabled", "value": true}]}},
+  {"name": "admin disables bob, who is approved", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": [{"type": "approved", "value": true}, {"type": "disabled", "value": true}]}},
+  {"name": "admin enables carol, who is enabled", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-qtho2qargwhzuh5wzjaj", "transactions": [{"type": "disabled", "value": false}]}},
+  {"name": "admin rejects bob (mail)", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": [{"type": "approved", "value": false}]}},
+  {"name": "admin disables themself", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-p2ejxxxls4jnndhjs4qb", "transactions": [{"type": "disabled", "value": true}]}},
+  {"name": "admin edits themself without transactions", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-p2ejxxxls4jnndhjs4qb", "transactions": []}},
+  {"name": "user.disable bob and carol", "method": "user.disable", "params": {"phids": ["PHID-USER-gjsswwcaxvzc2p3qhkkk", "PHID-USER-qtho2qargwhzuh5wzjaj"]}},
+  {"name": "user.enable dave, who is enabled", "method": "user.enable", "params": {"phids": ["PHID-USER-5fhrwkaff4cbtd44svtw"]}},
+  {"name": "user.disable the admin", "method": "user.disable", "params": {"phids": ["PHID-USER-p2ejxxxls4jnndhjs4qb"]}},
+  {"name": "user.disable bob then the admin (PHP writes bob, then fails)", "method": "user.disable", "params": {"phids": ["PHID-USER-gjsswwcaxvzc2p3qhkkk", "PHID-USER-p2ejxxxls4jnndhjs4qb"]}},
+  {"name": "user.disable an unknown user", "method": "user.disable", "params": {"phids": ["PHID-USER-doesnotexist00000000"]}},
+  {"name": "user.disable bob twice", "method": "user.disable", "params": {"phids": ["PHID-USER-gjsswwcaxvzc2p3qhkkk", "PHID-USER-gjsswwcaxvzc2p3qhkkk"]}},
+  {"name": "user.disable nobody", "method": "user.disable", "params": {"phids": []}}
+]

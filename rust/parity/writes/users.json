@@ -1,0 +1,17 @@
+[
+  {"name": "alice disables bob (not an admin: PHP's policy exception)", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": [{"type": "disabled", "value": true}]}},
+  {"name": "alice enables bob, who is enabled: no effect, bob is saved and published", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": [{"type": "disabled", "value": false}]}},
+  {"name": "alice approves bob, who is approved: no effect", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": [{"type": "approved", "value": true}, {"type": "disabled", "value": false}]}},
+  {"name": "alice edits herself without transactions", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-smtgbo5evsea6efnaz7m", "transactions": []}},
+  {"name": "alice edits user 2 (herself in the seed) by ID", "method": "user.edit", "params": {"objectIdentifier": "2", "transactions": []}},
+  {"name": "alice edits bob without transactions (CAN_EDIT)", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": []}},
+  {"name": "alice disables herself", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-smtgbo5evsea6efnaz7m", "transactions": [{"type": "disabled", "value": true}]}},
+  {"name": "alice rejects bob", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": [{"type": "approved", "value": false}]}},
+  {"name": "alice sets her title", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-smtgbo5evsea6efnaz7m", "transactions": [{"type": "title", "value": "Reviewer"}]}},
+  {"name": "alice edits @bob", "method": "user.edit", "params": {"objectIdentifier": "@bob", "transactions": [{"type": "disabled", "value": false}]}},
+  {"name": "alice edits an unknown user", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-doesnotexist00000000", "transactions": [{"type": "disabled", "value": false}]}},
+  {"name": "alice creates a user", "method": "user.edit", "params": {"transactions": [{"type": "disabled", "value": false}]}},
+  {"name": "alice enables bob with a string value", "method": "user.edit", "params": {"objectIdentifier": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "transactions": [{"type": "disabled", "value": "false"}]}},
+  {"name": "user.disable by alice", "method": "user.disable", "params": {"phids": ["PHID-USER-gjsswwcaxvzc2p3qhkkk"]}},
+  {"name": "user.enable by alice", "method": "user.enable", "params": {"phids": ["PHID-USER-gjsswwcaxvzc2p3qhkkk"]}}
+]

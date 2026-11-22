@@ -723,4 +723,60 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository",
         columns: &["uuid"],
     },
+    // user.edit, user.enable and user.disable.
+    TableContract {
+        database: "user",
+        table: "user",
+        columns: &["conduitCertificate", "dateModified"],
+    },
+    TableContract {
+        database: "user",
+        table: "user_profile",
+        columns: &[
+            "id",
+            "userPHID",
+            "title",
+            "blurb",
+            "profileImagePHID",
+            "icon",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "user",
+        table: "user_nametoken",
+        columns: &["userID", "token"],
+    },
+    TableContract {
+        database: "user",
+        table: "user_transaction",
+        columns: &[
+            "phid",
+            "authorPHID",
+            "objectPHID",
+            "viewPolicy",
+            "editPolicy",
+            "commentPHID",
+            "commentVersion",
+            "transactionType",
+            "oldValue",
+            "newValue",
+            "contentSource",
+            "metadata",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "herald",
+        table: "herald_savedheader",
+        columns: &["phid", "header"],
+    },
+    // policy.create.
+    TableContract {
+        database: "policy",
+        table: "policy",
+        columns: &["dateCreated", "dateModified"],
+    },
 ];
