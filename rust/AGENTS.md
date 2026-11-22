@@ -119,7 +119,8 @@ Pages go to Rust only for users with the `phab_ui=rust` cookie
 with `include /app/nginx/rust/page.inc;` to `rust/nginx/rust-web.conf` and
 reload nginx. Writes from Rust pages go through PHP's Conduit API
 (`PHAB_PHP_URL`) and must answer failures with 503, which nginx doesn't
-replay.
+replay. The settings pages write preferences themselves, as PHP's editor
+does: they answer 421 only before writing, so the replay writes once.
 
 ## Running task classes in Rust
 

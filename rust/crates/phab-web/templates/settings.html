@@ -1,0 +1,179 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1>Edit Settings: {{ user_name }}</h1>
+</header>
+<div class="settings">
+  <nav class="settings-nav" aria-label="Settings">
+    {%- for group in nav %}
+    <h2>{{ group.label }}</h2>
+    <ul>
+      {%- for item in group.items %}
+      <li><a href="{{ item.uri }}"{% if item.selected %} aria-current="page"{% endif %}><span class="fa {{ item.icon }}" aria-hidden="true"></span> {{ item.name }}</a></li>
+      {%- endfor %}
+    </ul>
+    {%- endfor %}
+  </nav>
+  <section class="settings-panel">
+    {%- if let Some(form) = content.form %}
+    {%- if form.saved %}
+    <p class="notice" role="status">Changes saved.</p>
+    {%- endif %}
+    <h2>{{ form.title }}</h2>
+    <form class="settings-form" method="post" action="{{ form.action }}">
+      {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+      <input type="hidden" name="__form__" value="1">
+      <input type="hidden" name="editEngine" value="true">
+      {%- for field in form.fields %}
+      <div class="settings-field">
+        {%- if let Some(instructions) = field.instructions %}
+        <div class="remarkup settings-instructions">{{ instructions|safe }}</div>
+        {%- endif %}
+        <label for="setting-{{ field.key }}">{{ field.label }}</label>
+        {%- if let Some(groups) = field.select %}
+        <select id="setting-{{ field.key }}" name="{{ field.key }}">
+          {%- for group in groups %}
+          {%- if let Some(label) = group.label %}<optgroup label="{{ label }}">{% endif %}
+          {%- for option in group.options %}
+          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+          {%- endfor %}
+          {%- if group.label.is_some() %}</optgroup>{% endif %}
+          {%- endfor %}
+        </select>
+        {%- endif %}
+        {%- if let Some(value) = field.text %}
+        <input type="text" id="setting-{{ field.key }}" name="{{ field.key }}" value="{{ value }}">
+        {%- endif %}
+      </div>
+      {%- endfor %}
+      <button type="submit">Save Changes</button>
+    </form>
+    {%- endif %}
+    {%- if let Some(mail) = content.mail %}
+    <h2>Email Preferences</h2>
+    <div class="remarkup settings-instructions">{{ mail.instructions|safe }}</div>
+    <form class="settings-form" method="post" action="{{ mail.action }}">
+      {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+      <input type="hidden" name="__form__" value="1">
+      {%- for group in mail.groups %}
+      <fieldset>
+        <legend>{{ group.label }}</legend>
+        {%- for tag in group.tags %}
+        <div class="settings-tag">
+          <select name="mailtags[{{ tag.key }}]" aria-label="{{ tag.label }}">
+            {%- for choice in tag.choices %}
+            <option value="{{ choice.value }}"{% if choice.selected %} selected{% endif %}>{{ choice.label }}</option>
+            {%- endfor %}
+          </select>
+          {{ tag.label }}
+        </div>
+        {%- endfor %}
+      </fieldset>
+      {%- endfor %}
+      <button type="submit">Save Preferences</button>
+    </form>
+    {%- endif %}
+    {%- if let Some(emails) = content.emails %}
+    <header class="settings-box-header">
+      <h2>Email Addresses</h2>
+      {%- if emails.editable %}<a class="button" href="{{ emails.action }}?new=true"><span class="fa fa-plus" aria-hidden="true"></span> Add New Address</a>{% endif %}
+    </header>
+    <table class="hm-table settings-table">
+      <thead><tr><th>Email</th><th>Status</th>{% if emails.editable %}<th>Remove</th>{% endif %}</tr></thead>
+      <tbody>
+        {%- for email in emails.addresses %}
+        <tr{% if email.is_primary %} class="highlighted"{% endif %}>
+          <td class="wide">{{ email.address }}</td>
+          <td>{% if !email.is_verified %}<a class="button" href="{{ emails.action }}?verify={{ email.id }}">Verify</a>{% else if email.is_primary %}<span class="button disabled">Primary</span>{% else %}<a class="button" href="{{ emails.action }}?primary={{ email.id }}">Make Primary</a>{% endif %}</td>
+          {%- if emails.editable %}
+          <td>{% if email.is_primary %}<span class="button disabled">Primary</span>{% else %}<a class="button" href="{{ emails.action }}?delete={{ email.id }}">Remove</a>{% endif %}</td>
+          {%- endif %}
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+    {%- if let Some(factors) = content.factors %}
+    <header class="settings-box-header">
+      <h2>Authentication Factors</h2>
+      {%- if factors.can_add %}<a class="button" href="{{ factors.action }}?new=true"><span class="fa fa-plus" aria-hidden="true"></span> Add Auth Factor</a>{% else %}<span class="button disabled"><span class="fa fa-plus" aria-hidden="true"></span> Add Auth Factor</span>{% endif %}
+      <a class="button" href="https://secure.phabricator.com/diviner/find/?name=User%20Guide%3A%20Multi-Factor%20Authentication&amp;type=article&amp;jump=1"><span class="fa fa-book" aria-hidden="true"></span> Help</a>
+    </header>
+    {%- if factors.factors.is_empty() %}
+    <p class="muted">You haven't added any authentication factors to your account yet.</p>
+    {%- else %}
+    <table class="hm-table settings-table">
+      <thead><tr><th><span class="visually-hidden">Status</span></th><th>Name</th><th>Type</th><th>Provider</th><th>Details</th><th>Created</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>
+        {%- for factor in factors.factors %}
+        <tr{% if factor.highlighted %} class="highlighted"{% endif %}>
+          <td><span class="fa {{ factor.status_icon }}" title="Provider: {{ factor.status }}" aria-label="Provider: {{ factor.status }}"></span></td>
+          <td class="wide"><a href="{{ factors.action }}?edit={{ factor.id }}">{{ factor.name }}</a></td>
+          <td>TOTP</td>
+          <td>{{ factor.provider }}</td>
+          <td>{{ factor.details }}</td>
+          <td>{{ factor.created }}</td>
+          <td><a class="button" href="{{ factors.action }}?delete={{ factor.id }}">Remove</a></td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+    {%- endif %}
+    {%- if let Some(tokens) = content.tokens %}
+    <header class="settings-box-header">
+      <h2>Active API Tokens</h2>
+      <a class="button" href="/conduit/token/edit/?objectPHID={{ tokens.user_phid }}"><span class="fa fa-plus" aria-hidden="true"></span> Generate Token</a>
+      <a class="button button-red" href="/conduit/token/terminate/?objectPHID={{ tokens.user_phid }}"><span class="fa fa-exclamation-triangle" aria-hidden="true"></span> Terminate Tokens</a>
+    </header>
+    {%- if tokens.tokens.is_empty() %}
+    <p class="muted">You don't have any active API tokens.</p>
+    {%- else %}
+    <table class="hm-table settings-table">
+      <thead><tr><th>Token</th><th>Type</th><th>Created</th><th>Expires</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>
+        {%- for token in tokens.tokens %}
+        <tr>
+          <td class="wide"><a href="/conduit/token/edit/{{ token.id }}/">{{ token.name }}</a></td>
+          <td>{{ token.type_name }}</td>
+          <td>{{ token.created }}</td>
+          <td>{{ token.expires }}</td>
+          <td><a class="button" href="/conduit/token/terminate/{{ token.id }}/">Terminate</a></td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+    {%- endif %}
+    {%- if let Some(sessions) = content.sessions %}
+    <header class="settings-box-header">
+      <h2>Active Login Sessions</h2>
+      <a class="button button-red" href="/auth/session/terminate/all/"><span class="fa fa-warning" aria-hidden="true"></span> Terminate All Sessions</a>
+      {%- if sessions.in_high_security %}
+      <a class="button button-red" href="/auth/session/downgrade/"><span class="fa fa-lock" aria-hidden="true"></span> Leave High Security</a>
+      {%- endif %}
+    </header>
+    {%- if sessions.sessions.is_empty() %}
+    <p class="muted">You don't have any active sessions.</p>
+    {%- else %}
+    <table class="hm-table settings-table">
+      <thead><tr><th>Identity</th><th>Session</th><th>Type</th><th>HiSec</th><th>Created</th><th>Expires</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>
+        {%- for session in sessions.sessions %}
+        <tr{% if session.is_current %} class="highlighted"{% endif %}>
+          <td class="wide"><a href="/p/{{ sessions.user_name }}/">{{ sessions.user_name }}</a></td>
+          <td><code>{{ session.key_prefix }}</code></td>
+          <td>{{ session.session_type }}</td>
+          <td>{% if let Some(remaining) = session.high_security %}{{ remaining }}{% endif %}</td>
+          <td>{{ session.created }}</td>
+          <td>{{ session.expires }}</td>
+          <td>{% if session.is_current %}<span class="button disabled">Current</span>{% else %}<a class="button" href="/auth/session/terminate/{{ session.id }}/">Terminate</a>{% endif %}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+    {%- endif %}
+  </section>
+</div>
+{% endblock %}

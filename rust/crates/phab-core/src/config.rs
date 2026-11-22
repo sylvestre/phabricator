@@ -95,6 +95,12 @@ fn default_values() -> Map<String, Value> {
         "security.require-https": false,
         "phabricator.allowed-uris": [],
         "recaptcha.enabled": false,
+        "phabricator.developer-mode": false,
+        "phabricator.timezone": null,
+        "account.editable": true,
+        "metamta.one-mail-per-recipient": true,
+        "diffusion.allow-http-auth": false,
+        "email.default": "0",
     });
     match defaults {
         Value::Object(map) => map,

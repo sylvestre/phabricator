@@ -1846,6 +1846,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-settings"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "phab-core",
+ "phab-db",
+ "rstest",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "phab-auth"
 version = "0.1.0"
 dependencies = [
@@ -2028,6 +2040,7 @@ dependencies = [
  "phab-app-herald",
  "phab-app-people",
  "phab-app-project",
+ "phab-app-settings",
  "phab-auth",
  "phab-conduit",
  "phab-core",

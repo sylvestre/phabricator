@@ -105,6 +105,12 @@ check "builds go to Rust with the opt-in" "rust /harbormaster/build/3/1/?l=0" -b
 check "build plans go to Rust with the opt-in" "rust /harbormaster/plan/2/" -b "$optin" "$site/harbormaster/plan/2/"
 check "the buildable list goes to Rust with the opt-in" "rust /harbormaster/" -b "$optin" "$site/harbormaster/"
 check "Harbormaster commands go to PHP" "php /harbormaster/build/restart/3/ " -b "$optin" "$site/harbormaster/build/restart/3/"
+check "settings go to Rust with the opt-in" "rust /settings/user/alice/page/datetime/" -b "$optin" "$site/settings/user/alice/page/datetime/"
+check "the first settings panel goes to Rust" "rust /settings/user/alice/" -b "$optin" "$site/settings/user/alice/"
+check "settings saves go to Rust" "rust" -X POST -d 'x=1' -b "$optin" "$site/settings/user/alice/page/emailpreferences/"
+check "settings saves PHP refuses are replayed with their body" "php /settings/user/alice/page/datetime/ x=fallback" -X POST -d 'x=fallback' -b "$optin" "$site/settings/user/alice/page/datetime/"
+check "settings panels not ported go to PHP" "php /settings/user/alice/page/ssh/ " -b "$optin" "$site/settings/user/alice/page/ssh/"
+check "global settings go to PHP" "php /settings/builtin/global/ " -b "$optin" "$site/settings/builtin/global/"
 check "the switch always goes to Rust" "rust /rust-ui/on?next=/D1" "$site/rust-ui/on?next=/D1"
 check "Rust static files go to Rust" "rust /rsrc-rust/abc/phab.css" "$site/rsrc-rust/abc/phab.css"
 docker stop routing-rust >/dev/null

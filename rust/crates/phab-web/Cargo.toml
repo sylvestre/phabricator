@@ -21,6 +21,7 @@ phab-app-harbormaster.workspace = true
 phab-app-herald.workspace = true
 phab-app-people.workspace = true
 phab-app-project.workspace = true
+phab-app-settings.workspace = true
 phab-auth.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true

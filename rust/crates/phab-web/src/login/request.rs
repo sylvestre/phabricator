@@ -124,6 +124,35 @@ impl LoginRequest {
         self.str(name).filter(|value| !value.is_empty())
     }
 
+    /// `getBool()`: set and truthy, `"false"` being false.
+    pub fn bool(&self, name: &str) -> bool {
+        self.str(name)
+            .is_some_and(|value| value != "false" && phab_core::php::is_truthy_str(value))
+    }
+
+    /// `getArr()` of a parameter posted as `name[key]=value`: the keys and
+    /// values, from the form if it has any, from the query otherwise.
+    pub fn array(&self, name: &str) -> Vec<(String, String)> {
+        let entries = |pairs: &[(String, String)]| -> Vec<(String, String)> {
+            pairs
+                .iter()
+                .filter_map(|(key, value)| {
+                    let inner = key
+                        .strip_prefix(name)?
+                        .strip_prefix('[')?
+                        .strip_suffix(']')?;
+                    (!inner.contains(['[', ']'])).then(|| (inner.to_owned(), value.clone()))
+                })
+                .collect()
+        };
+        let posted = entries(&self.post);
+        if posted.is_empty() {
+            entries(&self.get)
+        } else {
+            posted
+        }
+    }
+
     /// `getExists()`.
     pub fn exists(&self, name: &str) -> bool {
         self.str(name).is_some()

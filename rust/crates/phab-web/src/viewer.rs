@@ -88,6 +88,43 @@ impl WebUser {
         Ok(())
     }
 
+    /// `PhabricatorApplication::isClassInstalledForViewer()` of each of
+    /// `classes`.
+    pub async fn can_see_applications<S: WebState>(
+        &self,
+        state: &S,
+        classes: &[&str],
+    ) -> Result<Vec<bool>, PageError> {
+        let config = state.config();
+        let applications = ApplicationPolicies::from_config(config);
+        let viewer = self.user.viewer();
+        let subjects: Vec<_> = classes
+            .iter()
+            .map(|class| applications.subject(class, config.allow_public()))
+            .collect();
+        let subject_refs: Vec<_> = subjects.iter().collect();
+        let facts = loader::load_facts(
+            state.database(),
+            config,
+            &viewer,
+            &subject_refs,
+            &NoExtendedObjects,
+            state.now(),
+        )
+        .await
+        .map_err(|error| PageError::Internal(Box::new(error)))?;
+        classes
+            .iter()
+            .map(|class| {
+                if !applications.is_installed(class) {
+                    return Ok(false);
+                }
+                phab_policy::filter::can_see_application(&viewer, class, &facts)
+                    .map_err(|error| PageError::Internal(Box::new(error)))
+            })
+            .collect()
+    }
+
     /// `PhabricatorUser::validateCSRFToken()`.
     pub fn is_valid_csrf_token(&self, token: &str, now: i64) -> Result<bool, PageError> {
         Ok(csrf::is_valid_token(
