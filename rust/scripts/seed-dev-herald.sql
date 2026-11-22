@@ -254,3 +254,33 @@ INSERT IGNORE INTO phabricator_herald.herald_ruleapplied (phid, ruleID)
 SELECT phid, 23 FROM phabricator_differential.differential_revision WHERE id = 7
 UNION ALL
 SELECT phid, 24 FROM phabricator_differential.differential_revision WHERE id = 7;
+
+-- Several targets, users and projects mixed: PHP groups them by type in
+-- the order types come, each in its query's order (users newest first,
+-- projects by name).
+INSERT IGNORE INTO phabricator_herald.herald_rule (id, name, authorPHID,
+  contentType, mustMatchAll, configVersion, dateCreated, dateModified,
+  repetitionPolicy, ruleType, phid, isDisabled, triggerObjectPHID)
+SELECT 25, 'Many: subscribe', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'global', 'PHID-HRUL-manysubscribe025', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin'
+UNION ALL
+SELECT 26, 'Many: review', phid, 'differential', 1, 38, 1794600000,
+  1794600000, 'every', 'global', 'PHID-HRUL-manyreview000026', 0, NULL
+  FROM phabricator_user.user WHERE userName = 'admin';
+
+INSERT IGNORE INTO phabricator_herald.herald_condition (id, ruleID, fieldName,
+  fieldCondition, value) VALUES
+(225, 25, 'differential.revision.title', 'contains', '"act-many"'),
+(226, 26, 'differential.revision.title', 'contains', '"act-many"');
+
+INSERT IGNORE INTO phabricator_herald.herald_action (id, ruleID, action,
+  target) VALUES
+(225, 25, 'subscribers.add',
+  (SELECT CONCAT('["', c.phid, '","PHID-PROJ-fw4ppopw3mj73juscyek","', d.phid, '","', a.phid, '"]')
+   FROM phabricator_user.user c, phabricator_user.user d, phabricator_user.user a
+   WHERE c.userName = 'carol' AND d.userName = 'dave' AND a.userName = 'admin')),
+(226, 26, 'differential.reviewers.add',
+  (SELECT CONCAT('["PHID-PROJ-sv7lxylfx3dmjxbkjkt4","', d.phid, '","', b.phid, '"]')
+   FROM phabricator_user.user d, phabricator_user.user b
+   WHERE d.userName = 'dave' AND b.userName = 'bob'));

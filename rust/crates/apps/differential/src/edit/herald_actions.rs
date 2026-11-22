@@ -283,7 +283,14 @@ async fn standard_targets(
         log.push(("do.standard.empty".to_owned(), Php::Null));
         return Ok(Vec::new());
     }
-    let (valid, invalid): (Vec<String>, Vec<String>) = phids.into_iter().partition(|phid| {
+    // array_fuse().
+    let mut unique: Vec<String> = Vec::new();
+    for phid in phids {
+        if !unique.contains(&phid) {
+            unique.push(phid);
+        }
+    }
+    let (valid, invalid): (Vec<String>, Vec<String>) = unique.into_iter().partition(|phid| {
         phid.starts_with("PHID-PROJ-") || (!projects_only && phid.starts_with("PHID-USER-"))
     });
     if !invalid.is_empty() {
@@ -293,32 +300,49 @@ async fn standard_targets(
         return Ok(Vec::new());
     }
     let database = &request.context.database;
-    let mut loaded = Vec::new();
-    let mut unloadable = Vec::new();
-    for phid in valid {
-        let (database_name, table) = if phid.starts_with("PHID-USER-") {
-            ("user", "user")
-        } else {
-            ("project", "project")
-        };
-        let sql = format!(
-            "SELECT isAdmin AS admin FROM {} WHERE phid = ?",
-            database.table(database_name, table)
-        );
-        let sql = if table == "project" {
-            sql.replace("isAdmin AS admin", "0 AS admin")
-        } else {
-            sql
-        };
-        match phab_db::sqlx::query(&sql)
-            .bind(&phid)
-            .fetch_optional(database.pool())
-            .await?
-        {
-            Some(row) => loaded.push((phid, rows::flag(&row, "admin")?)),
-            None => unloadable.push(phid),
+    // PhabricatorObjectQuery: each type's objects in the order of its
+    // query (users newest first, projects by name), the types in the order
+    // they come in the targets.
+    let mut types: Vec<bool> = Vec::new();
+    for phid in &valid {
+        let is_user = phid.starts_with("PHID-USER-");
+        if !types.contains(&is_user) {
+            types.push(is_user);
         }
     }
+    let mut loaded: Vec<(String, bool)> = Vec::new();
+    for is_user in types {
+        let group: Vec<&String> = valid
+            .iter()
+            .filter(|phid| phid.starts_with("PHID-USER-") == is_user)
+            .collect();
+        let sql = if is_user {
+            format!(
+                "SELECT phid, isAdmin AS admin FROM {} WHERE phid IN ({}) ORDER BY id DESC",
+                database.table("user", "user"),
+                phab_db::placeholders(group.len())
+            )
+        } else {
+            format!(
+                "SELECT phid, 0 AS admin FROM {} WHERE phid IN ({}) ORDER BY name",
+                database.table("project", "project"),
+                phab_db::placeholders(group.len())
+            )
+        };
+        let found = phab_db::bind_all(
+            phab_db::sqlx::query(&sql),
+            group.iter().map(|phid| phid.as_str()),
+        )
+        .fetch_all(database.pool())
+        .await?;
+        for row in &found {
+            loaded.push((rows::text(row, "phid")?, rows::flag(row, "admin")?));
+        }
+    }
+    let unloadable: Vec<String> = valid
+        .into_iter()
+        .filter(|phid| !loaded.iter().any(|(found, _)| found == phid))
+        .collect();
     if !unloadable.is_empty() {
         log.push(("do.standard.unloadable".to_owned(), list(&unloadable)));
     }
@@ -351,12 +375,6 @@ pub(super) async fn subscribe(
 ) -> Result<Vec<(String, Php)>, MethodError> {
     let mut log = Vec::new();
     let phids = target_phids(targets);
-    // PhabricatorObjectQuery orders several targets by type and query.
-    if phids.len() > 1 {
-        return Err(MethodError::Unsupported(
-            "Herald actions on several targets",
-        ));
-    }
     let mut phids = standard_targets(request, (revision, facts), (phids, false), &mut log).await?;
     if phids.is_empty() {
         return Ok(log);
@@ -433,11 +451,6 @@ pub(super) async fn review(
 ) -> Result<Vec<(String, Php)>, MethodError> {
     let mut log = Vec::new();
     let mut phids = target_phids(targets);
-    if phids.len() > 1 {
-        return Err(MethodError::Unsupported(
-            "Herald actions on several targets",
-        ));
-    }
     // Authors don't review their revisions.
     let author = revision.author_phid.as_ref().map(Phid::as_str);
     let authors: Vec<String> = phids
@@ -509,11 +522,6 @@ pub(super) async fn tag(
 ) -> Result<Vec<(String, Php)>, MethodError> {
     let mut log = Vec::new();
     let phids = target_phids(targets);
-    if phids.len() > 1 {
-        return Err(MethodError::Unsupported(
-            "Herald actions on several targets",
-        ));
-    }
     let phids = standard_targets(request, (revision, facts), (phids, true), &mut log).await?;
     if phids.is_empty() {
         return Ok(log);
@@ -558,11 +566,6 @@ pub(super) async fn email(
 ) -> Result<Vec<(String, Php)>, MethodError> {
     let mut log = Vec::new();
     let phids = target_phids(targets);
-    if phids.len() > 1 {
-        return Err(MethodError::Unsupported(
-            "Herald actions on several targets",
-        ));
-    }
     let phids = standard_targets(request, (revision, facts), (phids, false), &mut log).await?;
     if phids.is_empty() {
         return Ok(log);
