@@ -530,4 +530,19 @@ pub const CONTRACT: &[TableContract] = &[
         table: "differential_diff",
         columns: &["revisionID"],
     },
+    TableContract {
+        database: "flag",
+        table: "flag",
+        columns: &[
+            "id",
+            "ownerPHID",
+            "type",
+            "objectPHID",
+            "reasonPHID",
+            "color",
+            "note",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
 ];

@@ -1,5 +1,6 @@
 //! Methods of `PhabricatorFlagsApplication`.
 
+pub mod edit;
 pub mod query;
 
 use phab_conduit::{Application, Registry};
@@ -12,5 +13,7 @@ pub const APPLICATION: Application = Application {
 
 /// Registers the Flags methods.
 pub fn register(registry: &mut Registry) {
+    registry.register(edit::FlagEdit);
+    registry.register(edit::FlagDelete);
     registry.register(query::FlagQuery);
 }

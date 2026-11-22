@@ -1,0 +1,20 @@
+[
+  {"name": "flag a revision", "method": "flag.edit", "params": {"objectPHID": "PHID-DREV-edjtusnk22iepdwjfktk"}},
+  {"name": "flag a revision red with a note", "method": "flag.edit", "params": {"objectPHID": "PHID-DREV-pw4eh5zhfr66pkgngvgf", "color": 0, "note": "Review this first"}},
+  {"name": "flag a revision with a string color", "method": "flag.edit", "params": {"objectPHID": "PHID-DREV-jdmyrhgge3owijdnl6yr", "color": "3", "note": ""}},
+  {"name": "flag bob", "method": "flag.edit", "params": {"objectPHID": "PHID-USER-gjsswwcaxvzc2p3qhkkk", "note": "Ask about the build"}},
+  {"name": "flag Frontend Reviewers", "method": "flag.edit", "params": {"objectPHID": "PHID-PROJ-sv7lxylfx3dmjxbkjkt4", "color": 1}},
+  {"name": "re-flag Frontend Reviewers with a note only", "method": "flag.edit", "params": {"objectPHID": "PHID-PROJ-sv7lxylfx3dmjxbkjkt4", "note": "Again"}},
+  {"name": "re-flag Frontend Reviewers with a color and a null note", "method": "flag.edit", "params": {"objectPHID": "PHID-PROJ-sv7lxylfx3dmjxbkjkt4", "color": 6, "note": null}},
+  {"name": "flag a project alice can't see", "method": "flag.edit", "params": {"objectPHID": "PHID-PROJ-c4buil3zjvfypggcn24f"}},
+  {"name": "flag an unknown revision", "method": "flag.edit", "params": {"objectPHID": "PHID-DREV-doesnotexist00000000"}},
+  {"name": "flag with a color name", "method": "flag.edit", "params": {"objectPHID": "PHID-DREV-edjtusnk22iepdwjfktk", "color": "red"}},
+  {"name": "flag without an object", "method": "flag.edit", "params": {"color": 2}},
+  {"name": "delete the flag of Frontend Reviewers", "method": "flag.delete", "params": {"objectPHID": "PHID-PROJ-sv7lxylfx3dmjxbkjkt4"}},
+  {"name": "delete the flag of an unflagged object", "method": "flag.delete", "params": {"objectPHID": "PHID-USER-p2ejxxxls4jnndhjs4qb"}},
+  {"name": "delete flag 1", "method": "flag.delete", "params": {"id": 1}},
+  {"name": "delete flag 2 by string ID", "method": "flag.delete", "params": {"id": "2"}},
+  {"name": "delete an unknown flag", "method": "flag.delete", "params": {"id": 999999}},
+  {"name": "delete without parameters", "method": "flag.delete", "params": {}},
+  {"name": "delete with a zero ID and an empty object", "method": "flag.delete", "params": {"id": 0, "objectPHID": ""}}
+]

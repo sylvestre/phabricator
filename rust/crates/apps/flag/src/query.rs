@@ -17,7 +17,7 @@ use phab_db::{DbError, rows};
 use serde_json::{Value, json};
 
 /// `PhabricatorFlagColor::getColorNameMap()`.
-fn color_name(color: i64) -> &'static str {
+pub(crate) fn color_name(color: i64) -> &'static str {
     match color {
         0 => "Red",
         1 => "Orange",
@@ -34,19 +34,19 @@ fn color_name(color: i64) -> &'static str {
 /// A `flag` row (`PhabricatorFlag`).
 #[derive(Debug, Clone)]
 pub struct Flag {
-    id: i64,
-    owner_phid: String,
-    kind: String,
-    object_phid: String,
-    reason_phid: String,
-    color: i64,
-    note: String,
-    date_created: i64,
-    date_modified: i64,
+    pub(crate) id: i64,
+    pub(crate) owner_phid: String,
+    pub(crate) kind: String,
+    pub(crate) object_phid: String,
+    pub(crate) reason_phid: String,
+    pub(crate) color: i64,
+    pub(crate) note: String,
+    pub(crate) date_created: i64,
+    pub(crate) date_modified: i64,
 }
 
 impl Flag {
-    fn from_row(row: &MySqlRow) -> Result<Self, DbError> {
+    pub(crate) fn from_row(row: &MySqlRow) -> Result<Self, DbError> {
         Ok(Self {
             id: rows::int(row, "id")?,
             owner_phid: rows::text(row, "ownerPHID")?,
@@ -62,7 +62,7 @@ impl Flag {
 
     /// `FlagConduitAPIMethod::buildFlagInfoDictionary()`; Lisk keeps
     /// MySQL's strings.
-    fn dictionary(&self, handle: &Handle, production_uri: &str) -> Value {
+    pub(crate) fn dictionary(&self, handle: &Handle, production_uri: &str) -> Value {
         json!({
             "id": self.id.to_string(),
             "ownerPHID": self.owner_phid,
@@ -188,7 +188,7 @@ fn string_list(request: &ApiRequest<'_>, key: &str) -> Result<Option<Vec<String>
 }
 
 /// `PhabricatorEnv::getProductionURI()` of a path.
-fn production_uri(request: &ApiRequest<'_>) -> Result<String, MethodError> {
+pub(crate) fn production_uri(request: &ApiRequest<'_>) -> Result<String, MethodError> {
     let config = &request.context.config;
     match config.nonempty_string("phabricator.production-uri") {
         Some(uri) => Ok(uri.to_owned()),
