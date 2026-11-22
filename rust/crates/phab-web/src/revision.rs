@@ -614,6 +614,11 @@ pub(crate) async fn by_monogram<S: WebState>(
             .await?
             .into_response());
     }
+    if let Some(id) = crate::herald::parse_rule_monogram(&monogram) {
+        return Ok(crate::herald::rule(state, viewer, id, uri)
+            .await?
+            .into_response());
+    }
     Ok(show(State(state), viewer, Path(monogram), uri)
         .await?
         .into_response())

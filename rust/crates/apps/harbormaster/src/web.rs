@@ -598,14 +598,18 @@ pub enum TransactionTable {
     Build,
     /// `HarbormasterBuildPlanTransaction`.
     Plan,
+    /// `HeraldRuleTransaction`, whose rows have the same columns.
+    HeraldRule,
 }
 
 impl TransactionTable {
-    fn name(self) -> &'static str {
+    /// The database and the table.
+    fn location(self) -> (&'static str, &'static str) {
         match self {
-            Self::Buildable => "harbormaster_buildabletransaction",
-            Self::Build => "harbormaster_buildtransaction",
-            Self::Plan => "harbormaster_buildplantransaction",
+            Self::Buildable => ("harbormaster", "harbormaster_buildabletransaction"),
+            Self::Build => ("harbormaster", "harbormaster_buildtransaction"),
+            Self::Plan => ("harbormaster", "harbormaster_buildplantransaction"),
+            Self::HeraldRule => ("herald", "herald_ruletransaction"),
         }
     }
 }
@@ -688,7 +692,7 @@ pub async fn transactions(
     let sql = format!(
         "SELECT id, phid, authorPHID, viewPolicy, editPolicy, commentPHID, transactionType, \
          oldValue, newValue, metadata, dateCreated FROM {} WHERE objectPHID = ? ORDER BY id ASC",
-        database.table("harbormaster", table.name()),
+        database.table(table.location().0, table.location().1),
     );
     phab_db::sqlx::query(&sql)
         .bind(object.as_str())

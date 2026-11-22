@@ -310,6 +310,13 @@ li.hm-disabled a { color: var(--muted); }
 .hm-unit-details { margin: 4px 0; overflow: hidden; color: var(--muted); }
 .hm-unit-text { white-space: pre-wrap; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; }
 .review-warnings { margin: 0 0 8px; padding-left: 20px; }
+.herald-list-description { margin: 8px 0 4px; }
+.herald-list { margin: 0 0 8px; padding: 0; list-style: none; }
+.herald-list > li { padding: 2px 0; }
+.herald-status { margin: 4px 0 4px 24px; padding: 0; list-style: none; font-size: 13px; }
+.herald-condition-note { margin: 2px 0 0 18px; }
+.condition-test-value { font-weight: 600; }
+.herald-field-value-transcript { width: 100%; min-height: 8em; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; }
 .dashboard-columns { display: flex; flex-wrap: wrap; gap: 16px; }
 .dashboard-column { flex: 1 1 0; min-width: 0; }
 .dashboard-thirds { flex-grow: 2; }

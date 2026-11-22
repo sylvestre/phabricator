@@ -3,6 +3,7 @@
 
 pub mod engine;
 pub mod spaces;
+pub mod web;
 
 use std::collections::HashSet;
 use std::hash::BuildHasher;

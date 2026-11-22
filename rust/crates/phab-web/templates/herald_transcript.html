@@ -1,0 +1,71 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-list-ul" aria-hidden="true"></span> Herald Transcript {{ id }}</h1>
+  {%- if dry_run %}<ul class="tags"><li class="tag"><span class="fa fa-exclamation-triangle remarkup-icon-violet" aria-hidden="true"></span> Dry Run</li></ul>{% endif %}
+</header>
+<nav class="bucket-switch" aria-label="Transcript">
+  <a href="/herald/transcript/{{ id }}/"{% if view == "rules" %} aria-current="page"{% endif %}><span class="fa fa-list-ul" aria-hidden="true"></span> Rules</a>
+  <a href="/herald/transcript/{{ id }}/fields/"{% if view == "fields" %} aria-current="page"{% endif %}><span class="fa fa-file-text-o" aria-hidden="true"></span> Field Values</a>
+  {%- if has_transactions %}
+  <a href="/herald/transcript/{{ id }}/xactions/"><span class="fa fa-forward" aria-hidden="true"></span> Transactions</a>
+  {%- else %}
+  <span class="hm-disabled" aria-disabled="true"><span class="fa fa-forward" aria-hidden="true"></span> Transactions</span>
+  {%- endif %}
+  <a href="/herald/transcript/{{ id }}/profile/"{% if view == "profile" %} aria-current="page"{% endif %}><span class="fa fa-tachometer" aria-hidden="true"></span> Profiler</a>
+</nav>
+{%- match content %}
+{%- when Content::Old %}
+<p class="notice"><strong>Old Transcript</strong><br>Details of this transcript have been garbage collected.</p>
+{%- when Content::Rules(rules) %}
+{%- if dry_run %}
+<p class="notice"><strong>Dry Run</strong><br>This was a dry run to test Herald rules, no actions were executed.</p>
+{%- endif %}
+<h2>Rule Transcript</h2>
+{%- if rules.is_empty() %}
+<p class="muted">No Herald rules applied to this object.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for rule in rules %}
+  <li{% if !rule.applied %} class="hm-disabled"{% endif %}>
+    <p class="hm-item"><span class="muted">H{{ rule.id }}</span> <a href="/H{{ rule.id }}">{{ rule.name }}</a></p>
+    <ul class="herald-status">
+      <li><strong>Conditions</strong></li>
+      {%- for item in rule.conditions %}
+      <li>{% if let Some(icon) = item.icon %}<span class="fa {{ icon }}{% if let Some(color) = item.color %} remarkup-icon-{{ color }}{% endif %}" aria-hidden="true"></span> {% endif %}{{ item.target_html|safe }} <span class="muted">{{ item.note_html|safe }}</span></li>
+      {%- endfor %}
+      <li><span class="fa {{ rule.result.icon.unwrap_or("") }} remarkup-icon-{{ rule.result.color.unwrap_or("") }}" aria-hidden="true"></span> {{ rule.result.target_html|safe }} <span class="muted">{{ rule.result.note_html|safe }}</span></li>
+    </ul>
+    {%- for action in rule.actions %}
+    <ul class="herald-status">
+      <li><strong>{{ action.name }}</strong></li>
+      {%- for item in action.items %}
+      <li>{% if let Some(icon) = item.icon %}<span class="fa {{ icon }}{% if let Some(color) = item.color %} remarkup-icon-{{ color }}{% endif %}" aria-hidden="true"></span> {% endif %}{{ item.target_html|safe }} <span class="muted">{{ item.note_html|safe }}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- endfor %}
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- when Content::Fields(rows) %}
+<h2>Object Transcript</h2>
+<dl class="properties">
+  {%- for (name, value) in rows %}
+  <dt>{{ name }}</dt><dd>{{ value|safe }}</dd>
+  {%- endfor %}
+</dl>
+{%- when Content::Profile(rows) %}
+{%- if let Some(rows) = rows %}
+<h2>Profile</h2>
+<table class="hm-table">
+  <thead><tr><th>Type</th><th>What</th><th class="hm-right">Cost</th><th class="hm-right">Count</th></tr></thead>
+  <tbody>
+    {%- for row in rows %}
+    <tr><td>{{ row.kind }}</td><td class="hm-pri">{{ row.what_html|safe }}</td><td class="hm-right">{{ row.cost }}</td><td class="hm-right">{{ row.count }}</td></tr>
+    {%- endfor %}
+  </tbody>
+</table>
+{%- endif %}
+{%- endmatch %}
+{% endblock %}

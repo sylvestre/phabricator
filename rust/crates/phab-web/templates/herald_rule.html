@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-bullhorn" aria-hidden="true"></span> {{ name }}</h1>
+  <ul class="tags">
+    <li class="tag">H{{ id }}</li>
+    <li class="tag"><span class="fa {{ status.0 }} remarkup-icon-{{ status.1 }}" aria-hidden="true"></span> {{ status.2 }}</li>
+    <li class="tag"><span class="fa fa-globe" aria-hidden="true"></span> {{ policy }}</li>
+  </ul>
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>Details</h2>
+    <dl class="properties">
+      <dt>Rule Type</dt><dd>{{ rule_type }}</dd>
+      {%- if let Some(author) = author_html %}
+      <dt>Author</dt><dd>{{ author|safe }}</dd>
+      {%- endif %}
+      <dt>Applies To</dt><dd>{{ applies_to }}</dd>
+    </dl>
+    <h2>Description</h2>
+    <p class="herald-list-description">{{ match_text }}</p>
+    <ul class="herald-list">
+      {%- for condition in conditions_html %}
+      <li><span class="fa fa-chevron-circle-right muted" aria-hidden="true"></span> {{ condition|safe }}</li>
+      {%- endfor %}
+    </ul>
+    <p class="herald-list-description">{{ action_text }}</p>
+    <ul class="herald-list">
+      {%- for action in actions_html %}
+      <li><span class="fa fa-chevron-circle-right muted" aria-hidden="true"></span> {{ action|safe }}</li>
+      {%- endfor %}
+    </ul>
+    {% include "hm_timeline.html" %}
+  </section>
+  <aside class="side-column">
+    <h2>Actions</h2>
+    <ul class="hm-actions">
+      {%- for action in actions %}
+      <li>{% if action.enabled %}<a href="{{ action.uri }}"><span class="fa {{ action.icon }}" aria-hidden="true"></span> {{ action.name }}</a>{% else %}<span class="hm-disabled" aria-disabled="true"><span class="fa {{ action.icon }}" aria-hidden="true"></span> {{ action.name }}</span>{% endif %}</li>
+      {%- endfor %}
+    </ul>
+    <h2>Subscribers</h2>
+    {%- if subscribers_html.is_empty() %}
+    <p class="muted">None</p>
+    {%- else %}
+    <ul class="object-list">
+      {%- for subscriber in subscribers_html %}
+      <li>{{ subscriber|safe }}</li>
+      {%- endfor %}
+    </ul>
+    {%- if let Some((uri, count)) = all_subscribers %}
+    <p><a href="{{ uri }}">View All {{ count }} Subscribers</a></p>
+    {%- endif %}
+    {%- endif %}
+  </aside>
+</div>
+{% endblock %}

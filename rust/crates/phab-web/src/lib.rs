@@ -14,6 +14,7 @@ mod diff_html;
 mod error;
 mod feed;
 mod harbormaster;
+mod herald;
 mod highlight;
 pub mod opt_in;
 mod people;

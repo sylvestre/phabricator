@@ -2,9 +2,9 @@
 //!
 //! Columns using `LiskDAO::SERIALIZATION_PHP` (markup cache, Herald
 //! transcripts) and some cache keys (`PhabricatorUserProfileImageCacheType`)
-//! use this format. Objects are written (Herald transcripts hold them) but
-//! not read, and references are rejected: Phabricator never stores them in
-//! columns the Rust services read.
+//! use this format. Objects are written (Herald transcripts hold them) and
+//! read only by [`unserialize_objects()`]; references are rejected:
+//! Phabricator never stores them in columns the Rust services read.
 
 use std::fmt::Write as _;
 
@@ -59,7 +59,7 @@ pub enum Value {
     Array(Vec<(Key, Self)>),
     /// An object of `class`, with its properties in declaration order.
     /// Names are mangled as PHP does: see [`protected()`] and
-    /// [`private()`]. [`unserialize()`] never returns objects.
+    /// [`private()`]. Only [`unserialize_objects()`] returns objects.
     Object {
         /// The class name.
         class: String,
@@ -287,13 +287,30 @@ pub fn format_float(number: f64) -> String {
 /// Equivalent of `unserialize()`. Like PHP, data after the first complete
 /// value is ignored.
 pub fn unserialize(input: &[u8]) -> Result<Value, UnserializeError> {
-    let mut parser = Parser { input, offset: 0 };
+    let mut parser = Parser {
+        input,
+        offset: 0,
+        objects: false,
+    };
+    parser.value(0)
+}
+
+/// [`unserialize()`], which also reads objects (`O:`), as the Herald
+/// transcripts hold them, without running any of their code: their class
+/// and properties are kept as [`Value::Object`].
+pub fn unserialize_objects(input: &[u8]) -> Result<Value, UnserializeError> {
+    let mut parser = Parser {
+        input,
+        offset: 0,
+        objects: true,
+    };
     parser.value(0)
 }
 
 struct Parser<'input> {
     input: &'input [u8],
     offset: usize,
+    objects: bool,
 }
 
 impl Parser<'_> {
@@ -394,6 +411,7 @@ impl Parser<'_> {
             }
             b's' => Ok(Value::Str(self.string_body()?)),
             b'a' => self.array(depth),
+            b'O' if self.objects => self.object(depth),
             other => Err(UnserializeError::Unsupported {
                 kind: char::from(other),
                 offset: kind_offset,
@@ -426,6 +444,42 @@ impl Parser<'_> {
         }
         self.expect(b'}')?;
         Ok(Value::Array(entries))
+    }
+
+    /// `O:5:"Class":2:{s:4:"name";...}`: the properties, by mangled name.
+    fn object(&mut self, depth: usize) -> Result<Value, UnserializeError> {
+        let length = self.length()?;
+        self.expect(b'"')?;
+        let end = self
+            .offset
+            .checked_add(length)
+            .filter(|end| *end <= self.input.len())
+            .ok_or(UnserializeError::UnexpectedEnd(self.input.len()))?;
+        let class = String::from_utf8(self.input[self.offset..end].to_vec())
+            .map_err(|_| UnserializeError::UnexpectedByte(self.offset))?;
+        self.offset = end;
+        self.expect(b'"')?;
+        self.expect(b':')?;
+        let count = self.length()?;
+        self.expect(b'{')?;
+        let mut properties: Vec<(Vec<u8>, Value)> =
+            Vec::with_capacity(count.min(self.input.len() / 6));
+        for _ in 0..count {
+            let key_offset = self.offset;
+            let Value::Str(name) = self.value(depth + 1)? else {
+                return Err(UnserializeError::InvalidKey(key_offset));
+            };
+            let value = self.value(depth + 1)?;
+            match properties
+                .iter_mut()
+                .find(|(existing, _)| *existing == name)
+            {
+                Some(entry) => entry.1 = value,
+                None => properties.push((name, value)),
+            }
+        }
+        self.expect(b'}')?;
+        Ok(Value::Object { class, properties })
     }
 }
 
@@ -617,6 +671,29 @@ mod tests {
                 Value::Array(unique)
             })
         })
+    }
+
+    #[test]
+    fn reads_objects_only_when_asked() {
+        let input = b"a:1:{i:0;O:21:\"HeraldApplyTranscript\":2:{s:29:\"\0HeraldApplyTranscript\0ruleID\";s:1:\"2\";s:30:\"\0HeraldApplyTranscript\0applied\";b:1;}}";
+        assert!(unserialize(input).is_err());
+        let expected = Value::list([Value::Object {
+            class: "HeraldApplyTranscript".to_owned(),
+            properties: vec![
+                (private("HeraldApplyTranscript", "ruleID"), Value::str("2")),
+                (
+                    private("HeraldApplyTranscript", "applied"),
+                    Value::Bool(true),
+                ),
+            ],
+        }]);
+        assert_eq!(unserialize_objects(input).unwrap(), expected);
+        assert_eq!(
+            unserialize_objects(&serialize(&expected)).unwrap(),
+            expected
+        );
+        assert!(unserialize_objects(b"O:3:\"Abc\":1:{i:0;N;}").is_err());
+        assert!(unserialize_objects(b"O:9:\"Abc\":0:{}").is_err());
     }
 
     proptest! {

@@ -12,6 +12,46 @@ pub fn format_utc(epoch: i64) -> String {
     )
 }
 
+/// `date('F jS, g:i:s A', $epoch)` in UTC, like "November 14th, 10:13:20
+/// PM".
+pub fn format_long_utc(epoch: i64) -> String {
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    let (_, month, day) = civil_from_days(epoch.div_euclid(86_400));
+    let seconds = epoch.rem_euclid(86_400);
+    let suffix = match (day % 10, day) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    let hour = seconds / 3600;
+    let twelve = match hour % 12 {
+        0 => 12,
+        other => other,
+    };
+    format!(
+        "{} {day}{suffix}, {twelve}:{:02}:{:02} {}",
+        MONTHS[usize::try_from(month - 1).unwrap_or_default()],
+        seconds % 3600 / 60,
+        seconds % 60,
+        if hour < 12 { "AM" } else { "PM" }
+    )
+}
+
 /// The proleptic Gregorian date of a day count since 1970-01-01 (Howard
 /// Hinnant's `civil_from_days`).
 fn civil_from_days(days: i64) -> (i64, i64, i64) {
@@ -41,5 +81,8 @@ mod tests {
         assert_eq!(format_utc(0), "1970-01-01 00:00 UTC");
         assert_eq!(format_utc(1_700_000_000), "2023-11-14 22:13 UTC");
         assert_eq!(format_utc(951_782_400), "2000-02-29 00:00 UTC");
+        assert_eq!(format_long_utc(1_700_000_000), "November 14th, 10:13:20 PM");
+        assert_eq!(format_long_utc(951_782_400), "February 29th, 12:00:00 AM");
+        assert_eq!(format_long_utc(86_400 + 3_600), "January 2nd, 1:00:00 AM");
     }
 }

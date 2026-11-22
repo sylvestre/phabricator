@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Herald Rules: {{ title }}</h1>
+  <nav class="bucket-switch" aria-label="Herald">
+    <a href="/herald/query/authored/"{% if query == "authored" %} aria-current="page"{% endif %}>Authored</a>
+    <a href="/herald/query/active/"{% if query == "active" %} aria-current="page"{% endif %}>Active</a>
+    <a href="/herald/query/all/"{% if query == "all" %} aria-current="page"{% endif %}>All</a>
+    <a href="/herald/transcript/">Transcripts</a>
+    <a href="/herald/create/"><span class="fa fa-plus-square" aria-hidden="true"></span> Create Herald Rule</a>
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No rules found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li{% if item.disabled || item.author_inactive %} class="hm-disabled"{% endif %}>
+    <p class="hm-item"><span class="muted">H{{ item.id }}</span> <a href="/H{{ item.id }}">{{ item.name }}</a> <span class="tag"><span class="fa {{ item.icon }}" aria-hidden="true"></span> {{ item.kind }}</span>
+      {%- if item.disabled %} <span class="tag"><span class="fa fa-lock" aria-hidden="true"></span> Disabled</span>
+      {%- else if item.author_inactive %} <span class="tag"><span class="fa fa-user" aria-hidden="true"></span> Author Not Active</span>{% endif %}</p>
+    <p class="hm-attribute muted">Affects: {{ item.affects }}{% if let Some(author) = item.author_html %} · Authored by {{ author|safe }}{% endif %}</p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/herald/query/{{ query }}/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}
