@@ -110,7 +110,7 @@ pub(crate) async fn load_where<T: Object>(
 
 /// A JSON dictionary column; Lisk decodes a JSON list (an empty PHP array)
 /// as an array too, and the pages treat anything else as empty.
-fn json_map(row: &MySqlRow, column: &str) -> Map<String, Value> {
+pub(crate) fn json_map(row: &MySqlRow, column: &str) -> Map<String, Value> {
     match rows::json(row, column) {
         Ok(Value::Object(map)) => map,
         _ => Map::new(),

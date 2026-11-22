@@ -14,8 +14,22 @@
     <ul class="hm-list">
       {%- for step in steps %}
       <li>
-        <p class="hm-item">{% if step.invalid %}<span class="fa fa-warning remarkup-icon-red" aria-hidden="true"></span> {% endif %}<span class="muted">{{ step.label }}</span> <a href="/harbormaster/step/view/{{ step.id }}/">{{ step.name }}</a></p>
+        <p class="hm-item">{% if step.warning %}<span class="fa fa-warning remarkup-icon-red" aria-hidden="true"></span> {% endif %}<span class="muted">{{ step.label }}</span> <a href="/harbormaster/step/view/{{ step.id }}/">{{ step.name }}</a></p>
         <p class="hm-attribute muted">{{ step.description_html|safe }}</p>
+        {%- if !step.depends.is_empty() %}
+        <div class="hm-depends">
+          <p class="hm-attribute">Depends On</p>
+          <ul class="hm-targets">
+            {%- for depend in step.depends %}
+            {%- if let Some(name) = depend %}
+            <li><span class="fa fa-check-circle remarkup-icon-green" title="Valid Input" aria-hidden="true"></span> Build Step <strong>{{ name }}</strong></li>
+            {%- else %}
+            <li><span class="fa fa-exclamation-triangle remarkup-icon-red" title="Missing Dependency" aria-hidden="true"></span> Build Step <strong>ERROR:</strong> This dependency specifies a build step which doesn't exist.</li>
+            {%- endif %}
+            {%- endfor %}
+          </ul>
+        </div>
+        {%- endif %}
       </li>
       {%- endfor %}
     </ul>

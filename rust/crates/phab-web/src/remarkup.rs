@@ -470,7 +470,7 @@ async fn resolve_commits<S: WebState>(
 /// The files of `candidates` the viewer may see: those whose policy lets
 /// them, those they uploaded, those attached to a revision they can see,
 /// and thumbnails of files they can see (`PhabricatorFileQuery`).
-async fn visible_files<S: WebState>(
+pub(crate) async fn visible_files<S: WebState>(
     state: &S,
     viewer: &Viewer,
     candidates: Vec<files::File>,

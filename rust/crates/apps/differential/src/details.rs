@@ -97,3 +97,82 @@ pub async fn load_stack_edges(
     .await?;
     Ok((parents, children))
 }
+
+/// The lint and unit statuses of a diff (`DifferentialLintStatus`,
+/// `DifferentialUnitStatus`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiffStatus {
+    /// The diff's ID.
+    pub id: i64,
+    /// `lintStatus`.
+    pub lint: i64,
+    /// `unitStatus`.
+    pub unit: i64,
+}
+
+/// The lint and unit statuses of the diff with this PHID.
+pub async fn load_diff_status(
+    database: &Database,
+    diff: &Phid,
+) -> Result<Option<DiffStatus>, DbError> {
+    let sql = format!(
+        "SELECT id, lintStatus, unitStatus FROM {} WHERE phid = ?",
+        database.table("differential", "differential_diff")
+    );
+    let row = phab_db::sqlx::query(&sql)
+        .bind(diff.as_str())
+        .fetch_optional(database.pool())
+        .await?;
+    row.map(|row| {
+        Ok(DiffStatus {
+            id: rows::int(&row, "id")?,
+            lint: rows::int(&row, "lintStatus")?,
+            unit: rows::int(&row, "unitStatus")?,
+        })
+    })
+    .transpose()
+}
+
+/// Whether a diff has a truthy property, like the legacy `arc:lint`
+/// messages (`DifferentialDiffProperty`).
+pub async fn has_diff_property(
+    database: &Database,
+    diff_id: i64,
+    name: &str,
+) -> Result<bool, DbError> {
+    let sql = format!(
+        "SELECT data FROM {} WHERE diffID = ? AND name = ?",
+        database.table("differential", "differential_diffproperty")
+    );
+    let row = phab_db::sqlx::query(&sql)
+        .bind(diff_id)
+        .bind(name)
+        .fetch_optional(database.pool())
+        .await?;
+    let Some(row) = row else {
+        return Ok(false);
+    };
+    Ok(rows::json(&row, "data").is_ok_and(|data| phab_core::php::is_truthy(&data)))
+}
+
+/// `DifferentialRevision::getShouldBroadcast()`: the `draft.broadcast`
+/// property, true when missing.
+pub async fn should_broadcast(database: &Database, revision: &Phid) -> Result<bool, DbError> {
+    let sql = format!(
+        "SELECT properties FROM {} WHERE phid = ?",
+        database.table("differential", "differential_revision")
+    );
+    let row = phab_db::sqlx::query(&sql)
+        .bind(revision.as_str())
+        .fetch_optional(database.pool())
+        .await?;
+    let Some(row) = row else {
+        return Ok(true);
+    };
+    Ok(match rows::json(&row, "properties") {
+        Ok(serde_json::Value::Object(properties)) => properties
+            .get("draft.broadcast")
+            .is_none_or(phab_core::php::is_truthy),
+        _ => true,
+    })
+}

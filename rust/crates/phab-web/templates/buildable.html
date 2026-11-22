@@ -25,6 +25,9 @@
       </tbody>
     </table>
     {%- endif %}
+    {%- if let Some(unit) = unit %}
+{% include "hm_unit.html" %}
+    {%- endif %}
     <h2>Builds</h2>
     {%- if builds.is_empty() %}
     <p class="muted">No builds.</p>

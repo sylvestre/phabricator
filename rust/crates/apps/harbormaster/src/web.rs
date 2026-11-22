@@ -477,21 +477,74 @@ pub async fn lint_messages(
         .collect()
 }
 
-/// Whether these targets reported unit test results.
-pub async fn has_unit_messages(database: &Database, targets: &[Phid]) -> Result<bool, DbError> {
+/// A `harbormaster_buildunitmessage` row: the result of one test.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnitMessage {
+    /// The row ID.
+    pub id: i64,
+    /// The build target which reported it.
+    pub target_phid: Phid,
+    /// The test engine, possibly empty.
+    pub engine: String,
+    /// The namespace, possibly empty.
+    pub namespace: String,
+    /// The name, from the string table (`HarbormasterString`), or `None`
+    /// when it is missing there.
+    pub name: Option<String>,
+    /// `nameIndex`, which PHP shows when the name is missing.
+    pub name_index: Vec<u8>,
+    /// `ArcanistUnitTestResult`, like `fail`.
+    pub result: String,
+    /// The duration, in seconds.
+    pub duration: Option<f64>,
+    /// The properties, like `details` and `format`.
+    pub properties: Map<String, Value>,
+}
+
+/// The unit test results of these targets, newest first
+/// (`HarbormasterBuildUnitMessageQuery`, whose messages everyone may see),
+/// with their names (`didFilterPage()`).
+pub async fn unit_messages(
+    database: &Database,
+    targets: &[Phid],
+) -> Result<Vec<UnitMessage>, DbError> {
     if targets.is_empty() {
-        return Ok(false);
+        return Ok(Vec::new());
     }
     let targets = storage::phid_strings(targets);
     let sql = format!(
-        "SELECT 1 FROM {} WHERE buildTargetPHID IN ({}) LIMIT 1",
+        "SELECT message.id, message.buildTargetPHID, message.engine, message.namespace, \
+         message.nameIndex, message.result, message.duration, message.properties, \
+         string.stringValue FROM {} message LEFT JOIN {} string \
+         ON string.stringIndex = message.nameIndex \
+         WHERE message.buildTargetPHID IN ({}) ORDER BY message.id DESC",
         database.table("harbormaster", "harbormaster_buildunitmessage"),
+        database.table("harbormaster", "harbormaster_string"),
         phab_db::placeholders(targets.len()),
     );
-    Ok(phab_db::bind_all(phab_db::sqlx::query(&sql), &targets)
-        .fetch_optional(database.pool())
+    phab_db::bind_all(phab_db::sqlx::query(&sql), &targets)
+        .fetch_all(database.pool())
         .await?
-        .is_some())
+        .iter()
+        .map(|row| {
+            let get = |column: &str| -> Result<Option<f64>, DbError> {
+                phab_db::sqlx::Row::try_get(row, column).map_err(DbError::from)
+            };
+            let name_index: Vec<u8> =
+                phab_db::sqlx::Row::try_get(row, "nameIndex").map_err(DbError::from)?;
+            Ok(UnitMessage {
+                id: rows::int(row, "id")?,
+                target_phid: Phid::new(rows::text(row, "buildTargetPHID")?),
+                engine: rows::text(row, "engine")?,
+                namespace: rows::text(row, "namespace")?,
+                name: rows::opt_text(row, "stringValue")?,
+                name_index,
+                result: rows::text(row, "result")?,
+                duration: get("duration")?,
+                properties: storage::json_map(row, "properties"),
+            })
+        })
+        .collect()
 }
 
 /// Why a log can't be read.
@@ -768,6 +821,7 @@ fn table_of(phid: &Phid) -> Option<(&'static str, &'static str)> {
         "HMBB" => ("harbormaster", "harbormaster_buildable"),
         "HMBD" => ("harbormaster", "harbormaster_build"),
         "HMCP" => ("harbormaster", "harbormaster_buildplan"),
+        "FILE" => ("file", "file"),
         _ => return None,
     })
 }

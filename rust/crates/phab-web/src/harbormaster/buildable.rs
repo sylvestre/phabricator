@@ -20,6 +20,8 @@ use crate::viewer::WebUser;
 
 /// `HarbormasterLintPropertyView::setLimit()` on this page.
 const LINT_LIMIT: usize = 10;
+/// `HarbormasterUnitSummaryView::setLimit()` on this page.
+const UNIT_LIMIT: usize = 5;
 
 /// A target in the list of a build.
 pub(crate) struct TargetItem {
@@ -54,6 +56,7 @@ pub(crate) struct BuildablePage {
     buildable_html: String,
     manual: bool,
     lint: Vec<LintRow>,
+    unit: Option<super::unit::UnitSummary>,
     builds: Vec<BuildItem>,
     timeline: Vec<Entry>,
     actions: Vec<Action>,
@@ -158,6 +161,22 @@ fn actions(id: i64, states: &[BuildState<'_>], can_edit: bool) -> Result<Vec<Act
     Ok(actions)
 }
 
+/// The "Unit Tests" box, if the targets reported results.
+async fn unit_tests<S: WebState>(
+    state: &S,
+    scope: &Scope,
+    id: i64,
+    targets: &[Phid],
+) -> Result<Option<super::unit::UnitSummary>, PageError> {
+    let messages = harbormaster::unit_messages(state.database(), targets).await?;
+    if messages.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        super::unit::summary(state, &scope.viewer(), id, messages, UNIT_LIMIT).await?,
+    ))
+}
+
 /// `HarbormasterBuildableTransaction` titles.
 fn title(
     transaction: &harbormaster::Transaction,
@@ -210,10 +229,8 @@ pub(crate) async fn show<S: WebState>(
             .any(|build| build.phid == target.build_phid && build.generation == target.generation)
     });
     let target_phids: Vec<Phid> = targets.iter().map(|target| target.phid.clone()).collect();
-    if harbormaster::has_unit_messages(state.database(), &target_phids).await? {
-        return Err(PageError::Fallback("unit test results"));
-    }
     let lint = lint(state.as_ref(), &target_phids).await?;
+    let unit = unit_tests(state.as_ref(), &scope, id, &target_phids).await?;
 
     let plans = harbormaster::plans_by_phid(
         &request,
@@ -276,6 +293,7 @@ pub(crate) async fn show<S: WebState>(
         buildable_html: super::handle(&handles, &buildable.object_phid).link_html(),
         manual: buildable.is_manual,
         lint,
+        unit,
         builds: build_items,
         timeline,
         actions,

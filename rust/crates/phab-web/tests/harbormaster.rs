@@ -263,8 +263,74 @@ async fn setup() -> Option<TestDatabase> {
             completed = NOW - 100,
         ))
         .await;
+    test_db.execute(CHECKS).await;
     Some(test_db)
 }
+
+/// Unit results of target 1 (six, so the summary shows five), named
+/// through the string table; the file artifact; the plan whose steps
+/// depend on each other; D1 as a draft; D2's lint and unit statuses; D3,
+/// whose diff has legacy lint messages.
+const CHECKS: &str = "\
+    INSERT INTO `{ns}_harbormaster`.harbormaster_string (stringIndex, stringValue) VALUES \
+    ('nnnnnnnnnnn1', 'test_fails'), ('nnnnnnnnnnn2', 'test_passes'), \
+    ('nnnnnnnnnnn3', 'test_breaks'), ('nnnnnnnnnnn4', 'test_skips'), \
+    ('nnnnnnnnnnn5', 'test_more'), ('nnnnnnnnnnn6', 'test_last'); \
+    INSERT INTO `{ns}_harbormaster`.harbormaster_buildunitmessage (id, buildTargetPHID, engine, \
+      namespace, name, result, duration, properties, dateCreated, dateModified, nameIndex) \
+    VALUES \
+    (11, 'PHID-HMBT-1', 'py', 'Suite', 'x', 'fail', NULL, \
+      '{\"details\":\"one\\\\ntwo <b>\\\\nthree\\\\nfour\"}', 1, 1, 'nnnnnnnnnnn1'), \
+    (12, 'PHID-HMBT-1', '', '', 'x', 'pass', 1.2345, '{}', 1, 1, 'nnnnnnnnnnn2'), \
+    (13, 'PHID-HMBT-1', '', '', 'x', 'broken', NULL, \
+      '{\"details\":\"**loud**\",\"format\":\"remarkup\"}', 1, 1, 'nnnnnnnnnnn3'), \
+    (14, 'PHID-HMBT-1', '', '', 'x', 'skip', NULL, '{}', 1, 1, 'nnnnnnnnnnn4'), \
+    (15, 'PHID-HMBT-1', '', '', 'x', 'pass', NULL, '{}', 1, 1, 'nnnnnnnnnnn5'), \
+    (16, 'PHID-HMBT-1', '', '', 'x', 'pass', NULL, '{}', 1, 1, 'nnnnnnnnnnn6'); \
+    INSERT INTO `{ns}_harbormaster`.harbormaster_buildartifact (id, phid, artifactType, \
+      artifactIndex, artifactKey, artifactData, dateCreated, dateModified, buildTargetPHID, \
+      isReleased) VALUES \
+    (3, 'PHID-HMBA-3', 'file', 'cccccccccccc', 'zlog', '{\"filePHID\":\"PHID-FILE-1\"}', 7, 8, \
+      'PHID-HMBT-1', 0), \
+    (4, 'PHID-HMBA-4', 'file', 'dddddddddddd', 'zsecret', '{\"filePHID\":\"PHID-FILE-2\"}', 7, \
+      8, 'PHID-HMBT-1', 0); \
+    INSERT INTO `{ns}_file`.file (id, phid, name, mimeType, byteSize, storageEngine, \
+      storageFormat, storageHandle, dateCreated, dateModified, authorPHID, secretKey, metadata, \
+      mailKey, viewPolicy) VALUES \
+    (1, 'PHID-FILE-1', 'build.log', 'text/plain', 10, 'blob', 'raw', '1', 1, 1, \
+      'PHID-USER-root', 'secret1xxxxxxxxxxxxx', '{}', 'k', 'users'), \
+    (2, 'PHID-FILE-2', 'secret.log', 'text/plain', 10, 'blob', 'raw', '2', 1, 1, \
+      'PHID-USER-root', 'secret2xxxxxxxxxxxxx', '{}', 'k', 'no-one'); \
+    INSERT INTO `{ns}_harbormaster`.harbormaster_buildplan (id, phid, name, planStatus, \
+      dateCreated, dateModified, planAutoKey, viewPolicy, editPolicy, properties) VALUES \
+    (5, 'PHID-HMCP-5', 'Graph', 'active', 500, 501, NULL, 'users', 'users', '[]'); \
+    INSERT INTO `{ns}_harbormaster`.harbormaster_buildstep (id, phid, buildPlanPHID, \
+      className, details, dateCreated, dateModified, sequence, name, description, \
+      stepAutoKey) VALUES \
+    (10, 'PHID-HMCS-10', 'PHID-HMCP-5', 'HarbormasterHTTPRequestBuildStepImplementation', \
+      '{}', 1, 1, 0, 'First', '', NULL), \
+    (11, 'PHID-HMCS-11', 'PHID-HMCP-5', 'HarbormasterHTTPRequestBuildStepImplementation', \
+      '{\"dependsOn\":[\"PHID-HMCS-10\"]}', 1, 1, 0, 'Second', '', NULL), \
+    (12, 'PHID-HMCS-12', 'PHID-HMCP-5', 'HarbormasterHTTPRequestBuildStepImplementation', \
+      '{\"dependsOn\":[\"PHID-HMCS-gone\"]}', 1, 1, 0, 'Stuck', '', NULL); \
+    UPDATE `{ns}_differential`.differential_revision SET properties = \
+      '{\"draft.broadcast\":false}' WHERE id = 1; \
+    UPDATE `{ns}_differential`.differential_diff SET lintStatus = 3, unitStatus = 4 \
+      WHERE id = 2; \
+    INSERT INTO `{ns}_differential`.differential_changeset (id, phid, diffID, oldFile, \
+      filename, awayPaths, changeType, fileType, metadata, oldProperties, newProperties, \
+      addLines, delLines, dateCreated, dateModified) VALUES \
+    (10, 'PHID-DCHG-ten', 1, NULL, 'a.c', '[]', 2, 1, '{}', '[]', '[]', 0, 0, 1, 1); \
+    INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, summary, \
+      testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, viewPolicy, \
+      editPolicy, properties, activeDiffPHID) VALUES \
+    (3, 'Legacy', 'PHID-DREV-3', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', \
+      'users', 'users', '{}', 'PHID-DIFF-4'); \
+    INSERT INTO `{ns}_differential`.differential_diff (id, phid, revisionID, authorPHID, \
+      lintStatus, unitStatus, lineCount, dateCreated, dateModified, viewPolicy) VALUES \
+    (4, 'PHID-DIFF-4', 3, 'PHID-USER-alice', 2, 0, 1, 1, 1, 'users'); \
+    INSERT INTO `{ns}_differential`.differential_diffproperty (diffID, name, data, \
+      dateCreated, dateModified) VALUES (4, 'arc:lint', '[{\"code\":\"X\"}]', 1, 1)";
 
 async fn get(test_db: &TestDatabase, path: &str, cookie: Option<&str>) -> Response {
     let config = Config::default();
@@ -388,10 +454,11 @@ async fn buildables(test_db: &TestDatabase) {
     assert_eq!(status(test_db, "/B9", ALICE).await, StatusCode::NOT_FOUND);
     assert_eq!(status(test_db, "/B01", ALICE).await, StatusCode::NOT_FOUND);
 
-    // Unit test results are PHP's.
-    assert_eq!(
-        fallback(test_db, "/B3", Some(ALICE)).await,
-        "unit test results"
+    // A result whose name is not in the string table.
+    let page = page_as(test_db, "/B3", ALICE).await;
+    assert!(
+        page.contains("Unknown Unit Message (&#34;iiiiiiiiiiii&#34;)"),
+        "{page}"
     );
     assert_eq!(fallback(test_db, "/B1", None).await, "logged out");
 }
@@ -649,9 +716,101 @@ async fn revision(test_db: &TestDatabase) {
     );
     assert!(page.contains("Build 2: Build</a>"), "{page}");
     assert!(!page.contains("These changes have"), "{page}");
-    let page = page_as(test_db, "/D2", ALICE).await;
+    // The Lint field links the files of the diff; the Unit field shows
+    // the diff's status; the failures show the "Unit Tests" box.
+    assert!(page.contains("No Lint Coverage"), "{page}");
+    assert!(page.contains("<a href=\"#C10NL3\">a.c:3</a>"), "{page}");
+    assert!(page.contains("<td class=\"hm-pri\">b.c:7</td>"), "{page}");
+    assert!(page.contains("No Test Coverage"), "{page}");
+    assert!(page.contains("<h2>Unit Tests"), "{page}");
+    assert!(page.contains("py &#62; Suite::test_fails"), "{page}");
     assert!(
-        page.contains("These changes have failed to build."),
+        page.contains("This revision is currently a draft."),
+        "{page}"
+    );
+    let page = page_as(test_db, "/D2", ALICE).await;
+    let lint = page
+        .find("These changes have lint problems.")
+        .expect("lint");
+    let build = page
+        .find("These changes have failed to build.")
+        .expect("build");
+    let unit = page
+        .find("Unit tests were skipped when generating these changes.")
+        .expect("unit");
+    assert!(lint < build && build < unit, "{page}");
+    assert!(page.contains("Lint Errors"), "{page}");
+    assert!(page.contains("Tests Skipped"), "{page}");
+    // D2's buildable has no results: no "Unit Tests" box.
+    assert!(!page.contains("<h2>Unit Tests"), "{page}");
+    assert!(!page.contains("currently a draft"), "{page}");
+    assert_eq!(
+        fallback(test_db, "/D3", Some(ALICE)).await,
+        "legacy lint messages"
+    );
+}
+
+async fn unit_tests(test_db: &TestDatabase) {
+    let page = page_as(test_db, "/B1", ALICE).await;
+    assert!(
+        page.contains("<h2>Unit Tests <span class=\"tag\">"),
+        "{page}"
+    );
+    // Worst first, and five of the six.
+    let fails = page.find("py &#62; Suite::test_fails").expect("fails");
+    let breaks = page.find(">test_breaks<").expect("breaks");
+    let last = page.find(">test_last<").expect("last");
+    let passes = page.find(">test_passes<").expect("passes");
+    assert!(fails < breaks && breaks < last && last < passes, "{page}");
+    assert!(!page.contains("test_skips"), "{page}");
+    assert_eq!(
+        page.matches("href=\"/harbormaster/unit/view/").count(),
+        5,
+        "{page}"
+    );
+    assert!(
+        page.contains("<td class=\"hm-right\">1,234 ms</td>"),
+        "{page}"
+    );
+    // Three lines of text details, escaped; Remarkup rendered.
+    assert!(page.contains("one\ntwo &lt;b&gt;\nthree\n</div>"), "{page}");
+    assert!(!page.contains("four"), "{page}");
+    assert!(page.contains("<strong>loud</strong>"), "{page}");
+    assert!(
+        page.contains("View Full Test Results (1 Failed · 1 Broken · 3 Passed · 1 Skipped)"),
+        "{page}"
+    );
+    assert!(page.contains("href=\"/harbormaster/unit/1/\""), "{page}");
+}
+
+async fn checks(test_db: &TestDatabase) {
+    // File artifacts show the file, or that it is restricted.
+    let page = page_as(test_db, "/harbormaster/build/1/", ALICE).await;
+    assert!(
+        page.contains("<td>File</td><td><a href=\"/F1\">F1: build.log</a></td>"),
+        "{page}"
+    );
+    assert!(page.contains("Restricted File"), "{page}");
+
+    // Steps run in rounds; one depends on a missing step and never runs.
+    let page = page_as(test_db, "/harbormaster/plan/5/", ALICE).await;
+    let first = page
+        .find("Step 1.1</span> <a href=\"/harbormaster/step/view/10/\">")
+        .expect("1");
+    let second = page
+        .find("Step 2.1</span> <a href=\"/harbormaster/step/view/11/\">")
+        .expect("2");
+    let stuck = page
+        .find("Step 3.1</span> <a href=\"/harbormaster/step/view/12/\">")
+        .expect("3");
+    assert!(first < second && second < stuck, "{page}");
+    assert!(page.contains("Build Step <strong>First</strong>"), "{page}");
+    assert!(
+        page.contains("This dependency specifies a build step which doesn"),
+        "{page}"
+    );
+    assert!(
+        page.contains("This build plan will deadlock when executed"),
         "{page}"
     );
 }
@@ -662,6 +821,8 @@ async fn harbormaster_pages_show_what_the_viewer_may_see() {
         return;
     };
     buildables(&test_db).await;
+    unit_tests(&test_db).await;
+    checks(&test_db).await;
     builds(&test_db).await;
     plans(&test_db).await;
     lists(&test_db).await;

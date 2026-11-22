@@ -73,8 +73,8 @@ pub(crate) struct RevisionPage {
     diff_id: Option<i64>,
     changesets: Vec<String>,
     timeline: Vec<crate::timeline::Entry>,
-    /// The build status of the active diff.
-    build_status: Option<crate::harbormaster::BuildStatus>,
+    /// The builds, lint and unit results of the active diff.
+    checks: crate::harbormaster::DiffChecks,
 }
 
 impl RevisionPage {
@@ -677,9 +677,11 @@ pub(crate) async fn show<S: WebState>(
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
     let warnings = warnings(state.as_ref(), &as_viewer, &revision).await?;
     let timeline = crate::timeline::entries(state.as_ref(), &as_viewer, &revision).await?;
-    let build_status = match &details.active_diff_phid {
-        Some(diff) => crate::harbormaster::build_status(state.as_ref(), &viewer, diff).await?,
-        None => None,
+    let checks = match &details.active_diff_phid {
+        Some(diff) => {
+            crate::harbormaster::diff_checks(state.as_ref(), &viewer, &revision.phid, diff).await?
+        }
+        None => crate::harbormaster::DiffChecks::default(),
     };
     Ok(Page(RevisionPage {
         warnings,
@@ -709,7 +711,7 @@ pub(crate) async fn show<S: WebState>(
         diff_id,
         changesets,
         timeline,
-        build_status,
+        checks,
         monogram,
     }))
 }

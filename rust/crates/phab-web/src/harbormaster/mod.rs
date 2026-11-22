@@ -14,6 +14,7 @@ mod lists;
 mod plan;
 mod revision;
 pub(crate) mod status;
+mod unit;
 
 use std::collections::{HashMap, HashSet};
 
@@ -31,7 +32,7 @@ pub(crate) use build::{show as build, show_run as build_run};
 pub(crate) use buildable::{parse_monogram as parse_buildable_monogram, show as buildable};
 pub(crate) use lists::{buildables as buildable_list, plans as plan_list};
 pub(crate) use plan::show as plan;
-pub(crate) use revision::{BuildStatus, build_status};
+pub(crate) use revision::{DiffChecks, diff_checks};
 
 use crate::error::PageError;
 use crate::state::WebState;
@@ -173,6 +174,7 @@ fn type_name(phid: &Phid) -> Option<&'static str> {
         "HMBB" => "Buildable",
         "HMBD" => "Build",
         "HMCP" => "Build Plan",
+        "FILE" => "File",
         _ => return None,
     })
 }
@@ -279,6 +281,19 @@ pub(crate) async fn load_handles<S: WebState>(
                 monogram.clone(),
                 format!("{monogram} {}", repository.name),
                 repository.uri(),
+            ),
+        );
+    }
+
+    let files = phab_app_files::load_by_phids(database, &of_type(&phids, "FILE")).await?;
+    for file in crate::remarkup::visible_files(state, &viewer, files).await? {
+        let monogram = file.monogram();
+        found.insert(
+            file.phid.clone(),
+            Handle::new(
+                monogram.clone(),
+                format!("{monogram}: {}", file.name),
+                format!("/{monogram}"),
             ),
         );
     }

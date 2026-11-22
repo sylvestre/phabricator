@@ -1,0 +1,18 @@
+    <section class="hm-unit">
+      <h2>Unit Tests <span class="tag">{{ unit.status.html()|safe }}</span> <a class="hm-button" href="{{ unit.view_all_uri }}"><span class="fa fa-list-ul" aria-hidden="true"></span> View All</a></h2>
+      <table class="hm-table">
+        <thead><tr><th></th>{% if unit.any_duration %}<th>Time</th>{% endif %}<th>Test</th></tr></thead>
+        <tbody>
+          {%- for row in unit.rows %}
+          <tr>
+            <td>{{ row.status.icon_html()|safe }}</td>
+            {%- if unit.any_duration %}<td class="hm-right">{% if let Some(duration) = row.duration %}{{ duration }}{% endif %}</td>{% endif %}
+            <td><a href="{{ row.uri }}">{{ row.name }}</a>{% if let Some(details) = row.details_html %}<div class="hm-unit-details{% if row.is_text %} hm-unit-text{% else %} remarkup{% endif %}">{{ details|safe }}</div>{% endif %}</td>
+          </tr>
+          {%- endfor %}
+          {%- if let Some(full) = unit.full_results %}
+          <tr><td><span class="fa fa-ellipsis-h muted" aria-hidden="true"></span></td>{% if unit.any_duration %}<td></td>{% endif %}<td><a href="{{ unit.view_all_uri }}">{{ full }}</a></td></tr>
+          {%- endif %}
+        </tbody>
+      </table>
+    </section>

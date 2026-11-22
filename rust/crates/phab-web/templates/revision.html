@@ -46,7 +46,25 @@
     </ul>
     {%- endif %}
   </dd>
-  {%- if let Some(build) = build_status %}
+  {%- if let Some(lint) = checks.lint %}
+  <dt>Lint</dt>
+  <dd>{{ lint.status.html()|safe }}
+    {%- if !lint.rows.is_empty() %}
+    <table class="hm-table">
+      <thead><tr><th>Severity</th><th>Location</th><th>Code</th><th>Message</th></tr></thead>
+      <tbody>
+        {%- for row in lint.rows %}
+        <tr><td>{{ row.severity }}</td><td class="hm-pri">{% if let Some(href) = row.href %}<a href="{{ href }}">{{ row.location }}</a>{% else %}{{ row.location }}{% endif %}</td><td>{{ row.code }}</td><td>{{ row.name }}</td></tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+  </dd>
+  {%- endif %}
+  {%- if let Some(unit_status) = checks.unit %}
+  <dt>Unit</dt><dd>{{ unit_status.html()|safe }}</dd>
+  {%- endif %}
+  {%- if let Some(build) = checks.build_status %}
   <dt>Build Status</dt>
   <dd>
     <ul class="build-status">
@@ -75,6 +93,9 @@
   <h2>Test Plan</h2>
   {%- if test_plan.is_some() %}<div class="remarkup">{{ self.test_plan_html()|safe }}</div>{% else %}<p class="muted">No test plan.</p>{% endif %}
 </section>
+{%- if let Some(unit) = checks.unit_tests %}
+{% include "hm_unit.html" %}
+{%- endif %}
 <section class="timeline">
   <h2>Timeline</h2>
   {%- if timeline.is_empty() %}<p class="muted">Nothing happened yet.</p>{% endif %}
@@ -87,9 +108,9 @@
 </section>
 <section class="actions">
   <h2>Add Action</h2>
-  {%- if let Some(build) = build_status %}{% if let Some(warning) = build.warning %}
-  <p class="notice">{{ warning }}</p>
-  {%- endif %}{% endif %}
+  {%- if !checks.warnings.is_empty() %}
+  <div class="notice"><ul class="review-warnings">{% for warning in checks.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>
+  {%- endif %}
   <form method="post" action="/{{ monogram }}/action" id="revision-actions">
     <input type="hidden" name="inlines" value="">
     {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}

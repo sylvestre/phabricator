@@ -306,3 +306,7 @@ li.hm-disabled a { color: var(--muted); }
 .hm-log-lines th { width: 1%; padding: 0 8px; color: var(--muted); font-weight: normal; text-align: right; user-select: none; }
 .hm-log-lines td { padding: 0 6px; white-space: pre-wrap; word-break: break-all; }
 .build-status { margin: 0; padding: 0; list-style: none; }
+.hm-right { text-align: right; white-space: nowrap; }
+.hm-unit-details { margin: 4px 0; overflow: hidden; color: var(--muted); }
+.hm-unit-text { white-space: pre-wrap; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; }
+.review-warnings { margin: 0 0 8px; padding-left: 20px; }

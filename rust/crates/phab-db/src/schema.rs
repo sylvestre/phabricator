@@ -391,7 +391,31 @@ pub const CONTRACT: &[TableContract] = &[
     TableContract {
         database: "harbormaster",
         table: "harbormaster_buildunitmessage",
-        columns: &["buildTargetPHID"],
+        columns: &[
+            "id",
+            "buildTargetPHID",
+            "engine",
+            "namespace",
+            "nameIndex",
+            "result",
+            "duration",
+            "properties",
+        ],
+    },
+    TableContract {
+        database: "harbormaster",
+        table: "harbormaster_string",
+        columns: &["stringIndex", "stringValue"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_diffproperty",
+        columns: &["diffID", "name", "data"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_diff",
+        columns: &["lintStatus", "unitStatus"],
     },
     TableContract {
         database: "harbormaster",

@@ -191,7 +191,10 @@ pub(crate) struct StepItem {
     label: String,
     name: String,
     description_html: String,
-    invalid: bool,
+    /// The steps it depends on, by name; `None` for missing ones.
+    depends: Vec<Option<String>>,
+    /// The red warning icon: an unknown implementation, or a deadlock.
+    warning: bool,
 }
 
 /// A row of the behaviors table.
@@ -326,25 +329,117 @@ fn step_description(step: &Step) -> Result<String, PageError> {
     })
 }
 
-/// `buildStepList()`: steps without dependencies all run first, in the
-/// order of the query (`HarbormasterBuildGraph`).
-fn step_items(steps: &[Step]) -> Result<Vec<StepItem>, PageError> {
+/// `HarbormasterBuildStepImplementation::getDependencies()`: the steps of
+/// the `dependsOn` setting (no implementation takes artifacts).
+fn dependencies(step: &Step) -> Result<Vec<Phid>, PageError> {
+    match step.details.get("dependsOn") {
+        None => Ok(Vec::new()),
+        Some(Value::Array(phids)) => phids
+            .iter()
+            .map(|phid| match phid {
+                Value::String(phid) => Ok(Phid::new(phid.clone())),
+                _ => Err(PageError::Fallback("an unusual step dependency")),
+            })
+            .collect(),
+        // `array_merge()` of anything else fails.
+        Some(_) => Err(PageError::Fallback("an unusual step dependency")),
+    }
+}
+
+/// `AbstractDirectedGraph::getNodesInRoughTopologicalOrder()`: rounds of
+/// the steps whose dependencies all ran, in the order of the query, then
+/// the steps which never can run, as cycles. Each is `(index, depth,
+/// cycle)`.
+fn run_order(edges: &[Vec<Phid>], phids: &[Phid]) -> Vec<(usize, usize, bool)> {
+    let mut completed: Vec<bool> = vec![false; phids.len()];
+    let is_completed = |completed: &[bool], phid: &Phid| {
+        phids
+            .iter()
+            .position(|node| node == phid)
+            .is_some_and(|index| completed[index])
+    };
+    let mut order = Vec::new();
+    let mut depth = 0;
+    loop {
+        let next: Vec<usize> = (0..phids.len())
+            .filter(|&index| {
+                !completed[index]
+                    && edges[index]
+                        .iter()
+                        .all(|edge| is_completed(&completed, edge))
+            })
+            .collect();
+        if next.is_empty() {
+            break;
+        }
+        for index in next {
+            order.push((index, depth, false));
+            completed[index] = true;
+        }
+        depth += 1;
+    }
+    for (index, done) in completed.iter().enumerate() {
+        if !done {
+            order.push((index, depth, true));
+        }
+    }
+    order
+}
+
+/// `buildStepList()`: the steps in the order they run, numbered by round,
+/// and whether the plan deadlocks.
+fn step_items(steps: &[Step]) -> Result<(Vec<StepItem>, bool), PageError> {
+    let invalid = |step: &Step| harbormaster::implementation_name(&step.class_name).is_none();
+    // `getAvailableArtifacts()`, which every valid step calls, fails on
+    // the steps of an unknown implementation.
+    if steps.iter().any(invalid) && !steps.iter().all(invalid) {
+        return Err(PageError::Fallback("a step of an unknown implementation"));
+    }
+    let phids: Vec<Phid> = steps.iter().map(|step| step.phid.clone()).collect();
+    let edges: Vec<Vec<Phid>> = steps
+        .iter()
+        .map(|step| {
+            if invalid(step) {
+                Ok(Vec::new())
+            } else {
+                dependencies(step)
+            }
+        })
+        .collect::<Result<_, _>>()?;
     let mut items = Vec::new();
-    for (index, step) in steps.iter().enumerate() {
-        if step.details.get("dependsOn").is_some_and(php::is_truthy) {
-            return Err(PageError::Fallback("build steps with dependencies"));
+    let (mut last_depth, mut position) = (0, 1);
+    let mut deadlocks = false;
+    for (index, depth, cycle) in run_order(&edges, &phids) {
+        let step = &steps[index];
+        let depth = depth + 1;
+        if depth == last_depth {
+            position += 1;
+        } else {
+            last_depth = depth;
+            position = 1;
         }
         let name = harbormaster::step_name(step)
             .ok_or(PageError::Fallback("a step of an unknown implementation"))?;
+        let depends = edges[index]
+            .iter()
+            .map(|phid| {
+                steps
+                    .iter()
+                    .find(|other| other.phid == *phid)
+                    .map(|other| harbormaster::step_name(other).unwrap_or_default())
+            })
+            .collect();
+        deadlocks |= cycle;
         items.push(StepItem {
             id: step.id,
-            label: format!("Step 1.{}", index + 1),
+            label: format!("Step {depth}.{position}"),
             name,
             description_html: step_description(step)?,
-            invalid: harbormaster::implementation_name(&step.class_name).is_none(),
+            depends,
+            warning: invalid(step) || deadlocks,
         });
     }
-    Ok(items)
+    Ok((items, deadlocks))
 }
 
 /// `HeraldAdapter::getAdapterContentName()` of the adapters which run
@@ -617,10 +712,20 @@ pub(crate) async fn show<S: WebState>(
     let steps = harbormaster::steps_of_plan(&request, &plan.phid)
         .await
         .map_err(method_error)?;
-    let steps = step_items(&steps)?;
-    let error = steps.is_empty().then_some(
-        "This build plan does not have any build steps yet, so it will not do anything when run.",
-    );
+    let (steps, deadlocks) = step_items(&steps)?;
+    let error = if steps.is_empty() {
+        Some(
+            "This build plan does not have any build steps yet, so it will not do anything \
+             when run.",
+        )
+    } else if deadlocks {
+        Some(
+            "This build plan will deadlock when executed, due to circular dependencies present \
+             in the build plan. Examine the step list and resolve the deadlock.",
+        )
+    } else {
+        None
+    };
 
     let (rules, more_rules) = rules(state.as_ref(), &viewer, &scope, &plan.phid).await?;
     let (builds, more_builds) = recent_builds(state.as_ref(), &scope, &plan).await?;

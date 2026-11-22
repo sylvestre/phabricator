@@ -191,15 +191,33 @@ pub(crate) fn external_links(
 }
 
 /// `renderArtifactSummary()` and `getArtifactTypeName()`.
-fn artifact_row(config: &Config, artifact: &Artifact) -> Result<ArtifactRow, PageError> {
-    if artifact.kind != "uri" {
-        return Err(PageError::Fallback("an artifact which is not a URI"));
-    }
+fn artifact_row(
+    config: &Config,
+    artifact: &Artifact,
+    handles: &HashMap<Phid, super::Handle>,
+) -> Result<ArtifactRow, PageError> {
+    let (type_name, summary_html) = match artifact.kind.as_str() {
+        "uri" => ("URI", uri_link(config, &artifact.data)?),
+        // `HarbormasterFileArtifact`: the file's handle.
+        "file" => {
+            let phid = file_phid(artifact)?;
+            ("File", super::handle(handles, &phid).link_html())
+        }
+        _ => return Err(PageError::Fallback("an artifact of another type")),
+    };
     Ok(ArtifactRow {
         key: artifact.key.clone(),
-        type_name: "URI",
-        summary_html: uri_link(config, &artifact.data)?,
+        type_name,
+        summary_html,
     })
+}
+
+/// The `filePHID` of a file artifact.
+fn file_phid(artifact: &Artifact) -> Result<Phid, PageError> {
+    match artifact.data.get("filePHID") {
+        Some(Value::String(phid)) if phid.starts_with("PHID-FILE-") => Ok(Phid::new(phid.clone())),
+        _ => Err(PageError::Fallback("a file artifact without file")),
+    }
 }
 
 /// When the target was queued, started and completed.
@@ -325,15 +343,18 @@ async fn target_views<S: WebState>(
     // `HarbormasterBuildMessageQuery`: newest first.
     let mut messages = harbormaster::messages(state.database(), &target_phids, false).await?;
     messages.reverse();
-    let authors: Vec<Phid> = messages
-        .iter()
-        .map(|message| message.author_phid.clone())
-        .collect();
-    let handles = super::load_handles(state, scope, &authors).await?;
     let mut artifacts = harbormaster::artifacts_of_targets(&request, &target_phids)
         .await
         .map_err(method_error)?;
     artifacts.sort_by(|left, right| left.key.cmp(&right.key));
+    let mut phids: Vec<Phid> = messages
+        .iter()
+        .map(|message| message.author_phid.clone())
+        .collect();
+    for artifact in artifacts.iter().filter(|artifact| artifact.kind == "file") {
+        phids.push(file_phid(artifact)?);
+    }
+    let handles = super::load_handles(state, scope, &phids).await?;
     let logs = harbormaster::logs_of_targets(&request, &target_phids)
         .await
         .map_err(method_error)?;
@@ -386,7 +407,7 @@ async fn target_views<S: WebState>(
             variables,
             artifacts: target_artifacts
                 .iter()
-                .map(|artifact| artifact_row(state.config(), artifact))
+                .map(|artifact| artifact_row(state.config(), artifact, &handles))
                 .collect::<Result<_, _>>()?,
             messages: messages
                 .iter()
