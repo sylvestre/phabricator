@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Active Plans</h1>
+  <nav class="bucket-switch" aria-label="Harbormaster">
+    <a href="/harbormaster/">Buildables</a>
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No build plans found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li{% if item.disabled %} class="hm-disabled"{% endif %}>
+    <p class="hm-item"><span class="muted">Plan {{ item.id }}</span> <a href="/harbormaster/plan/{{ item.id }}/">{{ item.name }}</a>{% if item.autoplan %} <span class="tag"><span class="fa fa-lock" aria-hidden="true"></span> Autoplan</span>{% endif %}</p>
+    <p class="hm-attribute">
+      {%- if item.projects.is_empty() %}<span class="muted">No Projects</span>{% else %}
+      {%- for (name, uri) in item.projects %}{% if let Some(uri) = uri %}<a class="tag" href="{{ uri }}">{{ name }}</a>{% else %}<span class="tag handle-restricted">{{ name }}</span>{% endif %} {% endfor %}
+      {%- if item.more_projects %}<span class="muted">…</span>{% endif %}
+      {%- endif %}
+    </p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/harbormaster/plan/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

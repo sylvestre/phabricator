@@ -1,0 +1,8 @@
+  <aside class="side-column">
+    <h2>Actions</h2>
+    <ul class="hm-actions">
+      {%- for action in actions %}
+      <li>{% if action.enabled %}<a href="{{ action.uri }}"><span class="fa {{ action.icon }}" aria-hidden="true"></span> {{ action.name }}</a>{% else %}<span class="hm-disabled" aria-disabled="true"><span class="fa {{ action.icon }}" aria-hidden="true"></span> {{ action.name }}</span>{% endif %}</li>
+      {%- endfor %}
+    </ul>
+  </aside>

@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-ship" aria-hidden="true"></span> {{ name }}</h1>
+  {%- if disabled %}<ul class="tags"><li class="tag">Disabled</li></ul>{% endif %}
+</header>
+<div class="columns">
+  <section class="main-column">
+    {%- if let Some(error) = error %}<p class="notice">{{ error }}</p>{% endif %}
+    <h2>Build Steps {% if can_edit %}<a class="hm-button" href="/harbormaster/step/add/{{ id }}/"><span class="fa fa-plus" aria-hidden="true"></span> Add Build Step</a>{% else %}<span class="hm-button hm-disabled" aria-disabled="true"><span class="fa fa-plus" aria-hidden="true"></span> Add Build Step</span>{% endif %}</h2>
+    {%- if steps.is_empty() %}
+    <p class="muted">This build plan does not have any build steps yet.</p>
+    {%- else %}
+    <ul class="hm-list">
+      {%- for step in steps %}
+      <li>
+        <p class="hm-item">{% if step.invalid %}<span class="fa fa-warning remarkup-icon-red" aria-hidden="true"></span> {% endif %}<span class="muted">{{ step.label }}</span> <a href="/harbormaster/step/view/{{ step.id }}/">{{ step.name }}</a></p>
+        <p class="hm-attribute muted">{{ step.description_html|safe }}</p>
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <h2>Plan Behaviors</h2>
+    <table class="hm-table">
+      <thead><tr><th></th><th>Name</th><th>Behavior</th><th>Details</th><th></th></tr></thead>
+      <tbody>
+        {%- for behavior in behaviors %}
+        <tr>
+          <td><span class="fa {{ behavior.icon }} remarkup-icon-{{ behavior.color }}" aria-hidden="true"></span></td>
+          <td class="hm-pri">{{ behavior.name }}</td>
+          <td>{{ behavior.option }}</td>
+          <td>{{ behavior.description }}</td>
+          <td>{% if can_edit %}<a class="hm-button" href="/harbormaster/plan/behavior/{{ id }}/{{ behavior.key }}/">Edit</a>{% else %}<span class="hm-button hm-disabled" aria-disabled="true">Edit</span>{% endif %}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    <h2>Run By Herald Rules <a class="hm-button" href="{{ self.rules_uri() }}"><span class="fa fa-list-ul" aria-hidden="true"></span> View All Rules</a></h2>
+    {%- if rules.is_empty() %}
+    <p class="muted">No active Herald rules trigger this build.</p>
+    {%- else %}
+    <ul class="hm-list">
+      {%- for rule in rules %}
+      <li{% if rule.author_inactive %} class="hm-disabled"{% endif %}>
+        <p class="hm-item"><span class="muted">H{{ rule.id }}</span> <a href="/H{{ rule.id }}">{{ rule.name }}</a> <span class="tag"><span class="fa {{ rule.icon }}" aria-hidden="true"></span> {{ rule.kind }}</span>{% if rule.author_inactive %} <span class="tag"><span class="fa fa-user" aria-hidden="true"></span> Author Not Active</span>{% endif %}</p>
+        <p class="hm-attribute muted">Affects: {{ rule.affects }}{% if let Some(author) = rule.author_html %} · Authored by {{ author|safe }}{% endif %}</p>
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- if more_rules %}<p><a href="{{ self.rules_uri() }}">View All Rules</a></p>{% endif %}
+    {%- endif %}
+    <h2>Recent Builds <a class="hm-button" href="{{ self.builds_uri() }}"><span class="fa fa-list-ul" aria-hidden="true"></span> View All Builds</a></h2>
+    {%- if builds.is_empty() %}
+    <p class="muted">No recent builds.</p>
+    {%- else %}
+    <ul class="hm-list">
+      {%- for build in builds %}
+      <li>
+        <p class="hm-item">{{ build.status.icon_html()|safe }} <span class="muted">Build {{ build.id }}</span> <a href="/harbormaster/build/{{ build.id }}/">{{ build.name }}</a> <time class="muted">{{ build.date }}</time></p>
+        <p class="hm-attribute muted">{{ build.object }}{% if let Some(initiator) = build.initiator_html %} · {{ initiator|safe }}{% endif %}</p>
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- if more_builds %}<p><a href="{{ self.builds_uri() }}">View All Builds</a></p>{% endif %}
+    {%- endif %}
+    {% include "hm_timeline.html" %}
+  </section>
+  {% include "hm_actions.html" %}
+</div>
+{% endblock %}

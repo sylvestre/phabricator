@@ -6,6 +6,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::http::Uri;
+use axum::response::{IntoResponse, Response};
 use phab_app_differential::details;
 use phab_app_differential::repository::{self, Repository};
 use phab_app_differential::storage::{self, Revision};
@@ -72,6 +73,8 @@ pub(crate) struct RevisionPage {
     diff_id: Option<i64>,
     changesets: Vec<String>,
     timeline: Vec<crate::timeline::Entry>,
+    /// The build status of the active diff.
+    build_status: Option<crate::harbormaster::BuildStatus>,
 }
 
 impl RevisionPage {
@@ -598,8 +601,25 @@ async fn people<S: WebState>(
     Ok((author, reviewers, subscribers))
 }
 
-/// `GET /D{id}`: the route is `/{monogram}`, as path parameters can't
-/// share a segment with text.
+/// `GET /{monogram}`: path parameters can't share a segment with text, so
+/// revisions (`D123`) and buildables (`B123`) share the route.
+pub(crate) async fn by_monogram<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(monogram): Path<String>,
+    uri: Uri,
+) -> Result<Response, PageError> {
+    if let Some(id) = crate::harbormaster::parse_buildable_monogram(&monogram) {
+        return Ok(crate::harbormaster::buildable(state, viewer, id, uri)
+            .await?
+            .into_response());
+    }
+    Ok(show(State(state), viewer, Path(monogram), uri)
+        .await?
+        .into_response())
+}
+
+/// `GET /D{id}`.
 pub(crate) async fn show<S: WebState>(
     State(state): State<Arc<S>>,
     viewer: WebUser,
@@ -657,6 +677,10 @@ pub(crate) async fn show<S: WebState>(
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
     let warnings = warnings(state.as_ref(), &as_viewer, &revision).await?;
     let timeline = crate::timeline::entries(state.as_ref(), &as_viewer, &revision).await?;
+    let build_status = match &details.active_diff_phid {
+        Some(diff) => crate::harbormaster::build_status(state.as_ref(), &viewer, diff).await?,
+        None => None,
+    };
     Ok(Page(RevisionPage {
         warnings,
         actions: crate::actions::ACTIONS,
@@ -685,6 +709,7 @@ pub(crate) async fn show<S: WebState>(
         diff_id,
         changesets,
         timeline,
+        build_status,
         monogram,
     }))
 }

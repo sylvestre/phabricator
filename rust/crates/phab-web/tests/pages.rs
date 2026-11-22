@@ -67,6 +67,7 @@ async fn setup(with_csrf_key: bool) -> Option<TestDatabase> {
         "spaces",
         "repository",
         "file",
+        "harbormaster",
     ])
     .await?;
     test_db

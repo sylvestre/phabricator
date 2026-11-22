@@ -8,6 +8,7 @@
 //! buildable, a target from its build, artifacts and logs from their
 //! target; a step from its build plan, which has policies of its own. The
 //! write methods (`*.edit`, `createartifact`, `sendmessage`) stay in PHP.
+//! [`web`] is what the web pages read.
 
 pub mod autotargets;
 pub mod build;
@@ -18,6 +19,7 @@ mod query;
 mod storage;
 pub mod target;
 mod visibility;
+pub mod web;
 
 use phab_conduit::{ApiRequest, Application, MethodError, Registry};
 use phab_core::Config;

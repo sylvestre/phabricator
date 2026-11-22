@@ -1,0 +1,9 @@
+    <section class="timeline">
+      <h2>Timeline</h2>
+      {%- if timeline.is_empty() %}<p class="muted">Nothing happened yet.</p>{% endif %}
+      {%- for entry in timeline %}
+      <article class="timeline-entry">
+        <p class="timeline-title">{{ entry.title_html|safe }} <time class="muted">{{ entry.date }}</time></p>
+      </article>
+      {%- endfor %}
+    </section>

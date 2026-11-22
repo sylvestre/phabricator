@@ -276,3 +276,33 @@ kbd {
 .phabricator-remarkup-embed-image img { max-width: 100%; height: auto; border: 1px solid var(--border); }
 .phabricator-remarkup-embed-image-full img, .phabricator-remarkup-embed-image-wide img, .remarkup-external-image { max-width: 100%; height: auto; }
 .embedded-youtube-video iframe, .phabricator-media { max-width: 100%; }
+
+/* Harbormaster: statuses, item lists, tables, logs and the side column. */
+.hm-status { white-space: nowrap; }
+.remarkup-icon-dark { color: var(--text); }
+.hm-list { margin: 0; padding: 0; list-style: none; }
+.hm-list > li { padding: 6px 0; border-top: 1px solid var(--border); }
+.hm-item, .hm-attribute { margin: 0; }
+.hm-attribute { font-size: 13px; }
+.hm-targets { margin: 4px 0 0 24px; padding: 0; list-style: none; font-size: 13px; }
+.hm-disabled { color: var(--muted); }
+li.hm-disabled a { color: var(--muted); }
+.hm-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.hm-table th { text-align: left; color: var(--muted); font-weight: normal; }
+.hm-table td, .hm-table th { padding: 4px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+.hm-pri { font-weight: 600; }
+.hm-button { margin-left: 8px; padding: 0 8px; border: 1px solid var(--border); border-radius: 3px; font-size: 13px; font-weight: normal; text-decoration: none; }
+.hm-actions { margin: 0; padding: 0; list-style: none; }
+.hm-actions li { padding: 3px 0; }
+.hm-actions .fa { width: 1.2em; }
+.hm-history { padding: 0; list-style: none; }
+.hm-current { font-weight: 600; }
+.hm-target { margin: 16px 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; }
+.hm-target details { margin: 6px 0; }
+.hm-target summary { cursor: pointer; color: var(--accent); }
+.hm-log { margin-top: 12px; }
+.hm-log h3 { font-size: 15px; margin-bottom: 0; }
+.hm-log-lines { width: 100%; border-collapse: collapse; overflow-x: auto; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); }
+.hm-log-lines th { width: 1%; padding: 0 8px; color: var(--muted); font-weight: normal; text-align: right; user-select: none; }
+.hm-log-lines td { padding: 0 6px; white-space: pre-wrap; word-break: break-all; }
+.build-status { margin: 0; padding: 0; list-style: none; }

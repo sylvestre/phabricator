@@ -46,6 +46,17 @@
     </ul>
     {%- endif %}
   </dd>
+  {%- if let Some(build) = build_status %}
+  <dt>Build Status</dt>
+  <dd>
+    <ul class="build-status">
+      <li>{{ build.status.icon_html()|safe }} <strong><a href="/B{{ build.buildable_id }}">Buildable {{ build.buildable_id }}</a></strong> <span class="muted">{{ build.status.name }}</span></li>
+      {%- for line in build.builds %}
+      <li>{{ line.status.icon_html()|safe }} {{ line.link_html|safe }} <span class="muted">{{ line.status.name }}</span>{% for link in line.links_html %}{% if loop.first %} · {% else %} · {% endif %}{{ link|safe }}{% endfor %}</li>
+      {%- endfor %}
+    </ul>
+  </dd>
+  {%- endif %}
   <dt>Bugzilla Bug ID</dt>
   <dd>{% if let Some((bug, uri)) = bug %}<a href="{{ uri }}">{{ bug }}</a>{% else %}Not provided{% endif %}</dd>
   {%- if !parents.is_empty() || !children.is_empty() %}
@@ -76,6 +87,9 @@
 </section>
 <section class="actions">
   <h2>Add Action</h2>
+  {%- if let Some(build) = build_status %}{% if let Some(warning) = build.warning %}
+  <p class="notice">{{ warning }}</p>
+  {%- endif %}{% endif %}
   <form method="post" action="/{{ monogram }}/action" id="revision-actions">
     <input type="hidden" name="inlines" value="">
     {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}

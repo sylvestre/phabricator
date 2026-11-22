@@ -1,6 +1,6 @@
 [package]
 name = "phab-app-harbormaster"
-description = "Harbormaster: the read-only search and query Conduit methods"
+description = "Harbormaster: the read-only search and query Conduit methods, and what the web pages read"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,12 +8,14 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+flate2.workspace = true
 phab-app-differential.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
 phab-policy.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 form_urlencoded.workspace = true

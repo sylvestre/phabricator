@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>All Buildables</h1>
+  <nav class="bucket-switch" aria-label="Harbormaster">
+    <a href="/harbormaster/build/">Browse Builds</a>
+    <a href="/harbormaster/plan/">Manage Build Plans</a>
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No buildables found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li>
+    <p class="hm-item">{{ item.status.icon_html()|safe }} <span class="muted">Buildable {{ item.id }}</span> <a href="/B{{ item.id }}">{% if let Some(header) = item.header %}{{ header }}{% else %}Buildable {{ item.id }}{% endif %}</a>{% if item.manual %} <span class="tag"><span class="fa fa-wrench" aria-hidden="true"></span> Manual</span>{% endif %}</p>
+    {%- if !item.attributes.is_empty() %}
+    <p class="hm-attribute muted">{% for attribute in item.attributes %}{% if !loop.first %} · {% endif %}{{ attribute }}{% endfor %}</p>
+    {%- endif %}
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/harbormaster/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

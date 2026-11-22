@@ -1663,6 +1663,7 @@ dependencies = [
 name = "phab-app-harbormaster"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "form_urlencoded",
  "phab-app-differential",
  "phab-conduit",
@@ -1670,6 +1671,7 @@ dependencies = [
  "phab-db",
  "phab-policy",
  "serde_json",
+ "thiserror",
  "tokio",
 ]
 
@@ -1920,15 +1922,18 @@ version = "0.1.0"
 dependencies = [
  "askama",
  "axum",
+ "flate2",
  "form_urlencoded",
  "hex",
  "phab-app-differential",
  "phab-app-feed",
  "phab-app-files",
+ "phab-app-harbormaster",
  "phab-app-herald",
  "phab-app-people",
  "phab-app-project",
  "phab-auth",
+ "phab-conduit",
  "phab-core",
  "phab-db",
  "phab-diff",

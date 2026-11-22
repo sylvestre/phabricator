@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-recycle" aria-hidden="true"></span> Buildable {{ id }}</h1>
+  <ul class="tags"><li class="tag">{{ status.html()|safe }}</li></ul>
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>Properties</h2>
+    <dl class="properties">
+      {%- if let Some(container) = container_html %}
+      <dt>Container</dt><dd>{{ container|safe }}</dd>
+      {%- endif %}
+      <dt>Buildable</dt><dd>{{ buildable_html|safe }}</dd>
+      <dt>Origin</dt><dd>{% if manual %}Manual Buildable{% else %}Automatic Buildable{% endif %}</dd>
+    </dl>
+    {%- if !lint.is_empty() %}
+    <h2>Lint Messages <a class="hm-button" href="/harbormaster/lint/{{ id }}/"><span class="fa fa-list-ul" aria-hidden="true"></span> View All</a></h2>
+    <table class="hm-table">
+      <thead><tr><th>Severity</th><th>Location</th><th>Code</th><th>Message</th></tr></thead>
+      <tbody>
+        {%- for row in lint %}
+        <tr><td>{{ row.severity }}</td><td class="hm-pri">{{ row.location }}</td><td>{{ row.code }}</td><td>{{ row.name }}</td></tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+    <h2>Builds</h2>
+    {%- if builds.is_empty() %}
+    <p class="muted">No builds.</p>
+    {%- else %}
+    <ul class="hm-list">
+      {%- for build in builds %}
+      <li>
+        <p class="hm-item">{{ build.status.icon_html()|safe }} <span class="muted">Build {{ build.id }}</span> <a href="/harbormaster/build/{{ build.id }}/">{{ build.name }}</a> <span class="muted">{{ build.status.name }}</span></p>
+        {%- if !build.targets.is_empty() %}
+        <ul class="hm-targets">
+          {%- for target in build.targets %}
+          <li>{{ target.status.icon_html()|safe }} Target {{ target.id }} <span class="muted">{{ target.name }}</span></li>
+          {%- endfor %}
+        </ul>
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    {% include "hm_timeline.html" %}
+  </section>
+  {% include "hm_actions.html" %}
+</div>
+{% endblock %}

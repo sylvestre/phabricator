@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-cubes" aria-hidden="true"></span> Build {{ id }}</h1>
+  <ul class="tags"><li class="tag">{{ status.html()|safe }}</li></ul>
+</header>
+<div class="columns">
+  <section class="main-column">
+    {%- if older_run %}
+    <p class="notice">You are viewing an older run of this build. <a href="/harbormaster/build/{{ id }}/">View Current Build</a></p>
+    {%- endif %}
+    <h2>Properties</h2>
+    <dl class="properties">
+      <dt>Buildable</dt><dd>{{ buildable_html|safe }}</dd>
+      <dt>Build Plan</dt><dd>{{ plan_html|safe }}</dd>
+    </dl>
+    {%- if !history.is_empty() %}
+    <h2>History</h2>
+    <ul class="hm-history">
+      {%- for (run, current) in history %}
+      <li{% if *current %} class="hm-current"{% endif %}><a href="/harbormaster/build/{{ id }}/{{ run }}/">Run {{ run }}</a></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    {%- for target in targets %}
+    <section class="hm-target">
+      <h2><span class="fa fa-bullseye" aria-hidden="true"></span> {{ target.name }}</h2>
+      {%- if target.step_deleted %}
+      <p class="notice">This build step has since been deleted on the build plan.  Some information may be omitted.</p>
+      {%- endif %}
+      <dl class="properties">
+        {%- if !target.links_html.is_empty() %}
+        <dt>External Link</dt><dd>{% for link in target.links_html %}{% if !loop.first %}<br>{% endif %}{{ link|safe }}{% endfor %}</dd>
+        {%- endif %}
+        <dt>When</dt><dd>{{ target.when }}</dd>
+        <dt>Status</dt><dd>{{ target.status.html()|safe }}</dd>
+      </dl>
+      {%- if let Some(description) = target.description %}
+      <h3>Description</h3>
+      <div class="remarkup">{{ description|safe }}</div>
+      {%- endif %}
+      <details>
+        <summary>Configuration</summary>
+        <dl class="properties">
+          {%- for (key, value) in target.details %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}
+        </dl>
+      </details>
+      <details>
+        <summary>Variables</summary>
+        <table class="hm-table">
+          <thead><tr><th>Key</th><th>Value</th></tr></thead>
+          <tbody>
+            {%- for (key, value) in target.variables %}<tr><td class="hm-pri">{{ key }}</td><td>{{ value }}</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </details>
+      <details>
+        <summary>Artifacts</summary>
+        {%- if target.artifacts.is_empty() %}
+        <p class="muted">This target has no associated artifacts.</p>
+        {%- else %}
+        <table class="hm-table">
+          <thead><tr><th>Key</th><th>Type</th><th>Summary</th></tr></thead>
+          <tbody>
+            {%- for artifact in target.artifacts %}<tr><td class="hm-pri">{{ artifact.key }}</td><td>{{ artifact.type_name }}</td><td>{{ artifact.summary_html|safe }}</td></tr>{% endfor %}
+          </tbody>
+        </table>
+        {%- endif %}
+      </details>
+      <details>
+        <summary>Messages</summary>
+        {%- if target.messages.is_empty() %}
+        <p class="muted">No messages for this build target.</p>
+        {%- else %}
+        <table class="hm-table">
+          <thead><tr><th>ID</th><th>From</th><th>Type</th><th>Consumed</th><th>Received</th></tr></thead>
+          <tbody>
+            {%- for message in target.messages %}<tr><td>{{ message.id }}</td><td>{{ message.from_html|safe }}</td><td>{{ message.kind }}</td><td>{% if message.consumed %}Consumed{% endif %}</td><td><time>{{ message.date }}</time></td></tr>{% endfor %}
+          </tbody>
+        </table>
+        {%- endif %}
+      </details>
+      <details>
+        <summary>Metadata</summary>
+        <dl class="properties">
+          <dt>Build Target ID</dt><dd>{{ target.id }}</dd>
+          <dt>Build Target PHID</dt><dd>{{ target.phid }}</dd>
+        </dl>
+      </details>
+      {%- if !target.empty_logs.is_empty() %}
+      <details class="hm-empty-logs">
+        <summary>{{ target.empty_logs.len() }} empty logs are hidden. Show all logs.</summary>
+        {%- for log in target.empty_logs %}{% include "hm_log.html" %}{% endfor %}
+      </details>
+      {%- endif %}
+      {%- for log in target.logs %}{% include "hm_log.html" %}{% endfor %}
+    </section>
+    {%- endfor %}
+    {% include "hm_timeline.html" %}
+  </section>
+  {% include "hm_actions.html" %}
+</div>
+{% endblock %}

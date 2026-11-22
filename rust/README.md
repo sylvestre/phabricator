@@ -30,10 +30,14 @@ Pages ported so far:
 | Route | Page |
 |---|---|
 | `/`, `/differential/` | Review queue, with Mozilla's buckets (`?bucket=`) |
-| `/D<id>` | Revision: header, reviewers, bug, stack, secure revision warnings, summary, test plan, timeline, active diff with its inline comments |
+| `/D<id>` | Revision: header, reviewers, bug, stack, secure revision warnings, build status, summary, test plan, timeline, active diff with its inline comments |
 | `/p/<user>/` | Profile, with the user's recent activity |
 | `/tag/<slug>/`, `/project/view/<id>/`, `/project/profile/<id>/` | Project |
 | `/feed/` | Feed |
+| `/B<id>` | Buildable: properties, lint messages, builds and their targets, timeline (unit test results go to PHP) |
+| `/harbormaster/build/<id>/`, `/harbormaster/build/<id>/<run>/` | Build: runs, targets with their artifacts, messages and logs, timeline |
+| `/harbormaster/plan/<id>/` | Build plan: steps, behaviors, Herald rules, recent builds, timeline |
+| `/harbormaster/`, `/harbormaster/plan/` | The default lists of buildables and of active plans |
 
 Stories, transactions and parts of a page that aren't ported are left out
 with a link to the old interface.

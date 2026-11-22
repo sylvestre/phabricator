@@ -1,0 +1,7 @@
+        <section class="hm-log">
+          <h3>{{ log.title }} <a class="hm-button" href="{{ log.uri }}"><span class="fa fa-file-text-o" aria-hidden="true"></span> New View (Prototype)</a></h3>
+          <p class="muted">{% for (label, uri) in log.limits %}{% if !loop.first %} -  {% endif %}{% if let Some(uri) = uri %}<a href="{{ uri }}">{{ label }}</a>{% else %}<strong>{{ label }}</strong>{% endif %}{% endfor %} Lines</p>
+          <table class="hm-log-lines">
+            {%- for (number, line) in log.lines %}<tr><th>{{ number }}</th><td>{{ line }}</td></tr>{% endfor %}
+          </table>
+        </section>

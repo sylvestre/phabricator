@@ -100,6 +100,11 @@ check "project boards go to PHP" "php /project/board/1/ " -b "$optin" "$site/pro
 check "profile subpages go to PHP" "php /p/alice/calendar/ " -b "$optin" "$site/p/alice/calendar/"
 check "the feed goes to Rust with the opt-in" "rust /feed/?after=12" -b "$optin" "$site/feed/?after=12"
 check "feed queries go to PHP" "php /feed/query/all/ " -b "$optin" "$site/feed/query/all/"
+check "buildables go to Rust with the opt-in" "rust /B12" -b "$optin" "$site/B12"
+check "builds go to Rust with the opt-in" "rust /harbormaster/build/3/1/?l=0" -b "$optin" "$site/harbormaster/build/3/1/?l=0"
+check "build plans go to Rust with the opt-in" "rust /harbormaster/plan/2/" -b "$optin" "$site/harbormaster/plan/2/"
+check "the buildable list goes to Rust with the opt-in" "rust /harbormaster/" -b "$optin" "$site/harbormaster/"
+check "Harbormaster commands go to PHP" "php /harbormaster/build/restart/3/ " -b "$optin" "$site/harbormaster/build/restart/3/"
 check "the switch always goes to Rust" "rust /rust-ui/on?next=/D1" "$site/rust-ui/on?next=/D1"
 check "Rust static files go to Rust" "rust /rsrc-rust/abc/phab.css" "$site/rsrc-rust/abc/phab.css"
 docker stop routing-rust >/dev/null

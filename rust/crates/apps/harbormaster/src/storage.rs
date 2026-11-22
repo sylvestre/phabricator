@@ -18,9 +18,11 @@ use serde_json::{Map, Value, json};
 /// them; Harbormaster objects inherit them from another object, which
 /// the query attaches once the viewer can see it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Policies {
-    pub(crate) view: String,
-    pub(crate) edit: String,
+pub struct Policies {
+    /// The view policy.
+    pub view: String,
+    /// The edit policy.
+    pub edit: String,
 }
 
 impl Policies {
@@ -106,6 +108,15 @@ pub(crate) async fn load_where<T: Object>(
     select(database, &clauses, &tail).await
 }
 
+/// A JSON dictionary column; Lisk decodes a JSON list (an empty PHP array)
+/// as an array too, and the pages treat anything else as empty.
+fn json_map(row: &MySqlRow, column: &str) -> Map<String, Value> {
+    match rows::json(row, column) {
+        Ok(Value::Object(map)) => map,
+        _ => Map::new(),
+    }
+}
+
 /// The PHIDs of rows, as strings.
 pub(crate) fn phid_strings<'a>(phids: impl IntoIterator<Item = &'a Phid>) -> Vec<String> {
     let mut phids: Vec<String> = phids
@@ -119,17 +130,23 @@ pub(crate) fn phid_strings<'a>(phids: impl IntoIterator<Item = &'a Phid>) -> Vec
 
 /// A `harbormaster_buildable` row.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Buildable {
-    pub(crate) id: i64,
-    pub(crate) phid: Phid,
+pub struct Buildable {
+    /// The row ID.
+    pub id: i64,
+    /// The PHID.
+    pub phid: Phid,
     /// The object built, like a diff.
-    pub(crate) object_phid: Phid,
-    pub(crate) container_phid: Option<String>,
-    pub(crate) status: String,
-    pub(crate) is_manual: bool,
-    pub(crate) dates: (i64, i64),
+    pub object_phid: Phid,
+    /// The object containing it, like the revision of a diff.
+    pub container_phid: Option<String>,
+    /// The status constant.
+    pub status: String,
+    /// `isManualBuildable`.
+    pub is_manual: bool,
+    /// `dateCreated` and `dateModified`.
+    pub dates: (i64, i64),
     /// The policies of the object built, once the viewer can see it.
-    pub(crate) policies: Option<Policies>,
+    pub policies: Option<Policies>,
 }
 
 impl Object for Buildable {
@@ -165,17 +182,27 @@ impl Object for Buildable {
 
 /// A `harbormaster_build` row.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Build {
-    pub(crate) id: i64,
-    pub(crate) phid: Phid,
-    pub(crate) buildable_phid: Phid,
-    pub(crate) plan_phid: Phid,
-    pub(crate) status: String,
-    pub(crate) generation: i64,
-    pub(crate) initiator_phid: Option<String>,
-    pub(crate) dates: (i64, i64),
+pub struct Build {
+    /// The row ID.
+    pub id: i64,
+    /// The PHID.
+    pub phid: Phid,
+    /// The buildable built.
+    pub buildable_phid: Phid,
+    /// The build plan.
+    pub plan_phid: Phid,
+    /// The status constant.
+    pub status: String,
+    /// `buildGeneration`: how many times it was restarted.
+    pub generation: i64,
+    /// Who started it, if anyone.
+    pub initiator_phid: Option<String>,
+    /// `planAutoKey`: the autoplan it runs, for automatic builds.
+    pub plan_auto_key: Option<String>,
+    /// `dateCreated` and `dateModified`.
+    pub dates: (i64, i64),
     /// The policies of the buildable, once the viewer can see it.
-    pub(crate) policies: Option<Policies>,
+    pub policies: Option<Policies>,
 }
 
 impl Object for Build {
@@ -193,6 +220,7 @@ impl Object for Build {
             status: rows::text(row, "buildStatus")?,
             generation: rows::int(row, "buildGeneration")?,
             initiator_phid: rows::opt_text(row, "initiatorPHID")?,
+            plan_auto_key: rows::opt_text(row, "planAutoKey")?,
             dates: (
                 rows::int(row, "dateCreated")?,
                 rows::int(row, "dateModified")?,
@@ -212,16 +240,25 @@ impl Object for Build {
 
 /// A `harbormaster_buildplan` row.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Plan {
-    pub(crate) id: i64,
-    pub(crate) phid: Phid,
-    pub(crate) name: String,
-    pub(crate) status: String,
-    pub(crate) auto_key: Option<String>,
-    pub(crate) view_policy: String,
-    pub(crate) edit_policy: String,
-    pub(crate) properties: Map<String, Value>,
-    pub(crate) dates: (i64, i64),
+pub struct Plan {
+    /// The row ID.
+    pub id: i64,
+    /// The PHID.
+    pub phid: Phid,
+    /// The name.
+    pub name: String,
+    /// The status constant.
+    pub status: String,
+    /// The key of an automatic one, set by an application.
+    pub auto_key: Option<String>,
+    /// The view policy.
+    pub view_policy: String,
+    /// The edit policy.
+    pub edit_policy: String,
+    /// The properties, like the plan behaviors.
+    pub properties: Map<String, Value>,
+    /// `dateCreated` and `dateModified`.
+    pub dates: (i64, i64),
 }
 
 impl Plan {
@@ -250,11 +287,7 @@ impl Object for Plan {
     const CURSOR_RAISES_POLICY_EXCEPTIONS: bool = true;
 
     fn from_row(row: &MySqlRow) -> Result<Self, DbError> {
-        // Lisk decodes a JSON list (an empty PHP array) as an array too.
-        let properties = match rows::json(row, "properties") {
-            Ok(Value::Object(map)) => map,
-            _ => Map::new(),
-        };
+        let properties = json_map(row, "properties");
         Ok(Self {
             id: rows::int(row, "id")?,
             phid: Phid::new(rows::text(row, "phid")?),
@@ -282,17 +315,27 @@ impl Object for Plan {
 
 /// A `harbormaster_buildstep` row.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Step {
-    pub(crate) id: i64,
-    pub(crate) phid: Phid,
-    pub(crate) plan_phid: Phid,
-    pub(crate) class_name: String,
-    pub(crate) name: Option<String>,
-    pub(crate) description: String,
-    pub(crate) auto_key: Option<String>,
-    pub(crate) dates: (i64, i64),
+pub struct Step {
+    /// The row ID.
+    pub id: i64,
+    /// The PHID.
+    pub phid: Phid,
+    /// The build plan.
+    pub plan_phid: Phid,
+    /// The step implementation class.
+    pub class_name: String,
+    /// The settings of the implementation (`details`).
+    pub details: Map<String, Value>,
+    /// The name.
+    pub name: Option<String>,
+    /// The description, in Remarkup.
+    pub description: String,
+    /// The key of an automatic one, set by an application.
+    pub auto_key: Option<String>,
+    /// `dateCreated` and `dateModified`.
+    pub dates: (i64, i64),
     /// The policies of the plan, once the viewer can see it.
-    pub(crate) policies: Option<Policies>,
+    pub policies: Option<Policies>,
 }
 
 impl Object for Step {
@@ -307,6 +350,7 @@ impl Object for Step {
             phid: Phid::new(rows::text(row, "phid")?),
             plan_phid: Phid::new(rows::text(row, "buildPlanPHID")?),
             class_name: rows::text(row, "className")?,
+            details: json_map(row, "details"),
             name: rows::opt_text(row, "name")?,
             description: rows::text(row, "description")?,
             auto_key: rows::opt_text(row, "stepAutoKey")?,
@@ -329,20 +373,35 @@ impl Object for Step {
 
 /// A `harbormaster_buildtarget` row.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Target {
-    pub(crate) id: i64,
-    pub(crate) phid: Phid,
-    pub(crate) build_phid: Phid,
-    pub(crate) step_phid: String,
-    pub(crate) class_name: String,
-    pub(crate) name: Option<String>,
-    pub(crate) status: String,
-    pub(crate) started: Option<i64>,
-    pub(crate) completed: Option<i64>,
-    pub(crate) generation: i64,
-    pub(crate) dates: (i64, i64),
+pub struct Target {
+    /// The row ID.
+    pub id: i64,
+    /// The PHID.
+    pub phid: Phid,
+    /// The build.
+    pub build_phid: Phid,
+    /// The build step it runs.
+    pub step_phid: String,
+    /// The step implementation class.
+    pub class_name: String,
+    /// The settings of the step, when the target was created (`details`).
+    pub details: Map<String, Value>,
+    /// The build variables (`variables`).
+    pub variables: Map<String, Value>,
+    /// The name.
+    pub name: Option<String>,
+    /// The status constant.
+    pub status: String,
+    /// `dateStarted`.
+    pub started: Option<i64>,
+    /// `dateCompleted`.
+    pub completed: Option<i64>,
+    /// `buildGeneration`: how many times it was restarted.
+    pub generation: i64,
+    /// `dateCreated` and `dateModified`.
+    pub dates: (i64, i64),
     /// The policies of the build, once the viewer can see it.
-    pub(crate) policies: Option<Policies>,
+    pub policies: Option<Policies>,
 }
 
 impl Object for Target {
@@ -358,6 +417,8 @@ impl Object for Target {
             build_phid: Phid::new(rows::text(row, "buildPHID")?),
             step_phid: rows::text(row, "buildStepPHID")?,
             class_name: rows::text(row, "className")?,
+            details: json_map(row, "details"),
+            variables: json_map(row, "variables"),
             name: rows::opt_text(row, "name")?,
             status: rows::text(row, "targetStatus")?,
             started: rows::opt_int(row, "dateStarted")?,
@@ -382,17 +443,25 @@ impl Object for Target {
 
 /// A `harbormaster_buildartifact` row.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Artifact {
-    pub(crate) id: i64,
-    pub(crate) phid: Phid,
-    pub(crate) target_phid: Phid,
+pub struct Artifact {
+    /// The row ID.
+    pub id: i64,
+    /// The PHID.
+    pub phid: Phid,
+    /// The build target.
+    pub target_phid: Phid,
     /// `artifactType`, like `uri` or `file`.
-    pub(crate) kind: String,
-    pub(crate) key: String,
-    pub(crate) is_released: bool,
-    pub(crate) dates: (i64, i64),
+    pub kind: String,
+    /// `artifactKey`.
+    pub key: String,
+    /// `artifactData`: the properties of the artifact, like a URI.
+    pub data: Map<String, Value>,
+    /// `isReleased`.
+    pub is_released: bool,
+    /// `dateCreated` and `dateModified`.
+    pub dates: (i64, i64),
     /// The policies of the target, once the viewer can see it.
-    pub(crate) policies: Option<Policies>,
+    pub policies: Option<Policies>,
 }
 
 impl Object for Artifact {
@@ -408,6 +477,7 @@ impl Object for Artifact {
             target_phid: Phid::new(rows::text(row, "buildTargetPHID")?),
             kind: rows::text(row, "artifactType")?,
             key: rows::text(row, "artifactKey")?,
+            data: json_map(row, "artifactData"),
             is_released: rows::flag(row, "isReleased")?,
             dates: (
                 rows::int(row, "dateCreated")?,
@@ -436,15 +506,25 @@ impl Object for Artifact {
 
 /// A `harbormaster_buildlog` row.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Log {
-    pub(crate) id: i64,
-    pub(crate) phid: Phid,
-    pub(crate) target_phid: Phid,
-    pub(crate) byte_length: u64,
-    pub(crate) file_phid: Option<String>,
-    pub(crate) dates: (i64, i64),
+pub struct Log {
+    /// The row ID.
+    pub id: i64,
+    /// The PHID.
+    pub phid: Phid,
+    /// The build target.
+    pub target_phid: Phid,
+    /// `logSource`.
+    pub source: Option<String>,
+    /// `logType`.
+    pub kind: Option<String>,
+    /// The size of the log.
+    pub byte_length: u64,
+    /// The file the log was archived to.
+    pub file_phid: Option<String>,
+    /// `dateCreated` and `dateModified`.
+    pub dates: (i64, i64),
     /// The policies of the target, once the viewer can see it.
-    pub(crate) policies: Option<Policies>,
+    pub policies: Option<Policies>,
 }
 
 impl Object for Log {
@@ -458,6 +538,8 @@ impl Object for Log {
             id: rows::int(row, "id")?,
             phid: Phid::new(rows::text(row, "phid")?),
             target_phid: Phid::new(rows::text(row, "buildTargetPHID")?),
+            source: rows::opt_text(row, "logSource")?,
+            kind: rows::opt_text(row, "logType")?,
             byte_length: rows::uint(row, "byteLength")?,
             file_phid: rows::opt_text(row, "filePHID")?,
             dates: (

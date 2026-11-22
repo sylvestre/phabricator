@@ -12,6 +12,7 @@ pub mod assets;
 mod diff_html;
 mod error;
 mod feed;
+mod harbormaster;
 mod highlight;
 pub mod opt_in;
 mod people;

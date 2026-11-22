@@ -288,6 +288,8 @@ mod tests {
             build_phid: Phid::new("PHID-HMBD-1"),
             step_phid: "PHID-HMCS-1".to_owned(),
             class_name: class_name.to_owned(),
+            details: serde_json::Map::new(),
+            variables: serde_json::Map::new(),
             name: name.map(str::to_owned),
             status: "target/passed".to_owned(),
             started: None,
