@@ -169,7 +169,8 @@ async fn setup() -> Option<TestDatabase> {
                targetStatus, name, dateStarted, dateCompleted, buildGeneration) VALUES \
              (1, 'PHID-HMBT-1', 'PHID-HMBD-1', 'PHID-HMCS-1', \
                'HarbormasterHTTPRequestBuildStepImplementation', \
-               '{{\"uri\":\"https://ci.example/run\"}}', '{{\"buildable.diff\":\"1\"}}', \
+               '{{\"uri\":\"https://ci.example/run\",\"dependsOn\":[],\"retries\":[2,null,true]}}', \
+               '{{\"buildable.diff\":\"1\",\"buildable.commit\":null,\"step.timestamp\":1.5}}', \
                {created}, 2, 'target/passed', 'Ping CI', {started}, {completed}, 2), \
              (2, 'PHID-HMBT-2', 'PHID-HMBD-1', 'PHID-HMCS-1', \
                'HarbormasterHTTPRequestBuildStepImplementation', '{{}}', '{{}}', {created}, 2, \
@@ -499,6 +500,18 @@ async fn builds(test_db: &TestDatabase) {
     );
     assert!(
         page.contains("<td class=\"hm-pri\">buildable.diff</td><td>1</td>"),
+        "{page}"
+    );
+    // Lists and nulls, as `phutil_escape_html()` renders them: the
+    // values one after the other, and nothing.
+    assert!(page.contains("<dt>dependsOn</dt><dd></dd>"), "{page}");
+    assert!(page.contains("<dt>retries</dt><dd>21</dd>"), "{page}");
+    assert!(
+        page.contains("<td class=\"hm-pri\">buildable.commit</td><td></td>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("<td class=\"hm-pri\">step.timestamp</td><td>1.5</td>"),
         "{page}"
     );
     assert!(

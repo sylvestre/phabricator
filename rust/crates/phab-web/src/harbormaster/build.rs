@@ -112,17 +112,51 @@ fn line_limit(query: Option<&str>) -> Result<i64, PageError> {
     Ok(limit)
 }
 
-/// A detail or variable as `PHUIPropertyListView` shows a scalar.
+/// A detail or variable as `phutil_escape_html()` renders it in a
+/// property list or a table, before escaping: `null` and `false` are
+/// empty, `true` is "1", and a list or a map (Lisk decodes JSON objects
+/// as arrays) is its values, recursively, one after the other.
 fn scalar(value: &Value) -> Result<String, PageError> {
     Ok(match value {
         Value::Null | Value::Bool(false) => String::new(),
         Value::Bool(true) => "1".to_owned(),
-        Value::Number(number) => number.to_string(),
+        Value::Number(number) => php_number(number)?,
         Value::String(text) => text.clone(),
-        Value::Array(_) | Value::Object(_) => {
-            return Err(PageError::Fallback("a build setting which is not a scalar"));
-        }
+        Value::Array(items) => items.iter().map(scalar).collect::<Result<String, _>>()?,
+        Value::Object(map) => map.values().map(scalar).collect::<Result<String, _>>()?,
     })
+}
+
+/// `(string)` of a JSON number as PHP decoded it: integers as they are,
+/// floats in their shortest form, whole ones without a decimal point.
+fn php_number(number: &serde_json::Number) -> Result<String, PageError> {
+    if !number.is_f64() {
+        return Ok(number.to_string());
+    }
+    let value = number.as_f64().unwrap_or_default();
+    // PHP switches to exponents (`1.0E+25`) past 15 digits or below 1e-4,
+    // which Rust doesn't print alike.
+    if value != 0.0 && !(1e-4..1e15).contains(&value.abs()) {
+        return Err(PageError::Fallback(
+            "a build setting with an unusual number",
+        ));
+    }
+    Ok(format!("{value}"))
+}
+
+/// `ksort()` of variables: numeric keys compare as numbers, which isn't
+/// ported.
+fn sorted_variables(
+    mut variables: Vec<(String, String)>,
+) -> Result<Vec<(String, String)>, PageError> {
+    if variables
+        .iter()
+        .any(|(key, _)| key.trim().parse::<f64>().is_ok())
+    {
+        return Err(PageError::Fallback("a build variable with a numeric key"));
+    }
+    variables.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(variables)
 }
 
 fn properties(map: &Map<String, Value>) -> Result<Vec<(String, String)>, PageError> {
@@ -382,8 +416,7 @@ async fn target_views<S: WebState>(
         variables
             .entry("target.phid".to_owned())
             .or_insert_with(|| Value::String(target.phid.as_str().to_owned()));
-        let mut variables = properties(&variables)?;
-        variables.sort_by(|left, right| left.0.cmp(&right.0));
+        let variables = sorted_variables(properties(&variables)?)?;
         let mut logs_shown = Vec::new();
         let mut empty_logs = Vec::new();
         for log in logs.iter().filter(|log| log.target_phid == target.phid) {
@@ -600,6 +633,28 @@ mod tests {
         assert_eq!(line_limit(Some("l=abc")).unwrap(), 0);
         assert_eq!(line_limit(Some("l=12abc")).unwrap(), 12);
         assert!(line_limit(Some("l=-3")).is_err());
+    }
+
+    #[test]
+    fn settings_render_like_phutil_escape_html() {
+        use serde_json::json;
+        assert_eq!(scalar(&json!(null)).unwrap(), "");
+        assert_eq!(scalar(&json!(false)).unwrap(), "");
+        assert_eq!(scalar(&json!(true)).unwrap(), "1");
+        assert_eq!(scalar(&json!(12)).unwrap(), "12");
+        assert_eq!(scalar(&json!(1.5)).unwrap(), "1.5");
+        assert_eq!(scalar(&json!(2.0)).unwrap(), "2");
+        assert!(scalar(&json!(1e30)).is_err());
+        assert_eq!(scalar(&json!([])).unwrap(), "");
+        assert_eq!(
+            scalar(&json!(["PHID-HMCS-1", "PHID-HMCS-2"])).unwrap(),
+            "PHID-HMCS-1PHID-HMCS-2"
+        );
+        assert_eq!(
+            scalar(&json!({"a": "x", "b": [1, null, true]})).unwrap(),
+            "x11"
+        );
+        assert!(sorted_variables(vec![("10".to_owned(), String::new())]).is_err());
     }
 
     #[test]
