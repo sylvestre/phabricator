@@ -2,8 +2,9 @@
 //! a diff from arcanist's change dictionaries, as `arc` and `moz-phab`
 //! send them.
 //!
-//! Ported: every parameter, for Git working copies, and the `properties`
-//! map. Left to PHP: form-encoded calls, change dictionaries missing keys
+//! Ported: every parameter, for Git working copies. This fork's method has
+//! no `properties` parameter (moz-phab sets them with
+//! `differential.setdiffproperty`). Left to PHP: form-encoded calls, change dictionaries missing keys
 //! or with values of types PHP would convert or reject, other version
 //! control systems, a missing `repositoryPHID` when PHP would guess the
 //! repository from the base commit or a repository UUID, and what
@@ -18,10 +19,6 @@ use crate::diff_editor::{self, DiffFields, PlannedDiff};
 
 const ERR_NO_CONTENT: &str = "ERR-NO-CONTENT";
 const ERR_NO_SOURCE_PATH: &str = "ERR-USAGE-NO-SOURCE-PATH";
-const ERR_INVALID_PROPERTIES: &str = "ERR-INVALID-PROPERTIES";
-
-/// `getColumnMaximumByteLength('name')` of `differential_diffproperty`.
-const MAX_PROPERTY_NAME_BYTES: usize = 128;
 
 fn conduit_error(code: &str) -> MethodError {
     MethodError::Conduit {
@@ -144,33 +141,6 @@ fn change(value: &Value) -> Result<RawChange, MethodError> {
     })
 }
 
-/// The `properties` parameter: names and encoded values, or
-/// `ERR-INVALID-PROPERTIES`.
-fn properties(request: &ApiRequest<'_>) -> Result<Vec<(String, Value)>, MethodError> {
-    let value = match request.value("properties") {
-        None | Some(Value::Null) => return Ok(Vec::new()),
-        Some(value) => php::round_trip(value),
-    };
-    let properties = match value {
-        Value::Array(list) if list.is_empty() => return Ok(Vec::new()),
-        Value::Object(map) => map,
-        _ => return Err(conduit_error(ERR_INVALID_PROPERTIES)),
-    };
-    let mut names: Vec<&str> = Vec::new();
-    for name in properties.keys() {
-        if name.is_empty() || name.len() > MAX_PROPERTY_NAME_BYTES {
-            return Err(conduit_error(ERR_INVALID_PROPERTIES));
-        }
-        // The unique key compares without trailing spaces.
-        let padded = name.trim_end_matches(' ');
-        if names.contains(&padded) {
-            return Err(unsupported("property names MySQL considers the same"));
-        }
-        names.push(padded);
-    }
-    Ok(properties.into_iter().collect())
-}
-
 /// `lintStatus` or `unitStatus`: `switch` compares loosely, so only
 /// strings are ported.
 fn status(request: &ApiRequest<'_>, key: &str) -> Result<i64, MethodError> {
@@ -276,7 +246,6 @@ impl CreateDiff {
         if !php::is_truthy(change_data) {
             return Err(conduit_error(ERR_NO_CONTENT));
         }
-        let properties = properties(request)?;
         let changes = entries(change_data)?
             .into_iter()
             .map(change)
@@ -284,15 +253,11 @@ impl CreateDiff {
         let (changesets, line_count) = diff_editor::build_changesets(request, &changes).await?;
         let fields = fields(request, actor).await?;
         diff_editor::check_herald(request).await?;
-        let properties = properties
-            .iter()
-            .map(|(name, value)| Ok((name.clone(), diff_editor::encode(value)?)))
-            .collect::<Result<Vec<_>, MethodError>>()?;
         let planned = PlannedDiff {
             changesets,
             line_count,
             fields,
-            properties,
+            properties: Vec::new(),
         };
         let (id, phid) = diff_editor::save(request, &planned).await?;
         let uri = request
@@ -322,7 +287,6 @@ impl Method for CreateDiff {
             "lintStatus",
             "unitStatus",
             "repositoryPHID",
-            "properties",
             "parentRevisionID",
             "authorPHID",
             "repositoryUUID",
@@ -337,11 +301,6 @@ impl Method for CreateDiff {
         &[
             (ERR_NO_CONTENT, "Diff may not be empty."),
             (ERR_NO_SOURCE_PATH, "You must specify a source path."),
-            (
-                ERR_INVALID_PROPERTIES,
-                "Properties must be a map of non-empty property names, up to 128 bytes, to \
-                 values.",
-            ),
         ]
     }
 

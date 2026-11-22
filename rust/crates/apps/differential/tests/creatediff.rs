@@ -201,9 +201,8 @@ async fn creates_diffs_like_php() {
         return;
     };
 
-    // A moz-phab diff with a property.
-    let mut params = create_params(&json!([change("README", " a\n-b\n+c\n")]));
-    params["properties"] = json!({"local:commits": {"abc": {"author": "Bob", "time": 1}}});
+    // A moz-phab diff.
+    let params = create_params(&json!([change("README", " a\n-b\n+c\n")]));
     let result = answer(&context, "differential.creatediff", params).await;
     let phid = result["phid"].as_str().expect("a PHID").to_owned();
     assert!(phid.starts_with("PHID-DIFF-"), "{phid}");
@@ -302,7 +301,7 @@ async fn creates_diffs_like_php() {
              FROM `{ns}_differential`.differential_diffproperty"
         )
         .await,
-        [r#"103 local:commits {"abc":{"author":"Bob","time":1}} 1700000000"#]
+        Vec::<String>::new()
     );
 
     // A large hunk is deflated as zlib does; a binary file whose new
@@ -364,10 +363,16 @@ async fn creates_diffs_like_php() {
         )
     );
     let mut params = create_params(&json!([change("x", "+x\n")]));
-    params["properties"] = json!(["a list"]);
+    // This fork's method has no `properties` parameter.
+    params["properties"] = json!({"local:commits": {}});
     assert_eq!(
-        error(&context, "differential.creatediff", params).await.0,
-        "ERR-INVALID-PROPERTIES"
+        error(&context, "differential.creatediff", params).await,
+        (
+            "ERR-CONDUIT-CALL".to_owned(),
+            "API Method \"differential.creatediff\" does not define these parameters: \
+             'properties'."
+                .to_owned()
+        )
     );
     let mut params = create_params(&json!([change("x", "+x\n")]));
     params["sourcePath"] = json!("");
