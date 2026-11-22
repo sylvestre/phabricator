@@ -4,6 +4,7 @@
 pub mod buckets;
 pub mod changeset_search;
 pub mod commit;
+pub mod commit_message;
 pub mod details;
 pub mod diff_search;
 pub mod edge_search;
@@ -41,4 +42,6 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(transaction_search::TransactionSearch);
     registry.register(revision_comments::GetRevisionComments);
     registry.register(visibility::RevisionVisibility);
+    registry.register(commit_message::get::GetCommitMessage);
+    registry.register(commit_message::parse::ParseCommitMessage);
 }
