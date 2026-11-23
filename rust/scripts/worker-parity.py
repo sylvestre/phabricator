@@ -101,9 +101,12 @@ PUBLISH_WORKER = "PhabricatorApplicationTransactionPublishWorker"
 
 
 def query(sql):
-    """Rows of a query on the stack's MySQL, as lists of strings."""
+    """Rows of a query on the stack's MySQL, as lists of strings. Names are
+    qualified with their database; MySQL 5.7 still wants a default one to
+    resolve the aliases of multi-table DELETEs."""
     out = WP.sh(["docker", "exec", "-i", WP.DB, "sh", "-c",
-                 f"{WP.MYSQL} -N 2>/dev/null"], stdin=sql.encode())
+                 f"{WP.MYSQL} -N phabricator_repository 2>/dev/null"],
+                stdin=sql.encode())
     return [line.split("\t") for line in out.decode().splitlines()]
 
 
