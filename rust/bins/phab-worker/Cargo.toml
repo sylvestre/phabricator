@@ -12,6 +12,7 @@ phab-app-diffusion.workspace = true
 phab-app-feed.workspace = true
 phab-app-files.workspace = true
 phab-app-metamta.workspace = true
+phab-app-search.workspace = true
 phab-app-transactions.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true

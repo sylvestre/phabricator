@@ -6,6 +6,7 @@ pub mod feed_publisher;
 pub mod metamta;
 pub mod publish;
 pub mod repository;
+pub mod search;
 pub mod test_worker;
 
 /// Every ported class.
@@ -17,6 +18,7 @@ pub fn registry() -> Registry {
     registry.register(repository::MessageParserWorker);
     registry.register(repository::ChangeParserWorker);
     registry.register(repository::PublishWorker::from_env());
+    registry.register(search::SearchWorker);
     registry.register(test_worker::TestWorker);
     registry
 }

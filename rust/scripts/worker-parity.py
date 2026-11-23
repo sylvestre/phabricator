@@ -3,7 +3,8 @@
 the development stack.
 
     rust/scripts/worker-parity.py [--sides php,rust] [--show] [--feed N]
-        [--metamta N] [--publish N] [--rust-worker CMD] [--repository ID
+        [--metamta N] [--publish N] [--search N] [--rust-worker CMD]
+        [--repository ID
         [--repository-path PATH] [--repository-origin PATH]
         [--rust-repository CMD]] [scenarios.json]...
 
@@ -23,7 +24,11 @@ scenario for each of the N newest publish tasks of revisions in
 `worker_archivetask`, requeued with their data as stored (`rawData`, which a
 scenario may give instead of `data`), as configured and with
 `email.default` 0 (Phabricator's own mail, so notifications of mailed users
-are read).
+are read). `--search N` adds PhabricatorSearchWorker scenarios for each of
+the N newest revisions, users and projects: as queued (an index which is
+current is left as it is), forced (`parameters.force`, which updates the
+stored rows) and from scratch (the object's Ferret rows and index versions
+deleted first, so they are inserted).
 
 `--repository ID` (3 for R3, rFAB, on the dev stack) adds the import
 pipeline of that Git repository, whose working copy (`--repository-path`,
@@ -578,6 +583,48 @@ def publish_scenarios(count):
     return scenarios
 
 
+SEARCH_WORKER = "PhabricatorSearchWorker"
+# The objects `--search` indexes: database, table, Ferret table prefix.
+SEARCH_OBJECTS = [
+    ("phabricator_differential", "differential_revision",
+     "differential_revision"),
+    ("phabricator_user", "user", "user_user"),
+    ("phabricator_project", "project", "project_project"),
+]
+
+
+def search_scenarios(count):
+    """Indexing tasks for the newest revisions, users and projects, as
+    `queueDocumentForIndexing()` queues them."""
+    scenarios = []
+    for database, table, ferret in SEARCH_OBJECTS:
+        phids = [row[0] for row in query(
+            f"SELECT phid FROM {database}.{table} ORDER BY id DESC "
+            f"LIMIT {int(count)}")]
+        for phid in phids:
+            documents = f"{database}.{ferret}_fdocument"
+            scratch = [
+                f"DELETE n FROM {database}.{ferret}_fngrams n JOIN {documents} d "
+                f"ON d.id = n.documentID WHERE d.objectPHID = {quote(phid)}",
+                f"DELETE f FROM {database}.{ferret}_ffield f JOIN {documents} d "
+                f"ON d.id = f.documentID WHERE d.objectPHID = {quote(phid)}",
+                f"DELETE FROM {documents} WHERE objectPHID = {quote(phid)}",
+                "DELETE FROM phabricator_search.search_indexversion "
+                f"WHERE objectPHID = {quote(phid)}",
+            ]
+            for label, parameters, setup in (
+                    ("as queued", [], []),
+                    ("forced", {"force": True}, []),
+                    ("from scratch", [], scratch)):
+                scenarios.append({
+                    "name": f"index {phid} {label}",
+                    "class": SEARCH_WORKER,
+                    "data": {"documentPHID": phid, "parameters": parameters,
+                             "strict": False},
+                    "priority": 3500, "objectPHID": phid, "setup": setup})
+    return scenarios
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sides", default="php,rust")
@@ -590,6 +637,9 @@ def main():
     parser.add_argument("--publish", type=int, default=0,
                         help="add scenarios for the N newest publish tasks "
                         "of revisions")
+    parser.add_argument("--search", type=int, default=0,
+                        help="add indexing scenarios for the N newest "
+                        "revisions, users and projects")
     parser.add_argument("--rust-worker", default=RUST_WORKER,
                         help="command running one task, {id} its ID")
     parser.add_argument("--repository", default=None,
@@ -616,12 +666,14 @@ def main():
         scenarios.extend(metamta_scenarios(args.metamta))
     if args.publish:
         scenarios.extend(publish_scenarios(args.publish))
+    if args.search:
+        scenarios.extend(search_scenarios(args.search))
     if args.repository:
         scenarios.extend(repository_scenarios(
             args.repository, args.repository_path, args.repository_origin))
     if not scenarios:
-        parser.error("no scenarios: give files, --feed, --metamta, --publish "
-                     "or --repository")
+        parser.error("no scenarios: give files, --feed, --metamta, --publish, "
+                     "--search or --repository")
 
     names = {table: columns(table) for table in (
         "phabricator_worker.worker_activetask",

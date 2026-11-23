@@ -274,11 +274,7 @@ async fn never_leases_classes_without_a_handler() {
     };
     // A PHP task ahead of ours in priority, and one with an expired lease.
     let php_new = fixture
-        .schedule(
-            "PhabricatorSearchWorker",
-            &json!({"documentPHID": "PHID-X"}),
-            Some(1),
-        )
+        .schedule("HarbormasterBuildWorker", &json!({"buildID": 1}), Some(1))
         .await;
     let php_expired = fixture
         .schedule("PhabricatorMetaMTAWorker", &json!([]), Some(1))

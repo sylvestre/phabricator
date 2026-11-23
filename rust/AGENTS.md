@@ -183,6 +183,22 @@ recipients at once (`metamta.one-mail-per-recipient` off), custom
 `differential.fields`, recipients who use another language or have no
 settings cache, and subprojects among the recipients.
 
+`PhabricatorSearchWorker` rebuilds the search index of Differential
+revisions, users and projects (`crates/apps/search`): the Ferret rows
+(`*_fdocument`, `*_ffield`, `*_fngrams`, without the common ngrams), the
+`search_indexversion` row, and for projects the datasource tokens and the
+materialized members. Up-to-date indexes are left as they are unless the
+task forces them, as PHP does; it takes PHP's `index` lock and yields when
+another process holds it. It declines other objects, subprojects,
+milestones and projects with any, configured custom fields
+(`*.custom-field-definitions`, `projects.fields`, `projects.subtypes`, a
+`differential.fields` which doesn't list the summary, test plan and revert
+plan, or enables the revert plan), `cluster.search` services other than
+`mysql`, and text with an uppercase character beyond ASCII (whose case
+folding by `mb_convert_case()` Rust doesn't reproduce) or not in UTF-8.
+The Porter stemmer, term corpora and ngrams are checked against PHP's own
+code by `crates/apps/search/tests/oracle/ferret.php`.
+
 The import of Git commits (`crates/apps/diffusion/src/import`) runs the
 three steps discovery queues for each commit:
 `PhabricatorRepositoryGitCommitMessageParserWorker` (author, committer,
@@ -219,7 +235,9 @@ as JSON and exits (3 when the task was left to PHP).
 `rust/scripts/worker-parity.py` compares its rows with PHP's
 `bin/worker execute --id` on the dev stack (`--feed N`, `--metamta N` and
 `--publish N` requeue the newest stories, mails and revision publish
-tasks; `--repository 3` runs the import pipeline of R3).
+tasks; `--search N` indexes the newest revisions, users and projects, as
+queued, forced and from scratch; `--repository 3` runs the import
+pipeline of R3).
 
 ## Checking a deployment
 

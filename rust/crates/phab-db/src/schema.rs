@@ -977,4 +977,182 @@ pub const CONTRACT: &[TableContract] = &[
         table: "auth_factorprovider",
         columns: &["id", "phid", "providerFactorKey", "status", "name"],
     },
+    // Search indexing (`phab-app-search`).
+    TableContract {
+        database: "search",
+        table: "search_indexversion",
+        columns: &[
+            "id",
+            "objectPHID",
+            "extensionKey",
+            "version",
+            "indexVersion",
+            "indexEpoch",
+        ],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_revision",
+        columns: &[
+            "id",
+            "phid",
+            "title",
+            "status",
+            "summary",
+            "testPlan",
+            "authorPHID",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_reviewer",
+        columns: &["id", "revisionPHID", "reviewerPHID"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_transaction",
+        columns: &["id", "phid", "objectPHID", "commentPHID"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_transaction_comment",
+        columns: &["id", "phid", "transactionPHID", "content"],
+    },
+    TableContract {
+        database: "user",
+        table: "user",
+        columns: &[
+            "id",
+            "phid",
+            "userName",
+            "realName",
+            "isDisabled",
+            "isApproved",
+            "isEmailVerified",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "user",
+        table: "user_transaction",
+        columns: &["id", "objectPHID"],
+    },
+    TableContract {
+        database: "project",
+        table: "project",
+        columns: &[
+            "id",
+            "phid",
+            "name",
+            "status",
+            "parentProjectPHID",
+            "milestoneNumber",
+            "hasSubprojects",
+            "hasMilestones",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "project",
+        table: "project_transaction",
+        columns: &["id", "objectPHID"],
+    },
+    TableContract {
+        database: "project",
+        table: "project_slug",
+        columns: &["id", "projectPHID", "slug"],
+    },
+    TableContract {
+        database: "project",
+        table: "project_datasourcetoken",
+        columns: &["projectID", "token"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_revision_fdocument",
+        columns: &FERRET_DOCUMENT,
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_revision_ffield",
+        columns: &FERRET_FIELD,
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_revision_fngrams",
+        columns: &FERRET_NGRAMS,
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_revision_fngrams_common",
+        columns: &FERRET_COMMON,
+    },
+    TableContract {
+        database: "user",
+        table: "user_user_fdocument",
+        columns: &FERRET_DOCUMENT,
+    },
+    TableContract {
+        database: "user",
+        table: "user_user_ffield",
+        columns: &FERRET_FIELD,
+    },
+    TableContract {
+        database: "user",
+        table: "user_user_fngrams",
+        columns: &FERRET_NGRAMS,
+    },
+    TableContract {
+        database: "user",
+        table: "user_user_fngrams_common",
+        columns: &FERRET_COMMON,
+    },
+    TableContract {
+        database: "project",
+        table: "project_project_fdocument",
+        columns: &FERRET_DOCUMENT,
+    },
+    TableContract {
+        database: "project",
+        table: "project_project_ffield",
+        columns: &FERRET_FIELD,
+    },
+    TableContract {
+        database: "project",
+        table: "project_project_fngrams",
+        columns: &FERRET_NGRAMS,
+    },
+    TableContract {
+        database: "project",
+        table: "project_project_fngrams_common",
+        columns: &FERRET_COMMON,
+    },
 ];
+
+/// `PhabricatorFerretEngine::getDocumentSchemaColumns()`.
+const FERRET_DOCUMENT: [&str; 7] = [
+    "id",
+    "objectPHID",
+    "isClosed",
+    "authorPHID",
+    "ownerPHID",
+    "epochCreated",
+    "epochModified",
+];
+/// `getFieldSchemaColumns()`.
+const FERRET_FIELD: [&str; 6] = [
+    "id",
+    "documentID",
+    "fieldKey",
+    "rawCorpus",
+    "termCorpus",
+    "normalCorpus",
+];
+/// `getNgramsSchemaColumns()`.
+const FERRET_NGRAMS: [&str; 3] = ["id", "documentID", "ngram"];
+/// `getCommonNgramsSchemaColumns()`.
+const FERRET_COMMON: [&str; 2] = ["ngram", "needsCollection"];
