@@ -18,7 +18,9 @@
 //! [`phab_app_herald::engine`] evaluates. A comment subscribes its author
 //! when nothing else does (`applyImplicitCC()`). A new diff ([`update`]),
 //! alone or with a comment, a new title, summary, test plan, subscribers
-//! or tags.
+//! or tags. Inline comments ([`inlines`]): the `inline` transactions, and
+//! the actor's drafts the comment form publishes ([`apply_with_drafts()`]),
+//! with any of these.
 //!
 //! Without `objectIdentifier`, a new revision (`core:create`): a diff, a
 //! title, a summary and a test plan, reviewers, subscribers and tags,
@@ -37,6 +39,7 @@ mod dependencies;
 mod files;
 mod herald_actions;
 mod herald_fields;
+mod inlines;
 mod lists;
 mod merge_checks;
 mod monograms;
@@ -276,25 +279,50 @@ struct Wanted {
     projects: Option<lists::Wanted>,
     /// Parent or child revisions added, removed or set, with the edge type.
     stack: Option<(i64, lists::Wanted)>,
+    /// The `inline` transactions.
+    inlines: Vec<inlines::Wanted>,
+    /// How many inline comments come before the comment, for the order of
+    /// their texts.
+    comment_position: usize,
+    /// The comment form's empty comment, which it only sends when nothing
+    /// else is published.
+    empty_comment: bool,
+    /// The texts of the inline comments the edit publishes, once planned.
+    inline_texts: Vec<String>,
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
-/// review, or both. `is_new` when they create a revision.
-fn wanted(request: &ApiRequest<'_>, is_new: bool) -> Result<Wanted, MethodError> {
+/// review, or both. `is_new` when they create a revision; `drafts` when
+/// the edit publishes the actor's draft inline comments, which make an
+/// empty comment unnecessary.
+fn wanted(request: &ApiRequest<'_>, is_new: bool, drafts: bool) -> Result<Wanted, MethodError> {
     let Some(Value::Array(transactions)) = request.value("transactions") else {
         return Err(MethodError::Unsupported("unusual transaction lists"));
     };
+    if is_new && drafts {
+        return Err(MethodError::Unsupported("creations not ported"));
+    }
     let mut wanted = Wanted::default();
     for transaction in transactions {
         match (
             transaction.get("type").and_then(Value::as_str),
             transaction.get("value"),
         ) {
-            (Some("comment"), Some(Value::String(text))) if wanted.comment.is_none() => {
+            (Some("comment"), Some(Value::String(text)))
+                if wanted.comment.is_none() && !wanted.empty_comment =>
+            {
+                if drafts && text.is_empty() {
+                    wanted.empty_comment = true;
+                    continue;
+                }
                 if is_empty_comment(text) {
                     return Err(MethodError::Unsupported("empty comments"));
                 }
                 wanted.comment = Some(text.clone());
+                wanted.comment_position = wanted.inlines.len();
+            }
+            (Some("inline"), Some(value)) if !drafts => {
+                wanted.inlines.push(inlines::parse(value)?);
             }
             // Reviewing as the defaults; a list of reviewers is left to PHP.
             (Some(kind @ ("accept" | "reject" | "resign")), Some(Value::Bool(true)))
@@ -377,7 +405,8 @@ fn check_creation(wanted: &Wanted) -> Result<(), MethodError> {
                 | Action::Projects
         )
     };
-    if wanted.comment.is_some() || !wanted.order.iter().all(ported) {
+    // Inline comments "can not be added while creating a revision".
+    if wanted.comment.is_some() || !wanted.inlines.is_empty() || !wanted.order.iter().all(ported) {
         return Err(MethodError::Unsupported("creations not ported"));
     }
     Ok(())
@@ -745,9 +774,10 @@ async fn plan_subscription(
 ) -> Result<Option<Subscription>, MethodError> {
     let context = request.context;
     let database = &context.database;
-    // shouldImplyCC(): only comments subscribe their author.
-    let implicit =
-        wanted.comment.is_some() && implies_subscription(database, revision, facts, actor).await?;
+    // shouldImplyCC(): only comments, inline ones too, subscribe their
+    // author.
+    let commented = wanted.comment.is_some() || !wanted.inline_texts.is_empty();
+    let implicit = commented && implies_subscription(database, revision, facts, actor).await?;
     // Only new mentions count: text a field had mentioned no one anew.
     let mut mentioned: Vec<(String, bool, bool, bool)> = Vec::new();
     for text in new_texts(wanted) {
@@ -1261,6 +1291,8 @@ struct Plan {
     actions: Actions,
     /// The comment: its text, transaction and comment PHIDs.
     comment: Option<(String, String, String)>,
+    /// The inline comments, after the comment.
+    inlines: inlines::Inlines,
     /// The `differential.revision.status` transaction `updateReviewStatus()`
     /// adds, with the old status.
     status: Option<(String, String)>,
@@ -1848,13 +1880,17 @@ async fn plan_title(
     Ok(std::mem::replace(&mut revision.title, title))
 }
 
-/// The new remarkup texts of an edit: the fields', then the comment.
+/// The new remarkup texts of an edit: the fields', then the comment and
+/// the inline comments, in the order of their transactions.
 fn new_texts(wanted: &Wanted) -> Vec<&str> {
+    let (before, after) = wanted.inline_texts.split_at(wanted.comment_position);
     wanted
         .texts
         .iter()
         .map(|(_, text)| text.as_str())
+        .chain(before.iter().map(String::as_str))
         .chain(wanted.comment.as_deref())
+        .chain(after.iter().map(String::as_str))
         .collect()
 }
 
@@ -2332,13 +2368,13 @@ async fn plan_merge_checks(
 
 /// Every transaction of the edit, in the order PHP applies them: the
 /// `core:create` of a new revision, the subscription (`array_unshift()`),
-/// the actions, the links and files, the comment (`sortTransactions()`),
-/// then the status (`applyFinalEffects()`). A subscription of mentions
-/// alone comes after the actions instead.
+/// the actions, the links and files, the comment then the inline comments
+/// (`sortTransactions()`), then the status (`applyFinalEffects()`). A
+/// subscription of mentions alone comes after the actions instead.
 fn applied_order(
     (create, subscription, actions): (Option<&String>, Option<&Subscription>, &Actions),
     (links, file_edit): (&[Link], Option<&files::Planned>),
-    (comment, status): (Option<&String>, Option<&String>),
+    (comment, inlines, status): (Option<&String>, Vec<String>, Option<&String>),
 ) -> Vec<String> {
     let (first, late) = match subscription {
         Some(subscription) if subscription.first => (Some(subscription.phid.clone()), None),
@@ -2354,6 +2390,7 @@ fn applied_order(
         .chain(links.iter().map(|link| link.phid.clone()))
         .chain(file_edit.map(|edit| edit.phid.clone()))
         .chain(comment.cloned())
+        .chain(inlines)
         .chain(status.cloned())
         .collect()
 }
@@ -2385,14 +2422,15 @@ async fn load_target(
 async fn plan(
     request: &ApiRequest<'_>,
     finder: Option<FileFinder>,
-    source: Source,
+    (source, drafts): (Source, bool),
 ) -> Result<Plan, MethodError> {
     let is_new = is_creation(request)?;
-    let wanted = wanted(request, is_new)?;
+    let mut wanted = wanted(request, is_new, drafts)?;
     let actor = actor_phid(request)?;
     let database = &request.context.database;
     let (mut revision, mut facts, old_texts) =
         load_target(request, &wanted, is_new, &actor).await?;
+    let inlines = plan_inlines(request, &mut wanted, &revision, drafts, &actor).await?;
     let mut subscription = plan_subscription(
         request,
         &revision,
@@ -2454,6 +2492,7 @@ async fn plan(
         (&links, file_edit.as_ref()),
         (
             comment.as_ref().map(|(_, phid, _)| phid),
+            inlines.phids(),
             status.as_ref().map(|(phid, _)| phid),
         ),
     );
@@ -2473,6 +2512,7 @@ async fn plan(
         file_edit,
         merge_checks,
         comment,
+        inlines,
         status,
         applied_phids,
         rules: published.rules,
@@ -2483,6 +2523,35 @@ async fn plan(
         herald_remembered: published.herald_remembered,
         revision,
     })
+}
+
+/// The inline comments the edit publishes, on the revision before the
+/// edit (an update doesn't move them): those of its `inline` transactions,
+/// or the actor's drafts. Their texts join the edit's.
+async fn plan_inlines(
+    request: &ApiRequest<'_>,
+    wanted: &mut Wanted,
+    revision: &Revision,
+    drafts: bool,
+    actor: &str,
+) -> Result<inlines::Inlines, MethodError> {
+    let planned = if drafts {
+        let planned = inlines::drafts(request, revision, actor).await?;
+        // newAutomaticCommentTransactions() come before the comment.
+        wanted.comment_position = planned.planned.len();
+        planned
+    } else {
+        inlines::plan(request, revision, &wanted.inlines, actor).await?
+    };
+    if wanted.empty_comment && planned.planned.is_empty() {
+        return Err(MethodError::Unsupported("empty comments"));
+    }
+    // getLegacyRequiredCapabilities(): CAN_EDIT, or a policy exception.
+    if !planned.planned.is_empty() && !can_edit(request, revision).await? {
+        return Err(MethodError::Unsupported("edits the actor may not make"));
+    }
+    wanted.inline_texts = planned.texts();
+    Ok(planned)
 }
 
 /// Inserts a transaction without a comment on the edited revision.
@@ -2645,17 +2714,7 @@ async fn write(request: &ApiRequest<'_>, plan: &mut Plan) -> Result<(), MethodEr
     if let Some(edit) = &plan.file_edit {
         files::write(request, plan, edit, connection).await?;
     }
-    if let Some((text, phid, comment_phid)) = &plan.comment {
-        let metadata = group_metadata(plan, plan.source.comment_metadata());
-        write_comment(
-            request,
-            plan,
-            (text, phid, comment_phid),
-            &metadata,
-            connection,
-        )
-        .await?;
-    }
+    write_comments(request, plan, &metadata, connection).await?;
     for (link, _) in &plan.links {
         write_link(request, plan, link, connection).await?;
     }
@@ -3053,7 +3112,35 @@ async fn queue_publishing(
     Ok(())
 }
 
-/// The comment, its transaction, and `markReviewerComments()`.
+/// The comment, then the inline comments (with the group's `metadata`),
+/// and `markReviewerComments()`.
+async fn write_comments(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    metadata: &str,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    if let Some((text, phid, comment_phid)) = &plan.comment {
+        let metadata = group_metadata(plan, plan.source.comment_metadata());
+        write_comment(
+            request,
+            plan,
+            (text, phid, comment_phid),
+            &metadata,
+            connection,
+        )
+        .await?;
+    }
+    if !plan.inlines.planned.is_empty() {
+        inlines::write(request, plan, metadata, connection).await?;
+    }
+    if plan.comment.is_some() || !plan.inlines.planned.is_empty() {
+        mark_reviewer_comments(request, plan, connection).await?;
+    }
+    Ok(())
+}
+
+/// The comment and its transaction.
 async fn write_comment(
     request: &ApiRequest<'_>,
     plan: &Plan,
@@ -3100,6 +3187,17 @@ async fn write_comment(
     .bind(now)
     .execute(&mut *connection)
     .await?;
+    Ok(())
+}
+
+/// `markReviewerComments()`: the actor commented on the active diff.
+async fn mark_reviewer_comments(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let revision = &plan.revision;
     if let Some(diff) = &revision.active_diff_phid {
         phab_db::sqlx::query(&format!(
             "UPDATE {} SET lastCommentDiffPHID = ? WHERE revisionPHID = ? AND reviewerPHID = ?",
@@ -3297,16 +3395,34 @@ pub async fn apply(
     files: Option<FileFinder>,
     source: Source,
 ) -> Result<Value, MethodError> {
-    let mut plan = plan(request, files, source).await?;
+    let mut plan = plan(request, files, (source, false)).await?;
     write(request, &mut plan).await?;
-    Ok(json!({
+    Ok(result(&plan))
+}
+
+/// [`apply()`] for the comment form, which also publishes the actor's
+/// draft inline comments (`newAutomaticCommentTransactions()`): an empty
+/// comment is only kept when there is none.
+pub async fn apply_with_drafts(
+    request: &ApiRequest<'_>,
+    files: Option<FileFinder>,
+    source: Source,
+) -> Result<Value, MethodError> {
+    let mut plan = plan(request, files, (source, true)).await?;
+    write(request, &mut plan).await?;
+    Ok(result(&plan))
+}
+
+/// The method's result: the revision and every transaction.
+fn result(plan: &Plan) -> Value {
+    json!({
         "object": {"id": plan.revision.id, "phid": plan.revision.phid.as_str()},
         "transactions": plan
             .applied_phids
             .iter()
             .map(|phid| json!({"phid": phid}))
             .collect::<Vec<_>>(),
-    }))
+    })
 }
 
 /// `differential.revision.edit`. Without a [`FileFinder`], references to

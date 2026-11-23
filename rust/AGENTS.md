@@ -123,10 +123,13 @@ pages write preferences themselves, as PHP's editor does: they answer 421
 only before writing, so the replay writes once. So do PHP's comment form of
 revisions (`/differential/revision/edit/N/comment/`) and the subscribe
 action (`/subscriptions/add|delete/PHID-DREV-.../`), through the Rust
-editor with a web content source (`crates/phab-web/src/web_edit.rs`); the
-revision page's own form (`/DN/action`) is that comment form, which it
-posts to PHP as the user when Rust doesn't write it, and its inline
-comments go to PHP's Conduit API. `rust/scripts/web-write-parity.py`
+editor with a web content source (`crates/phab-web/src/web_edit.rs`),
+which also publishes the viewer's draft inline comments; the revision
+page's own form (`/DN/action`) is that comment form, which it posts to
+PHP as the user when Rust doesn't write it, and with inline comments a
+`differential.revision.edit` call, which the Rust editor makes (with a
+Conduit content source, as PHP's would) or else PHP's Conduit API as the
+user. `rust/scripts/web-write-parity.py`
 compares these writes with PHP's on the dev stack, with the scenarios of
 `parity/web-writes/`:
 

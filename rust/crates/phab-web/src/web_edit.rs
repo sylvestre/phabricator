@@ -7,16 +7,20 @@
 //! PHP's fields generate for it.
 //!
 //! What the comment form adds to the editor: the comment's
-//! `remarkup.control` metadata (the posted `comment_metadata`), and once
-//! the edit is saved, the deletion of the viewer's versioned draft of the
-//! comment (`PhabricatorVersionedDraft::purgeDrafts()`) and of the "has
-//! draft" edge (`PhabricatorDraftEngine::synchronize()`).
+//! `remarkup.control` metadata (the posted `comment_metadata`), the
+//! viewer's draft inline comments, which the edit publishes
+//! ([`edit::apply_with_drafts()`]), and once the edit is saved, the
+//! deletion of the viewer's versioned draft of the comment
+//! (`PhabricatorVersionedDraft::purgeDrafts()`) and of the "has draft"
+//! edge (`PhabricatorDraftEngine::synchronize()`, which finds no draft
+//! left: the edit published the others).
 //!
 //! Left to PHP (`421`, before writing): workflow (Ajax) requests, previews
 //! and "continue" requests, hisec posts, invalid CSRF tokens, drafts
 //! (whose subscribers raise warnings), revisions with configured edit
-//! forms, viewers with unpublished inline comments or "done" states to
-//! publish (PHP publishes them with the comment), comment actions other
+//! forms, inline comments marked "done" in a draft (PHP publishes the
+//! states with the comment), drafts the editor leaves to PHP (being
+//! edited, replying to unpublished comments), comment actions other
 //! than the review and author actions and the reviewer, subscriber and tag
 //! changes, reviewer or tag changes which both add and remove, files
 //! attached by drag and drop, and every edit the editor leaves to PHP
@@ -290,22 +294,31 @@ fn context<S: WebState>(state: &S) -> Context {
     }
 }
 
-/// Runs the editor on revision `id` with `transactions`; what it leaves to
+/// Runs the editor on revision `id` with `transactions`, publishing the
+/// viewer's draft inline comments too with `drafts`; what it leaves to
 /// PHP is a fallback, as nothing is written yet.
-async fn apply<S: WebState>(
+pub(crate) async fn apply<S: WebState>(
     state: &S,
     viewer: &WebUser,
-    id: i64,
-    transactions: Vec<Value>,
+    (id, transactions): (i64, Vec<Value>),
     source: Source,
+    drafts: bool,
 ) -> Result<(), PageError> {
+    if state.config().is_read_only() {
+        return Err(PageError::Fallback("writes on a read-only install"));
+    }
     let context = context(state);
     let mut params = Map::new();
     params.insert("objectIdentifier".to_owned(), json!(id));
     params.insert("transactions".to_owned(), Value::Array(transactions));
     let request = request(state, &context, viewer, params);
     let files: edit::FileFinder = phab_app_files::search::embedded_files;
-    match edit::apply(&request, Some(files), source).await {
+    let applied = if drafts {
+        edit::apply_with_drafts(&request, Some(files), source).await
+    } else {
+        edit::apply(&request, Some(files), source).await
+    };
+    match applied {
         Ok(_) => Ok(()),
         Err(MethodError::Unsupported(reason)) => Err(PageError::Fallback(reason)),
         // PHP explains its refusals in a dialog.
@@ -334,35 +347,6 @@ async fn load_revision<S: WebState>(
     .map_err(|error| PageError::Internal(Box::new(error)))?
     .pop()
     .ok_or(PageError::Fallback("revisions the viewer can't see"))
-}
-
-/// Whether the viewer has inline comments `newAutomaticCommentTransactions()`
-/// would publish: unpublished ones, or "done" states to publish on the
-/// inlines of their own revision (`newInlineStateTransaction()`).
-async fn has_inline_drafts<S: WebState>(
-    state: &S,
-    revision: &Revision,
-    actor: &str,
-) -> Result<bool, PageError> {
-    let database = state.database();
-    let is_author = revision
-        .author_phid
-        .as_ref()
-        .is_some_and(|author| author.as_str() == actor);
-    let sql = format!(
-        "SELECT 1 FROM {} WHERE revisionPHID = ? AND ((authorPHID = ? AND isDeleted = 0 AND \
-         transactionPHID IS NULL) OR (? AND transactionPHID IS NOT NULL AND fixedState IN \
-         ('draft', 'undraft'))) LIMIT 1",
-        database.table("differential", "differential_transaction_comment")
-    );
-    Ok(phab_db::sqlx::query(&sql)
-        .bind(revision.phid.as_str())
-        .bind(actor)
-        .bind(is_author)
-        .fetch_optional(database.pool())
-        .await
-        .map_err(phab_db::DbError::from)?
-        .is_some())
 }
 
 /// Whether the form PHP edits revisions with changes their fields: the
@@ -503,9 +487,6 @@ pub(crate) async fn comment<S: WebState>(
         return Err(PageError::Fallback("configured revision forms"));
     }
     let actor = viewer.user.phid.as_str();
-    if has_inline_drafts(state, &revision, actor).await? {
-        return Err(PageError::Fallback("inline comments to publish"));
-    }
     let (transactions, needs_edit) = transactions(&form).map_err(PageError::Fallback)?;
     if needs_edit {
         let can_edit = storage::can_edit(
@@ -525,7 +506,7 @@ pub(crate) async fn comment<S: WebState>(
     let source = Source::Web {
         remarkup_control: form.metadata,
     };
-    apply(state, viewer, id, transactions, source).await?;
+    apply(state, viewer, (id, transactions), source, true).await?;
     purge_drafts(state, &revision, actor).await
 }
 
@@ -637,7 +618,8 @@ pub(crate) async fn subscription<S: WebState>(
     let source = Source::Web {
         remarkup_control: Value::Null,
     };
-    apply(state.as_ref(), &viewer, revision.id, transactions, source).await?;
+    let edit = (revision.id, transactions);
+    apply(state.as_ref(), &viewer, edit, source, false).await?;
     // AphrontReloadResponse, to the handle's URI.
     Ok(back(state.as_ref(), request, revision.id))
 }

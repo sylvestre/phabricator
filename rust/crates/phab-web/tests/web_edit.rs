@@ -356,21 +356,77 @@ async fn what_rust_does_not_write_goes_to_php() {
     let response = comment(&test_db, accept_for, &[]).await;
     assert_eq!(fallback_reason(&response), "actions with options");
 
-    // An unpublished inline comment of Bob's is published with the comment.
+    // PHP asks whether to publish an inline comment Bob is editing.
+    insert_inline_draft(&test_db, r#"{"editing":true}"#).await;
+    let response = comment(&test_db, accept, &[]).await;
+    assert_eq!(fallback_reason(&response), "inline comments being edited");
+    assert_eq!(transactions(&test_db).await, Vec::<String>::new());
+}
+
+/// An unpublished inline comment of Bob's on D1, with `attributes`.
+async fn insert_inline_draft(test_db: &TestDatabase, attributes: &str) {
     test_db
-        .execute(
-            "INSERT INTO `{ns}_differential`.differential_transaction_comment (phid, \
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_differential`.differential_transaction_comment (phid, \
                transactionPHID, authorPHID, viewPolicy, editPolicy, commentVersion, content, \
                contentSource, isDeleted, dateCreated, dateModified, revisionPHID, changesetID, \
                isNewFile, lineNumber, lineLength, fixedState, hasReplies, replyToCommentPHID, \
                attributes) \
              VALUES ('PHID-XCMT-1', NULL, 'PHID-USER-bob', 'public', 'PHID-USER-bob', 1, 'Hm', \
-               '{}', 0, 1, 1, 'PHID-DREV-1', 1, 1, 1, 1, NULL, 0, NULL, '[]')",
-        )
+               '{{}}', 0, 1, 1, 'PHID-DREV-1', 1, 1, 1, 1, NULL, 0, NULL, '{attributes}')"
+        ))
         .await;
-    let response = comment(&test_db, accept, &[]).await;
-    assert_eq!(fallback_reason(&response), "inline comments to publish");
-    assert_eq!(transactions(&test_db).await, Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn the_comment_form_publishes_inline_drafts() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    insert_inline_draft(&test_db, "[]").await;
+    // Without text, the form publishes the drafts alone.
+    let token = csrf_token(&test_db, "PHID-USER-bob", "bob-token").await;
+    let pairs = [
+        ("__form__", "1"),
+        ("__csrf__", token.as_str()),
+        ("editengine.actions", "[]"),
+        ("comment", ""),
+        ("comment_metadata", "{}"),
+    ];
+    let response = post(
+        &test_db,
+        "/differential/revision/edit/1/comment/",
+        BOB,
+        &pairs,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(
+        transactions(&test_db).await,
+        vec![format!(
+            r#"differential:inline {WEB_SOURCE} {{"core.groupID":"G"}}"#
+        )]
+    );
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', transactionPHID IS NOT NULL, contentSource, attributes) AS \
+             line FROM `{ns}_differential`.differential_transaction_comment"
+        )
+        .await,
+        vec![format!(
+            r#"1 {WEB_SOURCE} {{"inline.state":{{"text":"Hm","hasSuggestion":false,"suggestionText":""}},"editing":false}}"#
+        )]
+    );
+    // No draft is left: the "has draft" edge goes.
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT dst AS line FROM `{ns}_differential`.edge WHERE type = 64"
+        )
+        .await,
+        vec!["PHID-USER-alice"]
+    );
 }
 
 #[tokio::test]

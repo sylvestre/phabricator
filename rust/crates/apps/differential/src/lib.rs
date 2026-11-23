@@ -6,6 +6,7 @@ pub mod changeset_search;
 pub mod commit;
 pub mod commit_message;
 pub mod create_diff;
+pub mod create_inline;
 pub mod create_raw_diff;
 pub mod details;
 pub(crate) mod diff_editor;
@@ -57,4 +58,5 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(legacy_edit::CreateRevision::default());
     registry.register(legacy_edit::UpdateRevision::default());
     registry.register(legacy_edit::Close::default());
+    registry.register(create_inline::CreateInline);
 }

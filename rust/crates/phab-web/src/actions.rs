@@ -1,8 +1,9 @@
 //! Review actions on a revision (W6): comment, accept, request changes and
 //! the others, add or remove reviewers and subscribers. They are a post of
 //! PHP's comment form ([`web_edit`]), written by Rust when it can and sent
-//! to PHP as the user otherwise; with inline comments, a call to PHP's
-//! `differential.revision.edit` as the user.
+//! to PHP as the user otherwise; with inline comments, a
+//! `differential.revision.edit` call, which Rust's editor makes when it
+//! can and PHP's Conduit API as the user otherwise.
 
 use std::sync::Arc;
 
@@ -11,6 +12,7 @@ use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use phab_app_differential::edit::Source;
 use phab_app_differential::storage;
 use phab_app_project as project;
 use phab_core::Phid;
@@ -473,9 +475,10 @@ async fn post_to_php<S: WebState>(
     Ok(response)
 }
 
-/// `POST /D{id}/action`. Inline comments written on the page are sent to
-/// PHP's `differential.revision.edit` with the rest, as PHP's web
-/// interface has no form for them. The other changes are a post of PHP's
+/// `POST /D{id}/action`. Inline comments written on the page are a
+/// `differential.revision.edit` call with the rest, as PHP's web
+/// interface has no form for them: Rust's editor makes it when it can,
+/// PHP's Conduit API otherwise. The other changes are a post of PHP's
 /// comment form, which Rust writes when it can, and PHP otherwise.
 pub(crate) async fn submit<S: WebState>(
     State(state): State<Arc<S>>,
@@ -511,6 +514,16 @@ pub(crate) async fn submit<S: WebState>(
             }
             Err(error) => Err(error),
         };
+    }
+    // The call PHP's Conduit API would answer, with its content source.
+    let edit = (id, transactions.clone());
+    match web_edit::apply(state.as_ref(), &viewer, edit, Source::Conduit, false).await {
+        // phab.js forgets the inline comments it kept once they are published.
+        Ok(()) => return Ok(see_other(&format!("/D{id}#inlines-published"))),
+        Err(PageError::Fallback(reason)) => {
+            tracing::info!(reason, "inline comments left to PHP");
+        }
+        Err(error) => return Err(error),
     }
     let php = state
         .php()
