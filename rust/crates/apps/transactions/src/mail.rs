@@ -915,7 +915,8 @@ async fn message(
     })
 }
 
-/// `buildRecipientList()` of a built mail: its deliverable actors.
+/// `buildRecipientList()` of a built mail: the actors any mail reaches
+/// (`filterDeliverableByAnyMailActors()`).
 async fn mailed(cx: &Context<'_>, parameters: &Map<String, Value>) -> Result<Vec<String>, Error> {
     let mail = phab_app_metamta::mail::Mail {
         id: 0,
@@ -931,7 +932,7 @@ async fn mailed(cx: &Context<'_>, parameters: &Map<String, Value>) -> Result<Vec
     Ok(recipients
         .actors
         .values()
-        .filter(|actor| actor.is_deliverable())
+        .filter(|actor| actor.is_deliverable_by_any_mail())
         .map(|actor| actor.phid.clone())
         .collect())
 }

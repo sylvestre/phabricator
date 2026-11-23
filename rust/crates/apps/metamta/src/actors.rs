@@ -114,6 +114,11 @@ impl Actor {
     pub fn is_deliverable(&self) -> bool {
         self.status == Status::Deliverable
     }
+
+    /// `isDeliverableByAnyMail()`: delivered by this mail or by Mozilla's.
+    pub fn is_deliverable_by_any_mail(&self) -> bool {
+        self.status != Status::Undeliverable
+    }
 }
 
 /// A preferences object as `PhabricatorUserPreferences::getSettingValue()`
