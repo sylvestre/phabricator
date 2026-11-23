@@ -246,6 +246,12 @@ or slow for the `metamta.diffusion.*` limits, Mercurial and Subversion,
 repositories served by a cluster and working copies this host doesn't
 have.
 
+`DiffusionUpdateObjectAfterCommitWorker` fails the tasks PHP fails for
+good (no commit or object PHID, a commit or a revision which doesn't
+load); closing the revision is left to PHP, as it needs the commit's
+diff (`newDiffFromCommit()`, `diffusion.rawdiffquery`), and so are
+objects other than revisions.
+
 `phab-worker repository discover|refs|update <repository>` is
 `bin/repository`'s workflow for one Git repository (what
 `PhabricatorRepositoryPullLocalDaemon` runs): it takes PHP's repository
@@ -263,7 +269,8 @@ as JSON and exits (3 when the task was left to PHP).
 tasks; `--search N` indexes the newest revisions, users and projects, as
 queued, forced and from scratch; `--harbormaster` sends messages to builds
 1 and 2 and buildables B1 and B2 and runs their build and target workers;
-`--repository 3` runs the import pipeline of R3).
+`--update-after-commit` queues `DiffusionUpdateObjectAfterCommitWorker`
+tasks; `--repository 3` runs the import pipeline of R3).
 
 ## Checking a deployment
 

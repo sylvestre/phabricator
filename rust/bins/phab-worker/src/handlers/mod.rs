@@ -9,6 +9,7 @@ pub mod publish;
 pub mod repository;
 pub mod search;
 pub mod test_worker;
+pub mod update_after_commit;
 
 /// Every ported class.
 pub fn registry() -> Registry {
@@ -23,5 +24,6 @@ pub fn registry() -> Registry {
     registry.register(repository::PublishWorker::from_env());
     registry.register(search::SearchWorker);
     registry.register(test_worker::TestWorker);
+    registry.register(update_after_commit::UpdateObjectAfterCommitWorker);
     registry
 }

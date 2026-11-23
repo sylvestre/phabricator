@@ -4,6 +4,7 @@ the development stack.
 
     rust/scripts/worker-parity.py [--sides php,rust] [--show] [--feed N]
         [--metamta N] [--publish N] [--search N] [--harbormaster]
+        [--update-after-commit]
         [--rust-worker CMD] [--repository ID [--repository-path PATH]
         [--repository-origin PATH] [--rust-repository CMD]]
         [scenarios.json]...
@@ -52,6 +53,11 @@ stores it), then the build worker of the build, as `sendmessage` queues it
   silenced call and fails), and of a target of an older generation
   (aborted);
 - the build and target workers of IDs which do not exist.
+
+`--update-after-commit` adds `DiffusionUpdateObjectAfterCommitWorker`
+scenarios: tasks without a commit or an object, or whose commit or
+revision doesn't exist (PHP fails them for good), and the closing of D1 by
+the newest commit (left to PHP).
 
 `--repository ID` (3 for R3, rFAB, on the dev stack) adds the import
 pipeline of that Git repository, whose working copy (`--repository-path`,
@@ -779,6 +785,29 @@ def harbormaster_scenarios():
     return scenarios
 
 
+def update_after_commit_scenarios():
+    """`DiffusionUpdateObjectAfterCommitWorker` tasks: those PHP fails for
+    good, and the closing of D1 by the newest commit, left to PHP."""
+    commit = query("SELECT phid FROM phabricator_repository.repository_commit "
+                   "ORDER BY id DESC LIMIT 1")[0][0]
+    revision = query("SELECT phid FROM "
+                     "phabricator_differential.differential_revision "
+                     "WHERE id = 1")[0][0]
+    worker = "DiffusionUpdateObjectAfterCommitWorker"
+    cases = (
+        ("without a commit", {}),
+        ("of a commit which does not exist",
+         {"commitPHID": "PHID-CMIT-doesnotexist00000"}),
+        ("without an object", {"commitPHID": commit, "objectPHID": ""}),
+        ("of a revision which does not exist",
+         {"commitPHID": commit, "objectPHID": "PHID-DREV-doesnotexist00000"}),
+        ("closing D1", {"commitPHID": commit, "objectPHID": revision,
+                        "properties": {"revisionMatchData": None}}),
+    )
+    return [{"name": f"update after commit {name}", "class": worker,
+             "data": data} for name, data in cases]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sides", default="php,rust")
@@ -797,6 +826,9 @@ def main():
     parser.add_argument("--harbormaster", action="store_true",
                         help="add the Harbormaster scenarios on builds 1 "
                         "and 2 and buildables B1 and B2")
+    parser.add_argument("--update-after-commit", action="store_true",
+                        help="add DiffusionUpdateObjectAfterCommitWorker "
+                        "scenarios on D1 and the newest commit")
     parser.add_argument("--rust-worker", default=RUST_WORKER,
                         help="command running one task, {id} its ID")
     parser.add_argument("--repository", default=None,
@@ -827,12 +859,15 @@ def main():
         scenarios.extend(search_scenarios(args.search))
     if args.harbormaster:
         scenarios.extend(harbormaster_scenarios())
+    if args.update_after_commit:
+        scenarios.extend(update_after_commit_scenarios())
     if args.repository:
         scenarios.extend(repository_scenarios(
             args.repository, args.repository_path, args.repository_origin))
     if not scenarios:
         parser.error("no scenarios: give files, --feed, --metamta, --publish, "
-                     "--search, --harbormaster or --repository")
+                     "--search, --harbormaster, --update-after-commit or "
+                     "--repository")
 
     names = {table: columns(table) for table in (
         "phabricator_worker.worker_activetask",
