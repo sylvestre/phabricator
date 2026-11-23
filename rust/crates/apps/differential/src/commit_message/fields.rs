@@ -11,7 +11,7 @@ pub(super) const DEFAULT_TITLE: &str = "<<Replace this line with your revision t
 
 /// A commit message field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Field {
+pub(crate) enum Field {
     Title,
     Summary,
     TestPlan,
@@ -30,7 +30,7 @@ pub(super) enum Field {
 
 /// What the value of a field is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Kind {
+pub(crate) enum Kind {
     /// A string or null (`readStringFieldValueFromConduit()`).
     Text,
     /// A list of PHIDs (`readStringListFieldValueFromConduit()`).
@@ -83,7 +83,7 @@ const DEFAULT_SPEC: [&str; 3] = [
 
 impl Field {
     /// `getCommitMessageFieldKey()`.
-    pub(super) fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             Self::Title => "title",
             Self::Summary => "summary",
@@ -137,7 +137,7 @@ impl Field {
     }
 
     /// `isFieldEditable()`.
-    pub(super) fn is_editable(self) -> bool {
+    pub(crate) fn is_editable(self) -> bool {
         !matches!(self, Self::ReviewedBy | Self::Conflicts | Self::GitSvnId)
     }
 
@@ -154,7 +154,7 @@ impl Field {
         )
     }
 
-    pub(super) fn kind(self) -> Kind {
+    pub(crate) fn kind(self) -> Kind {
         match self {
             Self::Reviewers
             | Self::ReviewedBy
@@ -245,7 +245,7 @@ fn enabled_custom_fields(config: &Config) -> Result<Vec<&'static str>, MethodErr
 /// `DifferentialCommitMessageField::newEnabledFields()`, sorted by
 /// `getFieldOrder()`: custom fields come after the tags, in the order of
 /// the custom field list.
-pub(super) fn enabled_fields(config: &Config) -> Result<Vec<Field>, MethodError> {
+pub(crate) fn enabled_fields(config: &Config) -> Result<Vec<Field>, MethodError> {
     let custom = enabled_custom_fields(config)?;
     let mut fields: Vec<(i64, Field)> = ALL
         .into_iter()

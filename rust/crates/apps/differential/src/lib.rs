@@ -15,6 +15,7 @@ pub mod edit;
 pub mod feed;
 pub mod get_commit_paths;
 pub mod get_raw_diff;
+pub mod legacy_edit;
 pub mod legacy_query;
 pub mod markup;
 pub mod merge_conflict;
@@ -52,4 +53,8 @@ pub fn register(registry: &mut phab_conduit::Registry) {
     registry.register(create_diff::CreateDiff);
     registry.register(create_raw_diff::CreateRawDiff);
     registry.register(set_diff_property::SetDiffProperty);
+    registry.register(legacy_edit::CreateComment::default());
+    registry.register(legacy_edit::CreateRevision::default());
+    registry.register(legacy_edit::UpdateRevision::default());
+    registry.register(legacy_edit::Close::default());
 }

@@ -51,6 +51,11 @@ pub fn register_with(registry: &mut phab_conduit::Registry, mime: Option<mime::M
     registry.register(phab_app_differential::edit::RevisionEdit::with_files(
         search::embedded_files,
     ));
+    let files = search::embedded_files;
+    registry.register(phab_app_differential::legacy_edit::CreateComment::with_files(files));
+    registry.register(phab_app_differential::legacy_edit::CreateRevision::with_files(files));
+    registry.register(phab_app_differential::legacy_edit::UpdateRevision::with_files(files));
+    registry.register(phab_app_differential::legacy_edit::Close::with_files(files));
 }
 
 /// `PhabricatorFileAttachment::MODE_ATTACH`.

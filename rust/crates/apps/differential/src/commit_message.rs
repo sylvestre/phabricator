@@ -5,5 +5,5 @@
 pub mod get;
 pub mod parse;
 
-mod fields;
+pub(crate) mod fields;
 mod objects;

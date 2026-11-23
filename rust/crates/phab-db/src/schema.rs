@@ -747,8 +747,21 @@ pub const CONTRACT: &[TableContract] = &[
         table: "worker_taskdata",
         columns: &["id", "data"],
     },
+    // The draft inline comments differential.createcomment attaches.
+    TableContract {
+        database: "differential",
+        table: "differential_transaction_comment",
+        columns: &[
+            "id",
+            "revisionPHID",
+            "authorPHID",
+            "transactionPHID",
+            "isDeleted",
+        ],
+    },
     // differential.creatediff, differential.createrawdiff and
-    // differential.setdiffproperty.
+    // differential.setdiffproperty; the description of
+    // differential.updaterevision.
     TableContract {
         database: "differential",
         table: "differential_diff",
