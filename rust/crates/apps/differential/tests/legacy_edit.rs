@@ -418,7 +418,7 @@ async fn closes_through_the_editor() {
         error(close(json!({"revisionID": 99})).await),
         ("ERR_NOT_FOUND".to_owned(), json!("Revision was not found."))
     );
-    // The editor leaves "close" to PHP.
+    // D1 isn't accepted: PHP refuses to close it.
     assert!(matches!(
         close(json!({"revisionID": 1})).await,
         Response::Fallback(_)

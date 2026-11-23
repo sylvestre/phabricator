@@ -529,7 +529,7 @@ fn suggestion_text(value: Option<&Value>) -> Result<String, MethodError> {
 
 /// Whether the actor has a versioned draft of the inline comment `phid`
 /// (`loadAndAttachVersionedDrafts()`).
-async fn has_versioned_draft(
+pub(super) async fn has_versioned_draft(
     request: &ApiRequest<'_>,
     phid: &str,
     actor: &str,

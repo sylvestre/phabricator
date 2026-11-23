@@ -20,7 +20,18 @@
 //! alone or with a comment, a new title, summary, test plan, subscribers
 //! or tags. Inline comments ([`inlines`]): the `inline` transactions, and
 //! the actor's drafts the comment form publishes ([`apply_with_drafts()`]),
-//! with any of these.
+//! with any of these, and the "Done" states marked in a draft which the
+//! first comment, inline comment or update publishes ([`inline_state`]).
+//! "Close Revision" (`close`, which `differential.close` applies too). The
+//! stored custom fields ([`custom_fields`]): Mozilla's Bugzilla bug ID and
+//! uplift request, and the auditors. Transactions without effect are
+//! dropped, as the Conduit editor continues on no effect, so arc's
+//! `differential.updaterevision` (the diff and every field of the message)
+//! is ported when the fields with an effect are.
+//!
+//! The daemons' edits, by the omnipotent viewer acting as an application:
+//! the `harbormaster:buildable` transaction Harbormaster publishes
+//! ([`publish_buildable()`]).
 //!
 //! Without `objectIdentifier`, a new revision (`core:create`): a diff, a
 //! title, a summary and a test plan, reviewers, subscribers and tags,
@@ -30,15 +41,16 @@
 //! the editor (moz-phab requests review): Herald's mail actions are
 //! forbidden on drafts (`setForbiddenAction()`), and their rules don't
 //! match. Mozilla's extensions add no editor effect on creation: their
-//! event listeners only render pages, and the Bugzilla bug ID (which asks
-//! Bugzilla) and uplift fields only act on their own transactions, which
-//! are left to PHP.
+//! event listeners only render pages, and the Bugzilla bug ID and uplift
+//! fields only act on their own transactions.
 
 mod commits;
+mod custom_fields;
 mod dependencies;
 mod files;
 mod herald_actions;
 mod herald_fields;
+mod inline_state;
 mod inlines;
 mod lists;
 mod merge_checks;
@@ -51,10 +63,10 @@ mod tags;
 mod update;
 
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
-use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
+use phab_conduit::{ApiRequest, Context, Method, MethodError, MethodFuture};
 use phab_core::{Phid, PhidType, php, random};
 use phab_db::{Database, edges, rows, worker};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::search::{self, Constraints, Order, Revisions};
 use crate::storage::Revision;
@@ -64,6 +76,9 @@ const CONDUIT_SOURCE: &str = r#"{"source":"conduit","params":[]}"#;
 
 /// The content source of a web request (`PhabricatorWebContentSource`).
 const WEB_SOURCE: &str = r#"{"source":"web","params":[]}"#;
+
+/// The content source of the daemons (`PhabricatorDaemonContentSource`).
+const DAEMON_SOURCE: &str = r#"{"source":"daemon","params":[]}"#;
 
 /// Where an edit comes from (`PhabricatorContentSource`): its transactions
 /// and comments say so, Herald's "Content source" field and the `via` mail
@@ -80,6 +95,9 @@ pub enum Source {
         /// `comment_metadata`, `null` without one.
         remarkup_control: Value,
     },
+    /// A task of the daemons (`PhabricatorDaemonContentSource`), whose
+    /// omnipotent actor acts as an application or a user.
+    Daemon,
 }
 
 impl Source {
@@ -88,6 +106,7 @@ impl Source {
         match self {
             Self::Conduit => CONDUIT_SOURCE,
             Self::Web { .. } => WEB_SOURCE,
+            Self::Daemon => DAEMON_SOURCE,
         }
     }
 
@@ -96,13 +115,14 @@ impl Source {
         match self {
             Self::Conduit => "conduit",
             Self::Web { .. } => "web",
+            Self::Daemon => "daemon",
         }
     }
 
     /// The metadata the comment transaction starts with.
     fn comment_metadata(&self) -> Value {
         match self {
-            Self::Conduit => json!({}),
+            Self::Conduit | Self::Daemon => json!({}),
             Self::Web { remarkup_control } => json!({"remarkup.control": remarkup_control}),
         }
     }
@@ -113,6 +133,11 @@ const PROJECT_HAS_WATCHER: i64 = 47;
 
 /// `PhabricatorProjectProjectHasObjectEdgeType`.
 const PROJECT_HAS_OBJECT: i64 = 42;
+
+/// A transaction without effect, which the editor drops as it continues on
+/// no effect (`setContinueOnNoEffect()`); an edit of nothing else is left
+/// to PHP, which still saves and publishes the revision.
+const NO_EFFECT: &str = "edits without effect";
 
 /// `DifferentialHeraldStateReasons::REASON_DRAFT`.
 const DRAFT_REASON: &str = "differential.draft";
@@ -252,6 +277,9 @@ enum Action {
     Projects,
     Stack,
     Update,
+    Close,
+    Buildable,
+    Custom(custom_fields::Field),
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -265,6 +293,12 @@ struct Wanted {
     review: Option<Review>,
     /// An action of the author.
     author_action: Option<AuthorAction>,
+    /// "Close Revision".
+    close: bool,
+    /// The buildable whose status Harbormaster publishes, and the status.
+    buildable: Option<(String, Option<String>)>,
+    /// The stored custom fields set.
+    custom_fields: Vec<custom_fields::Wanted>,
     /// A new title.
     title: Option<String>,
     /// The new summary or test plan, or both for a new revision.
@@ -289,6 +323,12 @@ struct Wanted {
     empty_comment: bool,
     /// The texts of the inline comments the edit publishes, once planned.
     inline_texts: Vec<String>,
+    /// How many actions come before the first comment, inline comment or
+    /// diff update (that one included), which the inline state follows.
+    state_trigger: Option<usize>,
+    /// Whether transactions without effect are dropped
+    /// (`setContinueOnNoEffect()`), once planned.
+    continues: bool,
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
@@ -320,9 +360,11 @@ fn wanted(request: &ApiRequest<'_>, is_new: bool, drafts: bool) -> Result<Wanted
                 }
                 wanted.comment = Some(text.clone());
                 wanted.comment_position = wanted.inlines.len();
+                wanted.state_trigger.get_or_insert(wanted.order.len());
             }
             (Some("inline"), Some(value)) if !drafts => {
                 wanted.inlines.push(inlines::parse(value)?);
+                wanted.state_trigger.get_or_insert(wanted.order.len());
             }
             // Reviewing as the defaults; a list of reviewers is left to PHP.
             (Some(kind @ ("accept" | "reject" | "resign")), Some(Value::Bool(true)))
@@ -347,6 +389,10 @@ fn wanted(request: &ApiRequest<'_>, is_new: bool, drafts: bool) -> Result<Wanted
                 });
                 wanted.order.push(Action::Author);
             }
+            (Some("close"), Some(Value::Bool(true))) if !wanted.close => {
+                wanted.close = true;
+                wanted.order.push(Action::Close);
+            }
             (Some("title"), Some(Value::String(title))) if wanted.title.is_none() => {
                 wanted.title = Some(title.clone());
                 wanted.order.push(Action::Title);
@@ -357,10 +403,8 @@ fn wanted(request: &ApiRequest<'_>, is_new: bool, drafts: bool) -> Result<Wanted
                 } else {
                     TextField::TestPlan
                 };
-                // One of each for a new revision, one for the others.
-                if wanted.texts.iter().any(|(known, _)| *known == field)
-                    || (!is_new && !wanted.texts.is_empty())
-                {
+                // One of each; an existing revision gets one with effect.
+                if wanted.texts.iter().any(|(known, _)| *known == field) {
                     return Err(MethodError::Unsupported("transactions not ported"));
                 }
                 wanted.texts.push((field, text.clone()));
@@ -369,15 +413,18 @@ fn wanted(request: &ApiRequest<'_>, is_new: bool, drafts: bool) -> Result<Wanted
             (Some("update"), Some(value)) if wanted.update.is_none() => {
                 wanted.update = Some(update::parse(value)?);
                 wanted.order.push(Action::Update);
+                wanted.state_trigger.get_or_insert(wanted.order.len());
             }
-            (Some(kind), Some(value)) if kind.contains('.') => {
-                wanted_list(&mut wanted, kind, value)?;
-            }
+            (Some(kind), Some(value)) => wanted_field(&mut wanted, kind, value)?,
             _ => return Err(MethodError::Unsupported("transactions not ported")),
         }
     }
     if wanted == Wanted::default() {
         return Err(MethodError::Unsupported("empty transaction lists"));
+    }
+    // The comment form's inline state follows its actions.
+    if drafts {
+        wanted.state_trigger = Some(wanted.order.len());
     }
     if is_new {
         check_creation(&wanted)?;
@@ -403,6 +450,7 @@ fn check_creation(wanted: &Wanted) -> Result<(), MethodError> {
                 | Action::Reviewers
                 | Action::Subscribers
                 | Action::Projects
+                | Action::Custom(_)
         )
     };
     // Inline comments "can not be added while creating a revision".
@@ -413,15 +461,22 @@ fn check_creation(wanted: &Wanted) -> Result<(), MethodError> {
 }
 
 /// Several actions, but those whose combination isn't ported: stack edits
-/// (written with the links), "Request Review" (whose void comes later), and
-/// reviews or author actions with a reviewer edit (both change reviewers).
+/// (written with the links), "Request Review" (whose void comes later),
+/// reviews or author actions with a reviewer edit (both change reviewers),
+/// and closing with another action on the review.
 fn check_combination(wanted: &Wanted, is_new: bool) -> Result<(), MethodError> {
     if wanted.order.len() < 2 {
         return Ok(());
     }
     let has = |action| wanted.order.contains(&action);
-    // A new diff voids reviews, which actions on reviewers would see.
-    let changes_reviewers = has(Action::Reviewers) || has(Action::Review) || has(Action::Author);
+    let reviews = has(Action::Review) || has(Action::Author) || has(Action::Reviewers);
+    if has(Action::Close) && (reviews || has(Action::Update)) {
+        return Err(MethodError::Unsupported("several actions"));
+    }
+    // A new diff voids reviews, which actions on reviewers would see; a
+    // reviewer edit without effect is dropped, which is checked once
+    // planned.
+    let changes_reviewers = has(Action::Review) || has(Action::Author);
     if has(Action::Stack)
         || wanted.author_action == Some(AuthorAction::RequestReview)
         || (has(Action::Reviewers) && (has(Action::Review) || has(Action::Author)))
@@ -429,6 +484,21 @@ fn check_combination(wanted: &Wanted, is_new: bool) -> Result<(), MethodError> {
     {
         return Err(MethodError::Unsupported("several actions"));
     }
+    Ok(())
+}
+
+/// A custom field, once each, or a list transaction.
+fn wanted_field(wanted: &mut Wanted, kind: &str, value: &Value) -> Result<(), MethodError> {
+    let Some(field) = custom_fields::Field::of_conduit_key(kind) else {
+        return wanted_list(wanted, kind, value);
+    };
+    if wanted.order.contains(&Action::Custom(field)) {
+        return Err(MethodError::Unsupported("transactions not ported"));
+    }
+    wanted
+        .custom_fields
+        .push(custom_fields::parse(field, value)?);
+    wanted.order.push(Action::Custom(field));
     Ok(())
 }
 
@@ -512,6 +582,7 @@ fn new_revision(request: &ApiRequest<'_>, actor: &str) -> (Revision, Facts) {
         subscribers: Vec::new(),
         muted: Vec::new(),
         old_recipients: (Vec::new(), Vec::new()),
+        properties: Some(Map::new()),
     };
     (revision, facts)
 }
@@ -579,6 +650,9 @@ struct Facts {
     muted: Vec<String>,
     /// `buildOldRecipientLists()`: the mail recipients before the edit.
     old_recipients: (Vec<Value>, Vec<Value>),
+    /// The `properties`, as PHP decodes them; `None` when they are not a
+    /// dictionary, which edits setting a property leave to PHP.
+    properties: Option<Map<String, Value>>,
 }
 
 async fn destinations(
@@ -605,14 +679,17 @@ impl Facts {
             .bind(revision.id)
             .fetch_one(database.pool())
             .await?;
+        let properties = match php::round_trip(&rows::json(&row, "properties")?) {
+            Value::Object(properties) => Some(properties),
+            Value::Array(list) if list.is_empty() => Some(Map::new()),
+            _ => None,
+        };
         // getShouldBroadcast(): the "draft.broadcast" property, true when
         // missing.
-        let should_broadcast = match rows::json(&row, "properties")? {
-            Value::Object(properties) => {
-                properties.get("draft.broadcast").is_none_or(php::is_truthy)
-            }
-            _ => true,
-        };
+        let should_broadcast = properties
+            .as_ref()
+            .and_then(|properties| properties.get("draft.broadcast"))
+            .is_none_or(php::is_truthy);
         let reviewers = search::load_reviewers(database, std::slice::from_ref(revision))
             .await?
             .remove(&revision.phid)
@@ -626,37 +703,27 @@ impl Facts {
                 .await?,
             muted: destinations(database, &revision.phid, edges::MUTED_BY).await?,
             old_recipients: (Vec::new(), Vec::new()),
+            properties,
         };
         facts.old_recipients = mail_recipients(revision, &facts);
         Ok(facts)
     }
 }
 
-/// Edits PHP's editor makes which Rust leaves to it: draft inline comments
-/// to publish, build plans, and mail to project watchers.
+/// Edits PHP's editor makes which Rust leaves to it: the message Herald's
+/// run sends to the automatic buildables of the active diff which are
+/// still preparing builds (`applyHeraldRules()`), and mail to project
+/// watchers.
 async fn check_side_effects(
     request: &ApiRequest<'_>,
     revision: &Revision,
     facts: &Facts,
 ) -> Result<(), MethodError> {
     let database = &request.context.database;
-    let sql = format!(
-        "SELECT 1 FROM {} WHERE revisionPHID = ? AND fixedState IN ('draft', 'undraft') LIMIT 1",
-        database.table("differential", "differential_transaction_comment")
-    );
-    if phab_db::sqlx::query(&sql)
-        .bind(revision.phid.as_str())
-        .fetch_optional(database.pool())
-        .await?
-        .is_some()
-    {
-        return Err(MethodError::Unsupported(
-            "inline comments marked done in a draft",
-        ));
-    }
     if let Some(diff) = &revision.active_diff_phid {
         let sql = format!(
-            "SELECT 1 FROM {} WHERE buildablePHID = ? LIMIT 1",
+            "SELECT 1 FROM {} WHERE buildablePHID = ? AND isManualBuildable = 0 AND \
+             buildableStatus = 'preparing' LIMIT 1",
             database.table("harbormaster", "harbormaster_buildable")
         );
         if phab_db::sqlx::query(&sql)
@@ -665,7 +732,9 @@ async fn check_side_effects(
             .await?
             .is_some()
         {
-            return Err(MethodError::Unsupported("revisions with buildables"));
+            return Err(MethodError::Unsupported(
+                "revisions with buildables preparing builds",
+            ));
         }
     }
     check_projects(database, &facts.projects).await
@@ -1227,6 +1296,24 @@ struct Actions {
     /// The `differential.revision.void` transaction of "Request Review":
     /// its PHID, the reviewers it voids and the statuses it must void.
     void: Option<PlannedVoid>,
+    /// The `differential.revision.close` transaction.
+    close: Option<String>,
+    /// The `harbormaster:buildable` transaction.
+    buildable: Option<BuildableStatus>,
+    /// The `core:inlinestate` transaction, and how many actions precede it.
+    inline_state: Option<(usize, inline_state::Planned)>,
+    /// The `core:customfield` transactions with an effect.
+    custom_fields: Vec<custom_fields::Planned>,
+}
+
+/// The `harbormaster:buildable` transaction
+/// (`DifferentialRevisionBuildableTransaction`).
+struct BuildableStatus {
+    phid: String,
+    buildable_phid: String,
+    /// The revision's status of the buildable before, and after.
+    old: Option<String>,
+    new: Option<String>,
 }
 
 impl Actions {
@@ -1234,7 +1321,10 @@ impl Actions {
     /// author action's void follows it.
     fn phids(&self) -> Vec<String> {
         let mut phids = Vec::new();
-        for action in &self.order {
+        for (index, action) in self.order.iter().enumerate() {
+            if let Some((_, state)) = self.inline_state.as_ref().filter(|(at, _)| *at == index) {
+                phids.push(&state.phid);
+            }
             match action {
                 Action::Review => phids.extend(self.review.iter().map(|(_, phid, _)| phid)),
                 Action::Author => {
@@ -1259,8 +1349,20 @@ impl Actions {
                     phids.extend(self.subscriber_edit.iter().map(|edit| &edit.phid));
                 }
                 Action::Projects => phids.extend(self.tag_edit.iter().map(|edit| &edit.phid)),
+                Action::Close => phids.extend(self.close.iter()),
+                Action::Buildable => phids.extend(self.buildable.iter().map(|edit| &edit.phid)),
+                Action::Custom(field) => phids.extend(
+                    self.custom_fields
+                        .iter()
+                        .filter(|edit| edit.field() == *field)
+                        .map(|edit| &edit.phid),
+                ),
                 Action::Stack => {}
             }
+        }
+        let state = self.inline_state.as_ref();
+        if let Some((_, state)) = state.filter(|(at, _)| *at >= self.order.len()) {
+            phids.push(&state.phid);
         }
         phids.into_iter().cloned().collect()
     }
@@ -1279,6 +1381,11 @@ enum MergeCheck {
 struct Plan {
     /// Where the edit comes from.
     source: Source,
+    /// The `editPolicy` of the transactions (`populateTransaction()`): the
+    /// actor's PHID, `no-one` for the omnipotent actor.
+    edit_policy: String,
+    /// The revision's `properties` once the edit set some, encoded.
+    properties: Option<String>,
     /// The revision as the edit leaves it; a new one has no ID until
     /// it is saved.
     revision: Revision,
@@ -1804,6 +1911,64 @@ fn plan_author_action(
     Ok(())
 }
 
+/// `DifferentialRevisionCloseTransaction`, once PHP's validation passes
+/// (unless a commit closes the revision, whatever its state): it publishes
+/// the revision, records whether it was accepted, and makes it broadcast
+/// (T13300). Returns the properties it sets. Closing a draft broadcasts it
+/// for the first time, which is left to PHP.
+async fn plan_close(
+    request: &ApiRequest<'_>,
+    revision: &mut Revision,
+    facts: &Facts,
+    (actor, by_commit): (&str, bool),
+) -> Result<Vec<(String, Value)>, MethodError> {
+    let is_author = revision
+        .author_phid
+        .as_ref()
+        .is_some_and(|author| author.as_str() == actor);
+    let allowed = is_author
+        || request
+            .context
+            .config
+            .value("differential.always-allow-close")
+            .is_some_and(php::is_truthy);
+    let was_accepted = revision.status == "accepted";
+    if !by_commit && (revision.is_closed() || !was_accepted || !allowed) {
+        return Err(MethodError::Unsupported("closes PHP refuses"));
+    }
+    if !facts.should_broadcast {
+        return Err(MethodError::Unsupported("closes of drafts"));
+    }
+    if !can_edit(request, revision).await? {
+        return Err(MethodError::Unsupported("edits the actor may not make"));
+    }
+    "published".clone_into(&mut revision.status);
+    Ok(vec![
+        ("wasAcceptedBeforeClose".to_owned(), json!(was_accepted)),
+        ("draft.broadcast".to_owned(), json!(true)),
+    ])
+}
+
+/// The revision's `properties` as the edit leaves them, encoded, if it
+/// sets any: those of the new diff, then `edits` in order (a key keeps its
+/// place).
+fn final_properties(
+    facts: &Facts,
+    update: Option<&update::Planned>,
+    edits: Vec<(String, Value)>,
+) -> Result<Option<String>, MethodError> {
+    let mut map = match (update, &facts.properties) {
+        (Some(update), _) => update.properties.clone(),
+        (None, _) if edits.is_empty() => return Ok(None),
+        (None, Some(properties)) => properties.clone(),
+        (None, None) => return Err(MethodError::Unsupported("unusual revision properties")),
+    };
+    for (key, value) in edits {
+        map.insert(key, value);
+    }
+    crate::diff_editor::encode(&Value::Object(map)).map(Some)
+}
+
 /// The `differential.revision.void` transaction "Request Review" and new
 /// diffs add (`expandTransaction()`): the reviewers whose accepts and
 /// rejections it voids, and the statuses it must void (`force`, else
@@ -1869,7 +2034,7 @@ async fn plan_title(
     title: String,
 ) -> Result<String, MethodError> {
     if title == revision.title {
-        return Err(MethodError::Unsupported("edits without effect"));
+        return Err(MethodError::Unsupported(NO_EFFECT));
     }
     if title.is_empty() || title.len() > TITLE_LENGTH {
         return Err(MethodError::Unsupported("titles PHP refuses"));
@@ -1928,7 +2093,7 @@ async fn plan_text(
         )?
     };
     if old == new {
-        return Err(MethodError::Unsupported("edits without effect"));
+        return Err(MethodError::Unsupported(NO_EFFECT));
     }
     if !can_edit(request, revision).await? {
         return Err(MethodError::Unsupported("edits the actor may not make"));
@@ -1952,21 +2117,46 @@ fn check_new_texts(request: &ApiRequest<'_>, wanted: &Wanted) -> Result<(), Meth
     if required && !has_plan {
         return Err(MethodError::Unsupported("creations PHP refuses"));
     }
-    let engine = phab_remarkup::phabricator::engine(crate::markup::engine_config(config));
     for (_, text) in &wanted.texts {
-        let prepared = engine.prepare(text.as_bytes(), phab_remarkup::Mode::Html);
-        let inert = prepared.mentioned_usernames().is_empty()
-            && prepared.object_references().is_empty()
-            && prepared.file_attach_intent_ids().is_empty()
-            && dependencies::depends_on(text).is_empty()
-            && monograms::REVERTS.parse(text).is_empty();
-        if !inert {
+        if !is_inert(request, text) {
             return Err(MethodError::Unsupported(
                 "remarkup with effects in new revisions",
             ));
         }
     }
     Ok(())
+}
+
+/// Whether remarkup has no effect on an edit: no mentions, references,
+/// files, dependencies or reverts.
+fn is_inert(request: &ApiRequest<'_>, text: &str) -> bool {
+    let config = &request.context.config;
+    let engine = phab_remarkup::phabricator::engine(crate::markup::engine_config(config));
+    let prepared = engine.prepare(text.as_bytes(), phab_remarkup::Mode::Html);
+    prepared.mentioned_usernames().is_empty()
+        && prepared.object_references().is_empty()
+        && prepared.file_attach_intent_ids().is_empty()
+        && dependencies::depends_on(text).is_empty()
+        && monograms::REVERTS.parse(text).is_empty()
+}
+
+/// Drops a transaction without effect (`filterTransactions()`): its
+/// capability is checked first all the same (`applyCapabilityChecks()`).
+async fn drop_no_effect<T>(
+    (request, continues): (&ApiRequest<'_>, bool),
+    revision: &Revision,
+    planned: Result<T, MethodError>,
+) -> Result<Option<T>, MethodError> {
+    match planned {
+        Ok(planned) => Ok(Some(planned)),
+        Err(MethodError::Unsupported(NO_EFFECT)) if continues => {
+            if !can_edit(request, revision).await? {
+                return Err(MethodError::Unsupported("edits the actor may not make"));
+            }
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// A new transaction PHID of revisions.
@@ -2191,8 +2381,10 @@ async fn plan_fields(
         .collect();
     let title = match wanted.title.clone() {
         Some(title) => {
-            let old = plan_title(request, revision, title).await?;
-            Some((transaction_phid(), old))
+            let planned = plan_title(request, revision, title).await;
+            drop_no_effect((request, wanted.continues), revision, planned)
+                .await?
+                .map(|old| (transaction_phid(), old))
         }
         None => None,
     };
@@ -2225,11 +2417,19 @@ async fn plan_update(
     Ok(Some(planned))
 }
 
-/// The acting user.
-fn actor_phid(request: &ApiRequest<'_>) -> Result<String, MethodError> {
+/// The acting user, or what the omnipotent viewer acts as, and the
+/// `editPolicy` of the transactions.
+fn actor_phid(
+    request: &ApiRequest<'_>,
+    acting_as: Option<String>,
+) -> Result<(String, String), MethodError> {
+    if request.viewer.is_omnipotent {
+        let phid = acting_as.ok_or(MethodError::Unsupported("edits by the omnipotent user"))?;
+        return Ok((phid, phab_policy::POLICY_NOONE.to_owned()));
+    }
     let phid = request.viewer.phid.as_ref();
     let phid = phid.ok_or(MethodError::Unsupported("edits by the omnipotent user"))?;
-    Ok(phid.as_str().to_owned())
+    Ok((phid.as_str().to_owned(), phid.as_str().to_owned()))
 }
 
 /// `updateReviewStatus()`, once the reviewers changed: the status
@@ -2289,15 +2489,22 @@ async fn plan_lists(
     request: &ApiRequest<'_>,
     wanted: &Wanted,
     subscription: &mut Option<Subscription>,
-    revision: &mut Revision,
-    facts: &mut Facts,
+    (revision, facts): (&mut Revision, &mut Facts),
+    actor: &str,
 ) -> Result<ListEdits, MethodError> {
-    let reviewer_edit = plan_reviewer_edit(request, wanted, revision, facts).await?;
+    let planned = plan_reviewer_edit(request, wanted, revision, facts).await;
+    let reviewer_edit = drop_no_effect((request, wanted.continues), revision, planned)
+        .await?
+        .flatten();
     let mut subscriber_edit = match &wanted.subscribers {
         Some(edit) => {
-            let actor = actor_phid(request)?;
+            let had_implied = subscription.is_some();
             let implied = subscription.take();
-            Some(subscribers::plan(request, edit, implied, revision, facts, &actor).await?)
+            let planned = subscribers::plan(request, edit, implied, revision, facts, actor).await;
+            if had_implied && matches!(planned, Err(MethodError::Unsupported(NO_EFFECT))) {
+                return Err(MethodError::Unsupported("several actions"));
+            }
+            drop_no_effect((request, wanted.continues), revision, planned).await?
         }
         None => None,
     };
@@ -2306,7 +2513,10 @@ async fn plan_lists(
         *subscription = subscriber_edit.take();
     }
     let tag_edit = match &wanted.projects {
-        Some(edit) => Some(tags::plan(request, edit, revision, facts).await?),
+        Some(edit) => {
+            let planned = tags::plan(request, edit, revision, facts).await;
+            drop_no_effect((request, wanted.continues), revision, planned).await?
+        }
         None => None,
     };
     Ok((reviewer_edit, subscriber_edit, tag_edit))
@@ -2359,7 +2569,9 @@ async fn plan_merge_checks(
         }
         return Ok(checks);
     }
-    let abandons = matches!(actions.author_action, Some((AuthorAction::Abandon, _)));
+    // Whether the revision lands at all changed.
+    let abandons = matches!(actions.author_action, Some((AuthorAction::Abandon, _)))
+        || actions.close.is_some();
     if (abandons || rewiring.count() > 0) && merge_checks::enabled(request, revision).await? {
         checks.push(MergeCheck::Stack(phid));
     }
@@ -2370,18 +2582,19 @@ async fn plan_merge_checks(
 /// `core:create` of a new revision, the subscription (`array_unshift()`),
 /// the actions, the links and files, the comment then the inline comments
 /// (`sortTransactions()`), then the status (`applyFinalEffects()`). A
-/// subscription of mentions alone comes after the actions instead.
+/// subscription of mentions alone comes after the actions instead. An
+/// edit of nothing with an effect is left to PHP.
 fn applied_order(
     (create, subscription, actions): (Option<&String>, Option<&Subscription>, &Actions),
     (links, file_edit): (&[Link], Option<&files::Planned>),
     (comment, inlines, status): (Option<&String>, Vec<String>, Option<&String>),
-) -> Vec<String> {
+) -> Result<Vec<String>, MethodError> {
     let (first, late) = match subscription {
         Some(subscription) if subscription.first => (Some(subscription.phid.clone()), None),
         Some(subscription) => (None, Some(subscription.phid.clone())),
         None => (None, None),
     };
-    create
+    let applied: Vec<String> = create
         .cloned()
         .into_iter()
         .chain(first)
@@ -2392,14 +2605,35 @@ fn applied_order(
         .chain(comment.cloned())
         .chain(inlines)
         .chain(status.cloned())
-        .collect()
+        .collect();
+    if applied.is_empty() {
+        return Err(MethodError::Unsupported(NO_EFFECT));
+    }
+    Ok(applied)
+}
+
+/// The revisions and files the edit's remarkup links to.
+async fn plan_remarkup(
+    request: &ApiRequest<'_>,
+    finder: Option<FileFinder>,
+    (wanted, revision): (&Wanted, &Revision),
+    old_texts: &[(TextField, String)],
+) -> Result<(Vec<Link>, Option<files::Planned>), MethodError> {
+    let links = plan_links(request, wanted, revision).await?;
+    let old = old_texts.first().map(|(_, old)| old.as_str());
+    let new = (&new_texts(wanted)[..], old);
+    let file_edit = files::plan(request, finder, revision.phid.as_str(), new).await?;
+    Ok((links, file_edit))
 }
 
 /// The revision the edit applies to, new or existing, its facts, and the
-/// old texts of the fields the edit sets.
+/// old texts of the fields the edit sets. Unchanged texts are dropped
+/// from `wanted`, when their remarkup would have no effect either (PHP
+/// expands the remarkup of every text before it drops those without
+/// effect); an existing revision gets one text with effect.
 async fn load_target(
     request: &ApiRequest<'_>,
-    wanted: &Wanted,
+    wanted: &mut Wanted,
     is_new: bool,
     actor: &str,
 ) -> Result<(Revision, Facts, Vec<(TextField, String)>), MethodError> {
@@ -2413,23 +2647,178 @@ async fn load_target(
     };
     check_side_effects(request, &revision, &facts).await?;
     let mut old_texts = Vec::new();
+    let mut unchanged = Vec::new();
     for (field, new) in &wanted.texts {
-        old_texts.push((*field, plan_text(request, &revision, *field, new).await?));
+        let planned = plan_text(request, &revision, *field, new).await;
+        match drop_no_effect((request, wanted.continues), &revision, planned).await? {
+            Some(old) => old_texts.push((*field, old)),
+            None if is_inert(request, new) => unchanged.push(*field),
+            None => {
+                return Err(MethodError::Unsupported(
+                    "unchanged texts with remarkup effects",
+                ));
+            }
+        }
+    }
+    wanted.texts.retain(|(field, _)| !unchanged.contains(field));
+    wanted
+        .order
+        .retain(|action| !matches!(action, Action::Text(field) if unchanged.contains(field)));
+    if !is_new && wanted.texts.len() > 1 {
+        return Err(MethodError::Unsupported("transactions not ported"));
     }
     Ok((revision, facts, old_texts))
+}
+
+/// The comment's text, transaction and comment PHIDs.
+fn new_comment(text: String) -> (String, String, String) {
+    let comment_phid = Phid::generate(PhidType::TRANSACTION_COMMENT, None).into_string();
+    (text, transaction_phid(), comment_phid)
+}
+
+/// The planned review and author action.
+type ReviewActions = (
+    Option<(Review, String, Vec<ReviewerUpdate>)>,
+    (Option<(AuthorAction, String)>, Option<PlannedVoid>),
+);
+
+/// The review and the author's action, with their transactions.
+async fn plan_review_actions(
+    request: &ApiRequest<'_>,
+    wanted: &Wanted,
+    (revision, facts): (&mut Revision, &mut Facts),
+    actor: &str,
+) -> Result<ReviewActions, MethodError> {
+    let review = match wanted.review {
+        Some(review) => {
+            let updates = plan_review(request, review, revision, facts, actor).await?;
+            Some((review, transaction_phid(), updates))
+        }
+        None => None,
+    };
+    let author = match wanted.author_action {
+        Some(action) => plan_author(request, action, revision, facts, actor).await?,
+        None => (None, None),
+    };
+    Ok((review, author))
+}
+
+/// The inline state, closing and buildable status transactions, and the
+/// properties they set.
+type StateEdits = (
+    Option<(usize, inline_state::Planned)>,
+    Option<String>,
+    Option<BuildableStatus>,
+    Vec<(String, Value)>,
+);
+
+/// The transactions which set states: the inline state the first comment,
+/// inline comment or update expands (`expandTransaction()`), closing and
+/// a buildable's status.
+async fn plan_states(
+    request: &ApiRequest<'_>,
+    wanted: &mut Wanted,
+    (revision, facts): (&mut Revision, &Facts),
+    (actor, is_new): (&str, bool),
+) -> Result<StateEdits, MethodError> {
+    let inline_state = match wanted.state_trigger {
+        Some(at) if !is_new => inline_state::plan(request, revision, actor)
+            .await?
+            .map(|state| (at, state)),
+        _ => None,
+    };
+    let mut properties = Vec::new();
+    let close = if wanted.close {
+        properties.extend(plan_close(request, revision, facts, (actor, false)).await?);
+        Some(transaction_phid())
+    } else {
+        None
+    };
+    let buildable = match wanted.buildable.take() {
+        Some((buildable_phid, new)) => {
+            let (old, edit) = plan_buildable(facts, &buildable_phid, new.as_deref())?;
+            properties.push(edit);
+            Some(BuildableStatus {
+                phid: transaction_phid(),
+                buildable_phid,
+                old,
+                new,
+            })
+        }
+        None => None,
+    };
+    Ok((inline_state, close, buildable, properties))
+}
+
+/// The custom fields with an effect. A reviewer edit with a new diff of an
+/// existing revision (`reviewed`) is left to PHP: the diff voids reviews,
+/// which the edit would see.
+async fn plan_custom_fields(
+    request: &ApiRequest<'_>,
+    wanted: &Wanted,
+    revision: &Revision,
+    (actor, reviewed, is_new): (&str, bool, bool),
+) -> Result<Vec<custom_fields::Planned>, MethodError> {
+    if reviewed && wanted.update.is_some() && !is_new {
+        return Err(MethodError::Unsupported("several actions"));
+    }
+    let mut planned = Vec::new();
+    for field in &wanted.custom_fields {
+        match custom_fields::plan(request, revision, field, actor).await? {
+            Some(edit) => planned.push(edit),
+            None if !wanted.continues => return Err(MethodError::Unsupported(NO_EFFECT)),
+            None => {}
+        }
+    }
+    Ok(planned)
+}
+
+/// How an edit is made.
+struct Editor {
+    /// Where it comes from.
+    source: Source,
+    /// Whether it publishes the actor's draft inline comments (the comment
+    /// form).
+    drafts: bool,
+    /// What the omnipotent actor acts as (`setActingAsPHID()`).
+    acting_as: Option<String>,
+}
+
+impl Editor {
+    /// An edit of the `transactions` of a call.
+    fn of_request(source: Source, drafts: bool) -> Self {
+        Self {
+            source,
+            drafts,
+            acting_as: None,
+        }
+    }
 }
 
 async fn plan(
     request: &ApiRequest<'_>,
     finder: Option<FileFinder>,
-    (source, drafts): (Source, bool),
+    editor: Editor,
 ) -> Result<Plan, MethodError> {
     let is_new = is_creation(request)?;
-    let mut wanted = wanted(request, is_new, drafts)?;
-    let actor = actor_phid(request)?;
+    let wanted = wanted(request, is_new, editor.drafts)?;
+    plan_wanted(request, finder, editor, (wanted, is_new)).await
+}
+
+/// Plans the `wanted` transactions.
+async fn plan_wanted(
+    request: &ApiRequest<'_>,
+    finder: Option<FileFinder>,
+    editor: Editor,
+    (mut wanted, is_new): (Wanted, bool),
+) -> Result<Plan, MethodError> {
+    let (source, drafts) = (editor.source, editor.drafts);
+    let (actor, edit_policy) = actor_phid(request, editor.acting_as)?;
     let database = &request.context.database;
+    // The web forms' editor raises an error for what has no effect.
+    wanted.continues = !matches!(source, Source::Web { .. });
     let (mut revision, mut facts, old_texts) =
-        load_target(request, &wanted, is_new, &actor).await?;
+        load_target(request, &mut wanted, is_new, &actor).await?;
     let inlines = plan_inlines(request, &mut wanted, &revision, drafts, &actor).await?;
     let mut subscription = plan_subscription(
         request,
@@ -2439,39 +2828,33 @@ async fn plan(
         &actor,
     )
     .await?;
-    let review = match wanted.review {
-        Some(review) => {
-            let updates = plan_review(request, review, &mut revision, &mut facts, &actor).await?;
-            Some((review, transaction_phid(), updates))
-        }
-        None => None,
-    };
-    let (author_action, void) = match wanted.author_action {
-        Some(action) => plan_author(request, action, &mut revision, &facts, &actor).await?,
-        None => (None, None),
-    };
+    let (review, (author_action, void)) =
+        plan_review_actions(request, &wanted, (&mut revision, &mut facts), &actor).await?;
+    let (inline_state, close, buildable, property_edits) = plan_states(
+        request,
+        &mut wanted,
+        (&mut revision, &facts),
+        (&actor, is_new),
+    )
+    .await?;
     let (title, texts) = plan_fields(request, &wanted, &mut revision, &old_texts).await?;
     let (reviewer_edit, subscriber_edit, tag_edit) = plan_lists(
         request,
         &wanted,
         &mut subscription,
-        &mut revision,
-        &mut facts,
+        (&mut revision, &mut facts),
+        &actor,
     )
     .await?;
-    let links = plan_links(request, &wanted, &revision).await?;
-    let old = old_texts.first().map(|(_, old)| old.as_str());
-    let new = (&new_texts(&wanted)[..], old);
-    let file_edit = files::plan(request, finder, revision.phid.as_str(), new).await?;
+    let reviewed = reviewer_edit.is_some();
+    let custom =
+        plan_custom_fields(request, &wanted, &revision, (&actor, reviewed, is_new)).await?;
+    let (links, file_edit) =
+        plan_remarkup(request, finder, (&wanted, &revision), &old_texts).await?;
     // The update's internal effects come after every check of the edit.
     let update = plan_update(request, &wanted, &mut revision, &facts, &actor).await?;
-    let comment = wanted.comment.map(|text| {
-        (
-            text,
-            transaction_phid(),
-            Phid::generate(PhidType::TRANSACTION_COMMENT, None).into_string(),
-        )
-    });
+    let properties = final_properties(&facts, update.as_ref(), property_edits)?;
+    let comment = wanted.comment.map(new_comment);
     let status = plan_status(request, &mut revision);
     let actions = Actions {
         order: wanted.order,
@@ -2484,6 +2867,10 @@ async fn plan(
         reviewer_edit,
         subscriber_edit,
         tag_edit,
+        close,
+        buildable,
+        inline_state,
+        custom_fields: custom,
     };
     // The engine's `core:create` comes first.
     let create = is_new.then(transaction_phid);
@@ -2495,7 +2882,7 @@ async fn plan(
             inlines.phids(),
             status.as_ref().map(|(phid, _)| phid),
         ),
-    );
+    )?;
     let merge_checks = plan_merge_checks(request, &revision, &actions, &links).await?;
     let input = herald_input((&actor, is_new, &source), &actions, subscription.as_ref());
     let published = publication(request, &mut revision, &mut facts, &input, &applied_phids).await?;
@@ -2504,6 +2891,8 @@ async fn plan(
     Ok(Plan {
         source,
         actor,
+        edit_policy,
+        properties,
         create,
         group_id: random::random_characters(32),
         subscription,
@@ -2587,7 +2976,7 @@ async fn insert_transaction_on(
     .bind(phid)
     .bind(&plan.actor)
     .bind(object)
-    .bind(&plan.actor)
+    .bind(&plan.edit_policy)
     .bind(kind)
     .bind(old)
     .bind(new)
@@ -2656,7 +3045,7 @@ async fn insert_revision(
     .bind(&revision.view_policy)
     .bind(&revision.edit_policy)
     .bind(&update.diff.repository_phid)
-    .bind(&update.properties)
+    .bind(&plan.properties)
     .bind(&update.diff.phid)
     .execute(&mut *connection)
     .await?
@@ -2676,11 +3065,13 @@ async fn write(request: &ApiRequest<'_>, plan: &mut Plan) -> Result<(), MethodEr
         set_monogram(&mut plan.worker_data, id);
     } else {
         phab_db::sqlx::query(&format!(
-            "UPDATE {} SET status = ?, title = ?, dateModified = ? WHERE id = ?",
+            "UPDATE {} SET status = ?, title = ?, properties = COALESCE(?, properties), \
+             dateModified = ? WHERE id = ?",
             database.table("differential", "differential_revision")
         ))
         .bind(&plan.revision.status)
         .bind(&plan.revision.title)
+        .bind(&plan.properties)
         .bind(now)
         .bind(plan.revision.id)
         .execute(&mut *connection)
@@ -2764,11 +3155,19 @@ async fn write_actions(
     metadata: &str,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
-    for action in &plan.actions.order {
+    let state = plan.actions.inline_state.as_ref();
+    for (index, action) in plan.actions.order.iter().enumerate() {
+        if let Some((_, state)) = state.filter(|(at, _)| *at == index) {
+            inline_state::write(request, plan, state, connection).await?;
+        }
         write_action(request, plan, *action, metadata, connection).await?;
     }
+    // "Request Review", the only action, is followed by its void.
     if let Some((phid, reviewers, force)) = &plan.actions.void {
         write_void(request, plan, (phid, reviewers, force), connection).await?;
+    }
+    if let Some((_, state)) = state.filter(|(at, _)| *at >= plan.actions.order.len()) {
+        inline_state::write(request, plan, state, connection).await?;
     }
     Ok(())
 }
@@ -2846,6 +3245,9 @@ async fn write_action(
                 insert_transaction(request, plan, connection, row).await?;
             }
         }
+        Action::Custom(_) | Action::Buildable | Action::Close => {
+            write_metadata_action(request, plan, action, connection).await?;
+        }
         Action::Title => {
             if let Some((phid, old)) = &actions.title {
                 let (old, new) = (
@@ -2900,6 +3302,53 @@ async fn write_action(
         }
         // Written with the links.
         Action::Stack => {}
+    }
+    Ok(())
+}
+
+/// The transaction of an action with its own metadata: closing, a
+/// buildable's status, a custom field.
+async fn write_metadata_action(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    action: Action,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<(), MethodError> {
+    let actions = &plan.actions;
+    match action {
+        Action::Custom(field) => {
+            let edits = actions.custom_fields.iter();
+            for edit in edits.filter(|edit| edit.field() == field) {
+                custom_fields::write(request, plan, edit, connection).await?;
+            }
+        }
+        Action::Buildable => {
+            if let Some(edit) = &actions.buildable {
+                let entries = json!({"harbormaster:buildablePHID": edit.buildable_phid});
+                let metadata = group_metadata(plan, entries);
+                let (old, new) = (
+                    php::json_encode(&json!(edit.old)),
+                    php::json_encode(&json!(edit.new)),
+                );
+                let row = (
+                    edit.phid.as_str(),
+                    "harbormaster:buildable",
+                    &*old,
+                    &*new,
+                    &*metadata,
+                );
+                insert_transaction(request, plan, connection, row).await?;
+            }
+        }
+        Action::Close => {
+            if let Some(close) = &actions.close {
+                let metadata = group_metadata(plan, json!({}));
+                let kind = "differential.revision.close";
+                let row = (close.as_str(), kind, "false", "true", &*metadata);
+                insert_transaction(request, plan, connection, row).await?;
+            }
+        }
+        _ => {}
     }
     Ok(())
 }
@@ -3161,7 +3610,7 @@ async fn write_comment(
     .bind(phid)
     .bind(&plan.actor)
     .bind(revision.phid.as_str())
-    .bind(&plan.actor)
+    .bind(&plan.edit_policy)
     .bind(comment_phid)
     .bind(plan.source.serialized())
     .bind(metadata)
@@ -3381,6 +3830,113 @@ async fn write_herald(
     Ok(transcript_id)
 }
 
+/// Why a buildable's status isn't published: the revision has it already.
+const BUILDABLE_UNCHANGED: &str = "buildable statuses the revision has";
+
+/// `getBuildableStatus()` of the buildable `phid` in the revision's
+/// `buildables` property, and the property once `setBuildableStatus()`
+/// sets it to `new`.
+fn plan_buildable(
+    facts: &Facts,
+    phid: &str,
+    new: Option<&str>,
+) -> Result<(Option<String>, (String, Value)), MethodError> {
+    let unusual = || MethodError::Unsupported("unusual revision properties");
+    let properties = facts.properties.as_ref().ok_or_else(unusual)?;
+    // A value which isn't an array starts over; an empty one is PHP's
+    // empty array.
+    let as_map = |value: Option<&Value>| match value {
+        Some(Value::Object(map)) => Ok(map.clone()),
+        Some(Value::Array(list)) if !list.is_empty() => Err(unusual()),
+        _ => Ok(Map::new()),
+    };
+    let mut buildables = as_map(properties.get("buildables"))?;
+    let mut buildable = as_map(buildables.get(phid))?;
+    let old = match buildable.get("status") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(status)) => Some(status.clone()),
+        Some(_) => return Err(unusual()),
+    };
+    if old.as_deref() == new {
+        return Err(MethodError::Unsupported(BUILDABLE_UNCHANGED));
+    }
+    buildable.insert("status".to_owned(), json!(new));
+    buildables.insert(phid.to_owned(), Value::Object(buildable));
+    Ok((old, ("buildables".to_owned(), Value::Object(buildables))))
+}
+
+/// `PhabricatorHarbormasterApplication`'s PHID, which Harbormaster's
+/// daemons act as.
+const HARBORMASTER_APP: &str = "PHID-APPS-PhabricatorHarbormasterApplication";
+
+/// A request of the daemons' omnipotent viewer on revision `id`.
+fn daemon_request(context: &Context, id: i64, now: i64) -> ApiRequest<'_> {
+    let mut params = Map::new();
+    params.insert("objectIdentifier".to_owned(), json!(id));
+    ApiRequest {
+        context,
+        user: None,
+        viewer: phab_policy::Viewer::omnipotent(),
+        params,
+        strictly_typed: true,
+        now,
+        writes: phab_auth::Writes::Allowed,
+    }
+}
+
+/// Plans an edit of the daemons acting as `acting_as` on revision `id`,
+/// and writes it when `write_it`.
+async fn daemon_edit(
+    context: &Context,
+    (id, acting_as): (i64, &str),
+    wanted: Wanted,
+    (now, write_it): (i64, bool),
+) -> Result<(), MethodError> {
+    let request = daemon_request(context, id, now);
+    let editor = Editor {
+        source: Source::Daemon,
+        drafts: false,
+        acting_as: Some(acting_as.to_owned()),
+    };
+    let mut plan = plan_wanted(&request, None, editor, (wanted, false)).await?;
+    if write_it {
+        write(&request, &mut plan).await?;
+    }
+    Ok(())
+}
+
+/// `DifferentialBuildableEngine::publishBuildable()`, once Harbormaster
+/// decided to publish the buildable `buildable_phid` (automatic, done
+/// building) of a diff of revision `revision_id`: when the revision's
+/// status of the buildable isn't `status` already, the
+/// `harbormaster:buildable` transaction setting it, applied as the
+/// Harbormaster application by the omnipotent viewer, with the daemons'
+/// content source, at `now`. Only plans it unless `write_it`. What isn't
+/// ported is [`MethodError::Unsupported`], before anything is written.
+pub async fn publish_buildable(
+    context: &Context,
+    revision_id: i64,
+    (buildable_phid, status): (&str, Option<&str>),
+    (now, write_it): (i64, bool),
+) -> Result<(), MethodError> {
+    let wanted = Wanted {
+        order: vec![Action::Buildable],
+        buildable: Some((buildable_phid.to_owned(), status.map(str::to_owned))),
+        ..Wanted::default()
+    };
+    match daemon_edit(
+        context,
+        (revision_id, HARBORMASTER_APP),
+        wanted,
+        (now, write_it),
+    )
+    .await
+    {
+        Err(MethodError::Unsupported(BUILDABLE_UNCHANGED)) => Ok(()),
+        result => result,
+    }
+}
+
 pub use files::{FileFinder, FilesFuture};
 
 /// Plans and writes the edit the `objectIdentifier` and `transactions` of
@@ -3395,7 +3951,7 @@ pub async fn apply(
     files: Option<FileFinder>,
     source: Source,
 ) -> Result<Value, MethodError> {
-    let mut plan = plan(request, files, (source, false)).await?;
+    let mut plan = plan(request, files, Editor::of_request(source, false)).await?;
     write(request, &mut plan).await?;
     Ok(result(&plan))
 }
@@ -3408,7 +3964,7 @@ pub async fn apply_with_drafts(
     files: Option<FileFinder>,
     source: Source,
 ) -> Result<Value, MethodError> {
-    let mut plan = plan(request, files, (source, true)).await?;
+    let mut plan = plan(request, files, Editor::of_request(source, true)).await?;
     write(request, &mut plan).await?;
     Ok(result(&plan))
 }

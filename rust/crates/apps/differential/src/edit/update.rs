@@ -58,8 +58,8 @@ pub(super) struct Planned {
     pub(super) diff: Diff,
     /// The void the new diff causes, which follows the update.
     pub(super) void: Option<PlannedVoid>,
-    /// The revision's `properties`, encoded, with the new line counts.
-    pub(super) properties: String,
+    /// The revision's `properties` with the new line counts.
+    pub(super) properties: Map<String, Value>,
     /// `getAffectedPaths()`, in its order.
     pub(super) paths: Vec<String>,
     /// The ID of the revision's new repository.
@@ -234,35 +234,25 @@ async fn local_hashes(
 /// The revision's `properties` with the new line counts
 /// (`setAddedLineCount()`, `setRemovedLineCount()`): existing keys keep
 /// their place.
-async fn properties(
-    database: &Database,
-    revision: &Revision,
+fn properties(
+    facts: &Facts,
     is_new: bool,
     (added, removed): (i64, i64),
-) -> Result<String, MethodError> {
+) -> Result<Map<String, Value>, MethodError> {
     let mut map = if is_new {
         // initializeNewRevision(): a draft which doesn't broadcast.
         let mut map = Map::new();
         map.insert("draft.broadcast".to_owned(), json!(false));
         map
     } else {
-        let sql = format!(
-            "SELECT properties FROM {} WHERE id = ?",
-            database.table("differential", "differential_revision")
-        );
-        let row = phab_db::sqlx::query(&sql)
-            .bind(revision.id)
-            .fetch_one(database.pool())
-            .await?;
-        match php::round_trip(&rows::json(&row, "properties")?) {
-            Value::Object(map) => map,
-            Value::Array(list) if list.is_empty() => Map::new(),
-            _ => return Err(MethodError::Unsupported("unusual revision properties")),
-        }
+        facts
+            .properties
+            .clone()
+            .ok_or(MethodError::Unsupported("unusual revision properties"))?
     };
     map.insert("lines.added".to_owned(), json!(added));
     map.insert("lines.removed".to_owned(), json!(removed));
-    crate::diff_editor::encode(&Value::Object(map))
+    Ok(map)
 }
 
 /// Whether the diff has a buildable, whose container Harbormaster is told
@@ -323,7 +313,7 @@ pub(super) async fn plan(
         return Err(MethodError::Unsupported("diffs with buildables"));
     }
     let (filenames, added, removed) = changesets(database, diff.id).await?;
-    let properties = properties(database, revision, is_new, (added, removed)).await?;
+    let properties = properties(facts, is_new, (added, removed))?;
     let is_git = found.vcs.as_deref() == Some("git");
     let hashes = local_hashes(database, diff.id, is_git).await?;
     let repository_id = match &diff.repository_phid {
@@ -402,7 +392,7 @@ pub(super) async fn write_revision(
             .table("differential", "differential_revision")
     ))
     .bind(planned.diff.line_count)
-    .bind(&planned.properties)
+    .bind(&plan.properties)
     .bind(&planned.diff.repository_phid)
     .bind(&planned.diff.phid)
     .bind(plan.revision.id)

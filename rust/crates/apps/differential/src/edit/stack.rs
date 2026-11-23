@@ -25,7 +25,7 @@ pub(super) async fn plan(
     let new = lists::new_list(&old, wanted);
     let (added, removed) = (lists::minus(&new, &old), lists::minus(&old, &new));
     if added.is_empty() && removed.is_empty() {
-        return Err(MethodError::Unsupported("edits without effect"));
+        return Err(MethodError::Unsupported(super::NO_EFFECT));
     }
     if added.iter().any(|phid| phid == revision.phid.as_str()) {
         return Err(MethodError::Unsupported(

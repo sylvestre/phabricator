@@ -529,8 +529,8 @@ impl Method for UpdateRevision {
     }
 }
 
-/// `differential.close`: the `close` action, which the editor leaves to
-/// PHP for now.
+/// `differential.close`: the `close` action, on an editor which, like
+/// `differential.revision.edit`'s, continues on no effect.
 #[derive(Default)]
 pub struct Close {
     files: Option<FileFinder>,

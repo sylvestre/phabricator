@@ -167,7 +167,7 @@ pub(super) async fn plan(
         .collect();
     let new = new_value(&old, wanted);
     if !has_effect(&old, &new) {
-        return Err(MethodError::Unsupported("edits without effect"));
+        return Err(MethodError::Unsupported(super::NO_EFFECT));
     }
     let can_edit = super::can_edit(request, revision).await?;
     if !can_edit {

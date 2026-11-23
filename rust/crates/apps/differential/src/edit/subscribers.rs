@@ -32,7 +32,7 @@ pub(super) async fn plan(
     let new = merged_list(&old, wanted, &plus, first);
     let (added, removed) = (lists::minus(&new, &old), lists::minus(&old, &new));
     if added.is_empty() && removed.is_empty() {
-        return Err(MethodError::Unsupported("edits without effect"));
+        return Err(MethodError::Unsupported(super::NO_EFFECT));
     }
     let explicit: Vec<&str> = if wanted.operation == Operation::Remove {
         Vec::new()
