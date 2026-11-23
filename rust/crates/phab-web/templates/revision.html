@@ -77,6 +77,25 @@
   {%- endif %}
   <dt>Bugzilla Bug ID</dt>
   <dd>{% if let Some((bug, uri)) = bug %}<a href="{{ uri }}">{{ bug }}</a>{% else %}Not provided{% endif %}</dd>
+  {%- if let Some(merge) = merge_conflict %}
+  <dt>Merge Conflict Status</dt>
+  <dd class="merge-conflict-status">
+    <div class="merge-conflict-{{ merge.verdict }}" title="{{ merge.label }}">{{ merge.text }}</div>
+    {%- if let Some(note) = merge.note %}
+    <div class="muted">{{ note }}</div>
+    {%- endif %}
+    {%- if let Some((target, description)) = merge.last_checked %}
+    <div>{{ target }}</div>
+    {%- if let Some(description) = description %}
+    <div class="muted">{{ description }}</div>
+    {%- endif %}
+    {%- endif %}
+    {%- if let Some(hint) = merge.hint %}
+    <div>What to do</div>
+    <div class="muted">{{ hint }}</div>
+    {%- endif %}
+  </dd>
+  {%- endif %}
   {%- if !parents.is_empty() || !children.is_empty() %}
   <dt>Stack</dt>
   <dd>

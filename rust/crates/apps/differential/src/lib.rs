@@ -17,6 +17,7 @@ pub mod get_commit_paths;
 pub mod get_raw_diff;
 pub mod legacy_query;
 pub mod markup;
+pub mod merge_conflict;
 pub mod query_diffs;
 pub mod repository;
 pub mod revision_comments;

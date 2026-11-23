@@ -7,9 +7,9 @@ use askama::Template;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, Uri};
 use axum::response::{IntoResponse, Response};
-use phab_app_differential::details;
 use phab_app_differential::repository::{self, Repository};
 use phab_app_differential::storage::{self, Revision};
+use phab_app_differential::{details, merge_conflict};
 use phab_app_project as project;
 use phab_core::{Config, Phid, PhidType};
 use phab_db::edges;
@@ -40,6 +40,40 @@ pub(crate) struct ReviewerItem {
     blocking: bool,
 }
 
+/// The rows of `DifferentialMergeConflictStatusField`
+/// (`renderPropertyViewValue()`).
+pub(crate) struct MergeConflictView {
+    /// The verdict, for the class.
+    verdict: &'static str,
+    /// The tooltip of the verdict.
+    label: &'static str,
+    text: &'static str,
+    note: Option<String>,
+    /// "Last checked", and what the check ran against.
+    last_checked: Option<(String, Option<String>)>,
+    hint: Option<String>,
+}
+
+impl MergeConflictView {
+    fn new(view: merge_conflict::PropertyView) -> Self {
+        let last_checked = view.last_checked.map(|epoch| {
+            let target = match epoch {
+                Some(epoch) => format!("Last checked {}", time::format_utc(epoch)),
+                None => "Last checked at an unrecorded time".to_owned(),
+            };
+            (target, view.checked_against)
+        });
+        Self {
+            verdict: view.verdict.key(),
+            label: view.verdict.label(),
+            text: view.verdict.text(),
+            note: view.verdict_note,
+            last_checked,
+            hint: view.hint,
+        }
+    }
+}
+
 /// A warning above the revision (`DifferentialRevisionWarning`).
 pub(crate) struct Warning {
     title: String,
@@ -63,6 +97,7 @@ pub(crate) struct RevisionPage {
     /// The subscribers, with their PHIDs to remove them.
     subscribers: Vec<(String, Link)>,
     bug: Option<(i64, String)>,
+    merge_conflict: Option<MergeConflictView>,
     parents: Vec<Link>,
     children: Vec<Link>,
     lando_uri: Option<String>,
@@ -672,6 +707,11 @@ pub(crate) async fn show<S: WebState>(
             (bug, format!("{base}/show_bug.cgi?id={bug}"))
         });
     let (parent_phids, child_phids) = details::load_stack_edges(database, &revision.phid).await?;
+    let scope = crate::harbormaster::Scope::new(state.as_ref(), &viewer);
+    let merge_conflict = merge_conflict::property_view(&scope.request(), &revision)
+        .await
+        .map_err(crate::harbormaster::method_error)?
+        .map(MergeConflictView::new);
 
     let (author, reviewers, subscribers) = people(state.as_ref(), &as_viewer, &revision).await?;
     let summary = remarkup_field(state.as_ref(), &as_viewer, &details.summary).await?;
@@ -713,6 +753,7 @@ pub(crate) async fn show<S: WebState>(
         reviewers,
         subscribers,
         bug,
+        merge_conflict,
         parents: revision_links(state.as_ref(), &as_viewer, &parent_phids).await?,
         children: revision_links(state.as_ref(), &as_viewer, &child_phids).await?,
         lando_uri: lando_uri(state.config(), database, &revision).await?,

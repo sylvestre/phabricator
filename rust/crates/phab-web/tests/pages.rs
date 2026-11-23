@@ -804,6 +804,114 @@ async fn revisions_show_their_header_text_and_diff() {
 }
 
 #[tokio::test]
+async fn revisions_show_their_merge_conflict_status() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    insert_revision_fixtures(&test_db).await;
+    let index = hash::digest_for_index(b"differential:merge-conflict-status");
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_repository`.repository (id, phid, name, callsign, \
+               versionControlSystem, details, dateCreated, dateModified, viewPolicy, editPolicy, \
+               pushPolicy) VALUES \
+             (1, 'PHID-REPO-g', 'Git', 'G', 'git', '{{}}', 1, 1, 'users', 'users', 'users'); \
+             UPDATE `{{ns}}_differential`.differential_revision \
+               SET repositoryPHID = 'PHID-REPO-g' WHERE id = 3; \
+             INSERT INTO `{{ns}}_differential`.differential_customfieldstorage (objectPHID, \
+               fieldIndex, fieldValue) VALUES ('PHID-DREV-three', '{index}', \
+               '{{\"status\":\"conflict\",\"reason\":\"D3 does not apply.\",\
+             \"reasonCode\":\"patch-does-not-apply\",\
+             \"checkedAgainstBaseCommit\":\"abcdef0123456789\",\
+             \"checkedAgainstDiffPHID\":\"PHID-DIFF-seven\",\"checkedAgainstDiffID\":7,\
+             \"epoch\":{NOW}}}')"
+        ))
+        .await;
+    let mut config = Config::default();
+    if let serde_json::Value::Object(map) = json!({
+        "merge.conflict.enabled": true,
+        "merge.conflict.repository-phids": ["PHID-REPO-g"],
+    }) {
+        config.push_layer("test", map);
+    }
+    let page = |config: Config| {
+        let test_db = &test_db;
+        async move { get(test_db, config, "/D3", Some("phsid=alice-token")).await }
+    };
+
+    let shown = text(page(config.clone()).await).await;
+    assert!(shown.contains("<dt>Merge Conflict Status</dt>"), "{shown}");
+    for expected in [
+        "Landing may fail: this does not merge cleanly into the target branch",
+        "<div class=\"muted\">D3 does not apply.</div>",
+        "<div>Last checked 2023-11-14",
+        "<div class=\"muted\">Diff 7, based on abcdef012345</div>",
+        "The stack no longer applies to the commit it records as its base. Rebasing the stack \
+         and updating its revisions will fix this.",
+    ] {
+        assert!(shown.contains(expected), "{expected}: {shown}");
+    }
+
+    // Merged from a revision Alice can't see: the reason and the hint go.
+    test_db
+        .execute(&format!(
+            "UPDATE `{{ns}}_differential`.differential_customfieldstorage SET fieldValue = \
+               '{{\"status\":\"clean\",\"reason\":\"D5 landed.\",\
+             \"reasonCode\":\"base-not-ancestor\",\
+             \"checkedAgainstBaseRevisionPHID\":\"PHID-DREV-five\"}}' WHERE fieldIndex = '{index}'"
+        ))
+        .await;
+    let redacted = text(page(config.clone()).await).await;
+    assert!(
+        redacted.contains("Landing merges cleanly into the target branch"),
+        "{redacted}"
+    );
+    assert!(
+        redacted.contains("lands on top of revisions you do not have permission to see"),
+        "{redacted}"
+    );
+    assert!(!redacted.contains("D5 landed."), "{redacted}");
+    assert!(!redacted.contains("What to do"), "{redacted}");
+    assert!(!redacted.contains("Last checked"), "{redacted}");
+
+    // Computed for another diff.
+    test_db
+        .execute(&format!(
+            "UPDATE `{{ns}}_differential`.differential_customfieldstorage SET fieldValue = \
+               '{{\"status\":\"unknown\",\"reasonCode\":\"internal-error\",\
+             \"checkedAgainstDiffPHID\":\"PHID-DIFF-old\"}}' WHERE fieldIndex = '{index}'"
+        ))
+        .await;
+    let stale = text(page(config.clone()).await).await;
+    assert!(stale.contains("Recomputing for the latest diff"), "{stale}");
+    assert!(!stale.contains("What to do"), "{stale}");
+
+    // A value PHP would coerce goes to PHP.
+    test_db
+        .execute(&format!(
+            "UPDATE `{{ns}}_differential`.differential_customfieldstorage SET fieldValue = \
+               '{{\"status\":\"unknown\",\"reasonCode\":5}}' WHERE fieldIndex = '{index}'"
+        ))
+        .await;
+    let response = page(config.clone()).await;
+    assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
+    assert!(response.headers().contains_key(FALLBACK_HEADER));
+
+    // Disabled, or no status: no row.
+    let disabled = text(page(Config::default()).await).await;
+    assert!(!disabled.contains("Merge Conflict Status"), "{disabled}");
+    test_db
+        .execute(&format!(
+            "UPDATE `{{ns}}_differential`.differential_customfieldstorage SET fieldValue = '[]' \
+             WHERE fieldIndex = '{index}'"
+        ))
+        .await;
+    let empty = text(page(config).await).await;
+    assert!(!empty.contains("Merge Conflict Status"), "{empty}");
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
 async fn revision_pages_have_what_the_script_needs() {
     let Some(test_db) = setup(true).await else {
         return;

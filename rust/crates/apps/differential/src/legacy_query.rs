@@ -14,6 +14,7 @@ use phab_core::{Phid, php};
 use phab_db::{Database, edges, rows};
 use serde_json::{Map, Value, json};
 
+use crate::merge_conflict;
 use crate::search::{self, Constraints, Order, Revisions};
 use crate::storage::Revision;
 
@@ -165,6 +166,8 @@ struct ResultData {
     auxiliary_edges: HashMap<(Phid, i64), Vec<Phid>>,
     hashes: HashMap<i64, Vec<(String, String)>>,
     custom: HashMap<(Phid, &'static str), String>,
+    /// `merge.conflict.status`, when the field is enabled.
+    merge_conflict: Option<HashMap<Phid, Value>>,
 }
 
 /// The active diff's columns the results show.
@@ -307,7 +310,8 @@ async fn load_line_counts(
 }
 
 impl ResultData {
-    async fn load(database: &Database, revisions: &[Revision]) -> Result<Self, MethodError> {
+    async fn load(request: &ApiRequest<'_>, revisions: &[Revision]) -> Result<Self, MethodError> {
+        let database = &request.context.database;
         Ok(Self {
             extra: search::load_extra(database, revisions).await?,
             diffs: load_diff_ids(database, revisions).await?,
@@ -320,16 +324,47 @@ impl ResultData {
             auxiliary_edges: load_auxiliary_edges(database, revisions).await?,
             hashes: load_hashes(database, revisions).await?,
             custom: search::load_custom_fields(database, revisions).await?,
+            merge_conflict: merge_conflict::conduit_values(request, revisions).await?,
         })
     }
 
-    fn auxiliary(&self, revision: &Revision, edge_type: i64) -> Vec<&str> {
+    fn edge_list(&self, revision: &Revision, edge_type: i64) -> Vec<&str> {
         self.auxiliary_edges
             .get(&(revision.phid.clone(), edge_type))
             .into_iter()
             .flatten()
             .map(Phid::as_str)
             .collect()
+    }
+
+    /// `loadCustomFieldsForRevisions()`: the custom fields in the order
+    /// of the class map, then the legacy edge fields.
+    fn auxiliary(&self, revision: &Revision) -> Value {
+        let custom = |key| self.custom.get(&(revision.phid.clone(), key));
+        let mut auxiliary = Map::new();
+        auxiliary.insert(
+            "bugzilla.bug-id".to_owned(),
+            json!(custom(search::BUG_FIELD)),
+        );
+        if let Some(values) = &self.merge_conflict {
+            auxiliary.insert(
+                merge_conflict::CONDUIT_KEY.to_owned(),
+                values.get(&revision.phid).cloned().unwrap_or_default(),
+            );
+        }
+        auxiliary.insert(
+            "uplift.request".to_owned(),
+            search::uplift_request(custom(search::UPLIFT_FIELD)),
+        );
+        auxiliary.insert(
+            "phabricator:projects".to_owned(),
+            json!(self.edge_list(revision, edges::OBJECT_HAS_PROJECT)),
+        );
+        auxiliary.insert(
+            "phabricator:depends-on".to_owned(),
+            json!(self.edge_list(revision, edges::REVISION_DEPENDS_ON_REVISION)),
+        );
+        Value::Object(auxiliary)
     }
 
     /// One result; `None` for a revision without an active diff.
@@ -380,7 +415,6 @@ impl ResultData {
             .flatten()
             .map(|(kind, hash)| json!([kind, hash]))
             .collect();
-        let custom = |key| self.custom.get(&(revision.phid.clone(), key));
         let properties = php::round_trip(&extra.properties);
         // Lisk keeps MySQL's strings: integers are strings here.
         let mut result = json!({
@@ -415,15 +449,7 @@ impl ResultData {
             "reviewers": reviewers,
             "ccs": phids(&self.ccs),
             "hashes": hashes,
-            "auxiliary": {
-                "bugzilla.bug-id": custom(search::BUG_FIELD),
-                "uplift.request": search::uplift_request(custom(search::UPLIFT_FIELD)),
-                "phabricator:projects": self.auxiliary(revision, edges::OBJECT_HAS_PROJECT),
-                "phabricator:depends-on": self.auxiliary(
-                    revision,
-                    edges::REVISION_DEPENDS_ON_REVISION,
-                ),
-            },
+            "auxiliary": self.auxiliary(revision),
             "repositoryPHID": diff.repository,
         });
         // Only the author sees the source path.
@@ -505,11 +531,10 @@ impl Method for LegacyQuery {
             };
             let mut revisions = pager::execute(&query, None, Direction::Forward, need).await?;
             revisions.drain(..offset.min(revisions.len()));
-            let database = &request.context.database;
             if revisions.is_empty() {
                 return Ok(json!([]));
             }
-            let data = ResultData::load(database, &revisions).await?;
+            let data = ResultData::load(request, &revisions).await?;
             let config = &request.context.config;
             let production_uri = match config.nonempty_string("phabricator.production-uri") {
                 Some(uri) => uri.to_owned(),
@@ -742,8 +767,7 @@ impl Method for GetRevision {
             .ok_or(MethodError::Unsupported("an unusual revision ID"))?;
             let revisions = vec![execute_one(request, id).await?];
             let revision = &revisions[0];
-            let database = &request.context.database;
-            let data = ResultData::load(database, &revisions).await?;
+            let data = ResultData::load(request, &revisions).await?;
             let extra = data
                 .extra
                 .get(&revision.id)
@@ -769,7 +793,6 @@ impl Method for GetRevision {
                 .get(&revision.phid)
                 .cloned()
                 .unwrap_or_default();
-            let custom = |key| data.custom.get(&(revision.phid.clone(), key));
             let base_uri = request
                 .context
                 .config
@@ -795,15 +818,7 @@ impl Method for GetRevision {
                 "reviewerPHIDs": reviewers,
                 "diffs": diff_dicts(request, revision.id).await?,
                 "commits": commit_dicts(request, &commits).await?,
-                "auxiliary": {
-                    "bugzilla.bug-id": custom(search::BUG_FIELD),
-                    "uplift.request": search::uplift_request(custom(search::UPLIFT_FIELD)),
-                    "phabricator:projects": data.auxiliary(revision, edges::OBJECT_HAS_PROJECT),
-                    "phabricator:depends-on": data.auxiliary(
-                        revision,
-                        edges::REVISION_DEPENDS_ON_REVISION,
-                    ),
-                },
+                "auxiliary": data.auxiliary(revision),
             }))
         })
     }

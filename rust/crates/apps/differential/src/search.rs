@@ -18,6 +18,7 @@ use phab_core::Phid;
 use phab_db::{Database, rows};
 use serde_json::{Map, Value, json};
 
+use crate::merge_conflict;
 use crate::storage::{self, Revision};
 
 /// `PhabricatorDifferentialApplication`.
@@ -1154,6 +1155,8 @@ struct PageData<'a> {
     extra: HashMap<i64, Extra>,
     diffs: HashMap<Phid, String>,
     custom: HashMap<(Phid, &'static str), String>,
+    /// `merge.conflict.status`, when the field is enabled.
+    merge_conflict: Option<HashMap<Phid, Value>>,
     graphs: HashMap<Phid, Map<String, Value>>,
     attachments: AttachmentData,
     base_uri: String,
@@ -1178,6 +1181,7 @@ impl<'a> PageData<'a> {
             extra: load_extra(database, revisions).await?,
             diffs: load_diff_ids(database, revisions).await?,
             custom: load_custom_fields(database, revisions).await?,
+            merge_conflict: merge_conflict::conduit_values(request, revisions).await?,
             graphs: load_stack_graphs(database, &seeds).await?,
             attachments: AttachmentData::load(database, revisions, requested).await?,
             base_uri: context
@@ -1211,7 +1215,7 @@ impl<'a> PageData<'a> {
         let hold_as_draft = property(&extra.properties, "draft.hold")
             .is_some_and(|value| phab_core::php::is_truthy(&value));
         let custom = |key| self.custom.get(&(revision.phid.clone(), key));
-        let fields = json!({
+        let mut fields = json!({
             "stackGraph": self.graphs.get(&revision.phid).cloned().unwrap_or_default(),
             "title": revision.title,
             "uri": format!("{}/D{}", self.base_uri, revision.id),
@@ -1228,8 +1232,20 @@ impl<'a> PageData<'a> {
             "dateModified": revision.date_modified,
             "policy": {"view": revision.view_policy, "edit": revision.edit_policy},
             "bugzilla.bug-id": custom(BUG_FIELD),
-            "uplift.request": uplift_request(custom(UPLIFT_FIELD)),
         });
+        // The custom fields come in the order of the class map.
+        if let Value::Object(map) = &mut fields {
+            if let Some(values) = &self.merge_conflict {
+                map.insert(
+                    merge_conflict::CONDUIT_KEY.to_owned(),
+                    values.get(&revision.phid).cloned().unwrap_or_default(),
+                );
+            }
+            map.insert(
+                "uplift.request".to_owned(),
+                uplift_request(custom(UPLIFT_FIELD)),
+            );
+        }
         Ok(json!({
             "id": revision.id,
             "type": "DREV",

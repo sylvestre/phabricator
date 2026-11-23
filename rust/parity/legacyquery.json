@@ -29,5 +29,6 @@
   {"name": "differential.query: no reviewers, to PHP", "method": "differential.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"reviewers": ["none()"]}},
   {"name": "differential.query: commit hashes, to PHP", "method": "differential.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"commitHashes": [["gtcm", "abc"]]}},
   {"name": "differential.query: branches, to PHP", "method": "differential.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"branches": ["main"]}},
-  {"name": "differential.query: paths, to PHP", "method": "differential.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"paths": [["x", "y"]]}}
+  {"name": "differential.query: paths, to PHP", "method": "differential.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"paths": [["x", "y"]]}},
+  {"name": "differential.query: every revision, with merge conflict statuses", "method": "differential.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 1000}}
 ]
