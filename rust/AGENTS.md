@@ -146,6 +146,17 @@ stories about objects other than revisions, projects and users. A task
 declined after its lease (its story changed in between) gets its lease
 columns back as they were.
 
+`PhabricatorMetaMTAWorker` sends queued mail with the mailers of
+`cluster.mailers` (read like PHP's, from `local.json` and `config_entry`):
+`test` and `smtp` are ported. Mail nobody receives through Phabricator (on
+Mozilla's deployment, everyone with the default `email.default` of `2` gets
+Mozilla's own mail instead) is voided whatever the mailers; without mailers
+it is voided too. Mail to deliver with another mailer (`ses`, which
+production uses), with attachments, error mail, mail to subprojects or
+milestones, mail truncated by `metamta.email-body-limit`, mail to a user
+without a settings cache, and addresses PHPMailer might reject are left to
+PHP.
+
 `phab-worker --once [--id N]` leases and runs one task, prints the outcome
 as JSON and exits (3 when the task was left to PHP).
 `rust/scripts/worker-parity.py` compares its rows with PHP's

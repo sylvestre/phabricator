@@ -3,13 +3,20 @@
 the development stack.
 
     rust/scripts/worker-parity.py [--sides php,rust] [--show] [--feed N]
-        [--rust-worker CMD] [scenarios.json]...
+        [--metamta N] [--rust-worker CMD] [scenarios.json]...
 
 A scenario queues one task: `{"name": ..., "class": "FeedPublisherWorker",
-"data": {"key": 7301...}, "priority": 2000, "objectPHID": null}` (priority
-and objectPHID optional). `--feed N` adds a FeedPublisherWorker scenario for
-each of the N newest feed stories, one for a story whose key matches nothing,
-and one whose data has no key.
+"data": {"key": 7301...}, "priority": 2000, "objectPHID": null, "setup":
+["UPDATE ..."]}` (priority, objectPHID and setup optional; the setup
+statements run on both sides before the task is queued, and are undone with
+the rest). `--feed N` adds a FeedPublisherWorker scenario for each of the N
+newest feed stories, one for a story whose key matches nothing, and one whose
+data has no key. `--metamta N` adds PhabricatorMetaMTAWorker scenarios for
+the N newest mails, each put back in the queue: as configured (the stack has
+no mailers: voided), with a `test` mailer in `cluster.mailers` (recipients
+get Mozilla's mail by default: voided without recipients), and with a test
+mailer and `email.default` 0 (sent), plus one for a mail which does not
+exist.
 
 For each scenario and side, from the same snapshot of every `phabricator_*`
 database, the script queues the task with the SQL of
@@ -168,6 +175,8 @@ def mask_lease(changes, task_id, names):
 
 def run_side(side, scenario, saved, before, known, names, rust_worker):
     started = int(time.time())
+    for statement in scenario.get("setup", []):
+        query(statement)
     task_id = enqueue(scenario)
     queued = WP.rows(WP.dump())
     initial = WP.counters()
@@ -204,6 +213,41 @@ def feed_scenarios(count):
     return scenarios
 
 
+def config_entry(key, value):
+    """A `config_entry` row setting `key`, which both sides read after
+    `local.json`."""
+    phid = "PHID-CONF-parity" + key.replace(".", "").replace("-", "")[:14]
+    return (
+        "INSERT INTO phabricator_config.config_entry (namespace, configKey, "
+        "value, isDeleted, phid, dateCreated, dateModified) VALUES "
+        f"('default', {quote(key)}, {quote(php_json(value))}, 0, "
+        f"{quote(phid)}, 1, 1)")
+
+
+def metamta_scenarios(count):
+    ids = [int(row[0]) for row in query(
+        "SELECT id FROM phabricator_metamta.metamta_mail ORDER BY id DESC "
+        f"LIMIT {int(count)}")]
+    mailers = config_entry("cluster.mailers",
+                           [{"key": "test-mailer", "type": "test"}])
+    legacy = config_entry("email.default", "0")
+    scenarios = []
+    for mail_id in ids:
+        requeue = ("UPDATE phabricator_metamta.metamta_mail SET status = "
+                   f"'queued' WHERE id = {mail_id}")
+        for label, setup in (("as configured", []),
+                             ("with a test mailer", [mailers]),
+                             ("with a test mailer and legacy mail",
+                              [mailers, legacy])):
+            scenarios.append({"name": f"mail {mail_id} {label}",
+                              "class": "PhabricatorMetaMTAWorker",
+                              "data": mail_id, "priority": 1000,
+                              "setup": [requeue] + setup})
+    scenarios.append({"name": "mail which does not exist",
+                      "class": "PhabricatorMetaMTAWorker", "data": 999999})
+    return scenarios
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sides", default="php,rust")
@@ -211,6 +255,8 @@ def main():
                         help="print every row change of the first side")
     parser.add_argument("--feed", type=int, default=0,
                         help="add scenarios for the N newest feed stories")
+    parser.add_argument("--metamta", type=int, default=0,
+                        help="add scenarios for the N newest mails")
     parser.add_argument("--rust-worker", default=RUST_WORKER,
                         help="command running one task, {id} its ID")
     parser.add_argument("files", nargs="*")
@@ -223,8 +269,10 @@ def main():
             scenarios.extend(json.load(handle))
     if args.feed:
         scenarios.extend(feed_scenarios(args.feed))
+    if args.metamta:
+        scenarios.extend(metamta_scenarios(args.metamta))
     if not scenarios:
-        parser.error("no scenarios: give files or --feed")
+        parser.error("no scenarios: give files, --feed or --metamta")
 
     names = {table: columns(table) for table in (
         "phabricator_worker.worker_activetask",

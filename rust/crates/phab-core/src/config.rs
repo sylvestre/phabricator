@@ -99,6 +99,13 @@ fn default_values() -> Map<String, Value> {
         "phabricator.timezone": null,
         "account.editable": true,
         "metamta.one-mail-per-recipient": true,
+        "metamta.default-address": null,
+        "metamta.reply-handler-domain": null,
+        "metamta.can-send-as-user": false,
+        "metamta.user-address-format": "full",
+        "metamta.email-body-limit": 524_288,
+        "cluster.mailers": [],
+        "phabricator.silent": false,
         "diffusion.allow-http-auth": false,
         "email.default": "0",
     });

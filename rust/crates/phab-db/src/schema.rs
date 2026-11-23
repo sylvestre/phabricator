@@ -186,7 +186,21 @@ pub const CONTRACT: &[TableContract] = &[
     TableContract {
         database: "user",
         table: "user_email",
-        columns: &["userPHID", "address", "isVerified", "isPrimary"],
+        columns: &["id", "userPHID", "address", "isVerified", "isPrimary"],
+    },
+    TableContract {
+        database: "metamta",
+        table: "metamta_mail",
+        columns: &[
+            "id",
+            "phid",
+            "actorPHID",
+            "parameters",
+            "status",
+            "message",
+            "relatedPHID",
+            "dateModified",
+        ],
     },
     TableContract {
         database: "user",

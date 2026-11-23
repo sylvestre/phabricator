@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 phab-app-feed.workspace = true
+phab-app-metamta.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
 rustix.workspace = true
@@ -20,7 +21,12 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+hex.workspace = true
+jiff.workspace = true
+md-5.workspace = true
 phab-db = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["io-util", "net"] }
 
 [lints]
 workspace = true
