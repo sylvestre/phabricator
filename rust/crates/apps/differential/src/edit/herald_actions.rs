@@ -67,6 +67,16 @@ fn merge(into: &mut Vec<String>, later: &[String]) {
     *into = merged;
 }
 
+/// `mergeTransactions()` of two edge transactions: the later one's PHIDs
+/// come after the earlier one's.
+fn merge_edges(into: &mut Vec<String>, later: &[String]) {
+    for phid in later {
+        if !into.contains(phid) {
+            into.push(phid.clone());
+        }
+    }
+}
+
 /// A transaction of the Herald editor.
 enum Planned {
     Subscription(Subscription),
@@ -543,7 +553,7 @@ pub(super) async fn tag(
         super::tags::check_added(request, &remaining).await?;
     }
     queue.merged(Entry::Projects, |entry| matches!(entry, Entry::Projects));
-    merge(
+    merge_edges(
         if is_add {
             &mut queue.tag
         } else {
