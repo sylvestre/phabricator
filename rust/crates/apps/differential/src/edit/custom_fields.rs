@@ -106,7 +106,8 @@ pub(super) fn parse(field: Field, value: &Value) -> Result<Wanted, MethodError> 
             let decoded: Value = serde_json::from_str(text).map_err(|_| unsupported())?;
             json_storage(&decoded).ok_or_else(unsupported)?
         }
-        // `ConduitPHIDListParameterType`: a list of strings.
+        // `ConduitPHIDListParameterType`: a list of strings, which the
+        // transaction hands the field as its JSON text.
         (Field::Auditors, Value::Array(items))
             if items
                 .iter()
@@ -156,6 +157,9 @@ async fn old_value(
                 .map(serde_json::from_str::<Value>)
                 .and_then(Result::ok)
             {
+                // The auditors' value is the JSON text of the list, stored
+                // encoded once more.
+                Some(Value::String(text)) if field == Field::Auditors => text,
                 Some(decoded @ (Value::Array(_) | Value::Object(_))) => {
                     json_storage(&decoded).ok_or_else(unsupported)?
                 }
@@ -261,7 +265,11 @@ pub(super) async fn write(
     .bind(phab_core::hash::digest_for_index(
         planned.field.key().as_bytes(),
     ))
-    .bind(&planned.new)
+    .bind(match planned.field {
+        // `getValueForStorage()` encodes the field's JSON text.
+        Field::Auditors => php::json_encode(&Value::String(planned.new.clone())),
+        _ => planned.new.clone(),
+    })
     .execute(&mut *connection)
     .await?;
     Ok(())
