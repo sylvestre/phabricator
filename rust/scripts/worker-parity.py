@@ -3,10 +3,10 @@
 the development stack.
 
     rust/scripts/worker-parity.py [--sides php,rust] [--show] [--feed N]
-        [--metamta N] [--publish N] [--search N] [--rust-worker CMD]
-        [--repository ID
-        [--repository-path PATH] [--repository-origin PATH]
-        [--rust-repository CMD]] [scenarios.json]...
+        [--metamta N] [--publish N] [--search N] [--harbormaster]
+        [--rust-worker CMD] [--repository ID [--repository-path PATH]
+        [--repository-origin PATH] [--rust-repository CMD]]
+        [scenarios.json]...
 
 A scenario queues one task: `{"name": ..., "class": "FeedPublisherWorker",
 "data": {"key": 7301...}, "priority": 2000, "objectPHID": null, "setup":
@@ -29,6 +29,28 @@ the N newest revisions, users and projects: as queued (an index which is
 current is left as it is), forced (`parameters.force`, which updates the
 stored rows) and from scratch (the object's Ferret rows and index versions
 deleted first, so they are inserted).
+
+`--harbormaster` adds `HarbormasterBuildWorker` and
+`HarbormasterTargetWorker` scenarios on builds 1 and 2 and buildables B1
+and B2 (`scripts/seed-dev-harbormaster.php`, run twice): each queues a
+build message from admin (in the setup, as `harbormaster.sendmessage`
+stores it), then the build worker of the build, as `sendmessage` queues it
+(`{"buildID": "N"}`):
+
+- `restart`, `abort` (as the build is, and building), `pause` (building)
+  and `resume` (paused), and a pending build without message (its start);
+- `pass` and `fail` to each target of the build's generation, made to wait
+  for them, the build building: as the revision is (Rust leaves the
+  publishing of a buildable's new status to its revision to PHP) and with
+  the revision already holding the status the buildable gets;
+- the build worker of B1 and B2 (`{"buildablePHID": ...}`) after a `build`
+  message to the buildable, made preparing, and after a `container`
+  message;
+- the target worker of each target, made pending in a building build (the
+  dev stack's `ci.example.test` doesn't resolve: the step logs the
+  silenced call and fails), and of a target of an older generation
+  (aborted);
+- the build and target workers of IDs which do not exist.
 
 `--repository ID` (3 for R3, rFAB, on the dev stack) adds the import
 pipeline of that Git repository, whose working copy (`--repository-path`,
@@ -625,6 +647,137 @@ def search_scenarios(count):
     return scenarios
 
 
+HM = "phabricator_harbormaster"
+BUILD_WORKER = "HarbormasterBuildWorker"
+TARGET_WORKER = "HarbormasterTargetWorker"
+
+
+def harbormaster_message(receiver, kind, author):
+    """The row `harbormaster.sendmessage` stores."""
+    return (f"INSERT INTO {HM}.harbormaster_buildmessage (authorPHID, "
+            "receiverPHID, type, isConsumed, dateCreated, dateModified) VALUES "
+            f"({quote(author)}, {quote(receiver)}, {quote(kind)}, 0, 1, 1)")
+
+
+def harbormaster_scenarios():
+    """Build commands, target messages and target runs on builds 1 and 2,
+    and buildable updates on B1 and B2."""
+    admin = query("SELECT phid FROM phabricator_user.user "
+                  "WHERE userName = 'admin'")[0][0]
+    builds = query(f"SELECT id, phid, buildablePHID, buildGeneration FROM "
+                   f"{HM}.harbormaster_build WHERE id IN (1, 2) ORDER BY id")
+    scenarios = []
+
+    def build_task(name, build_id, build_phid, setup):
+        scenarios.append({
+            "name": name, "class": BUILD_WORKER,
+            "data": {"buildID": str(build_id)}, "objectPHID": build_phid,
+            "setup": setup})
+
+    for build_id, build_phid, buildable_phid, generation in builds:
+        status = (lambda value: f"UPDATE {HM}.harbormaster_build SET "
+                  f"buildStatus = {quote(value)} WHERE id = {build_id}")
+        targets = query(
+            f"SELECT id, phid FROM {HM}.harbormaster_buildtarget WHERE "
+            f"buildPHID = {quote(build_phid)} AND buildGeneration = "
+            f"{generation} ORDER BY id")
+        label = f"build {build_id}"
+        for kind, made in (("restart", None), ("abort", None),
+                           ("abort", "building"), ("pause", "building"),
+                           ("resume", "paused")):
+            setup = [status(made)] if made else []
+            how = f" ({made})" if made else " as it is"
+            build_task(f"{kind} {label}{how}", build_id, build_phid,
+                       setup + [harbormaster_message(build_phid, kind, admin)])
+        build_task(f"start {label} (pending)", build_id, build_phid,
+                   [status("pending")])
+
+        # The revision of the buildable's diff, to give it the buildable's
+        # status already.
+        revision = query(
+            "SELECT revision.id, HEX(revision.properties) FROM "
+            "phabricator_differential.differential_diff diff JOIN "
+            "phabricator_differential.differential_revision revision ON "
+            "revision.id = diff.revisionID JOIN "
+            f"{HM}.harbormaster_buildable buildable ON buildable.buildablePHID "
+            f"= diff.phid WHERE buildable.phid = {quote(buildable_phid)}")
+
+        def published(value):
+            if not revision:
+                return []
+            revision_id, raw = revision[0]
+            properties = json.loads(bytes.fromhex(raw).decode() or "{}")
+            if not isinstance(properties, dict):
+                properties = {}
+            buildables = properties.get("buildables")
+            if not isinstance(buildables, dict):
+                buildables = {}
+            buildables[buildable_phid] = {"status": value}
+            properties["buildables"] = buildables
+            return [f"UPDATE phabricator_differential.differential_revision "
+                    f"SET properties = {quote(php_json(properties))} "
+                    f"WHERE id = {revision_id}"]
+
+        waiting = [status("building")] + [
+            f"UPDATE {HM}.harbormaster_buildtarget SET targetStatus = "
+            f"'target/waiting', dateCompleted = NULL WHERE id = {target_id}"
+            for target_id, _ in targets]
+        for kind, outcome in (("pass", "passed"), ("fail", "failed")):
+            messages = [harbormaster_message(phid, kind, admin)
+                        for _, phid in targets]
+            build_task(f"{kind} to the targets of {label}", build_id,
+                       build_phid, waiting + messages)
+            build_task(f"{kind} to the targets of {label}, revision "
+                       f"published {outcome}", build_id, build_phid,
+                       waiting + messages + published(outcome))
+
+        for target_id, target_phid in targets:
+            pending = [status("building"),
+                       f"UPDATE {HM}.harbormaster_buildtarget SET "
+                       "targetStatus = 'target/pending', dateStarted = NULL, "
+                       f"dateCompleted = NULL WHERE id = {target_id}"]
+            for suffix, setup in (("", pending),
+                                  (", revision published failed",
+                                   pending + published("failed"))):
+                scenarios.append({
+                    "name": f"run target {target_id} of {label}{suffix}",
+                    "class": TARGET_WORKER,
+                    "data": {"targetID": int(target_id)},
+                    "objectPHID": target_phid, "setup": setup})
+        if targets:
+            target_id, target_phid = targets[0]
+            scenarios.append({
+                "name": f"run target {target_id} of {label}, restarted since",
+                "class": TARGET_WORKER, "data": {"targetID": int(target_id)},
+                "objectPHID": target_phid,
+                "setup": [status("building"),
+                          f"UPDATE {HM}.harbormaster_build SET "
+                          "buildGeneration = buildGeneration + 1 WHERE id = "
+                          f"{build_id}"]})
+
+    buildables = query(f"SELECT id, phid FROM {HM}.harbormaster_buildable "
+                       "WHERE id IN (1, 2) ORDER BY id")
+    for buildable_id, buildable_phid in buildables:
+        preparing = (f"UPDATE {HM}.harbormaster_buildable SET buildableStatus "
+                     f"= 'preparing' WHERE id = {buildable_id}")
+        for kind, setup in (("build", [preparing]), ("container", [])):
+            scenarios.append({
+                "name": f"update B{buildable_id} after a {kind} message",
+                "class": BUILD_WORKER,
+                "data": {"buildablePHID": buildable_phid},
+                "objectPHID": buildable_phid,
+                "setup": setup + [harbormaster_message(buildable_phid, kind,
+                                                       admin)]})
+    scenarios.append({"name": "build which does not exist",
+                      "class": BUILD_WORKER, "data": {"buildID": "999999"}})
+    scenarios.append({"name": "buildable which does not exist",
+                      "class": BUILD_WORKER,
+                      "data": {"buildablePHID": "PHID-HMBB-nope"}})
+    scenarios.append({"name": "target which does not exist",
+                      "class": TARGET_WORKER, "data": {"targetID": 999999}})
+    return scenarios
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sides", default="php,rust")
@@ -640,6 +793,9 @@ def main():
     parser.add_argument("--search", type=int, default=0,
                         help="add indexing scenarios for the N newest "
                         "revisions, users and projects")
+    parser.add_argument("--harbormaster", action="store_true",
+                        help="add the Harbormaster scenarios on builds 1 "
+                        "and 2 and buildables B1 and B2")
     parser.add_argument("--rust-worker", default=RUST_WORKER,
                         help="command running one task, {id} its ID")
     parser.add_argument("--repository", default=None,
@@ -668,12 +824,14 @@ def main():
         scenarios.extend(publish_scenarios(args.publish))
     if args.search:
         scenarios.extend(search_scenarios(args.search))
+    if args.harbormaster:
+        scenarios.extend(harbormaster_scenarios())
     if args.repository:
         scenarios.extend(repository_scenarios(
             args.repository, args.repository_path, args.repository_origin))
     if not scenarios:
         parser.error("no scenarios: give files, --feed, --metamta, --publish, "
-                     "--search or --repository")
+                     "--search, --harbormaster or --repository")
 
     names = {table: columns(table) for table in (
         "phabricator_worker.worker_activetask",
