@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use phab_conduit::Context;
 use phab_core::{Phid, PhidType, random};
 use phab_db::Database;
 use serde_json::{Map, Value, json};
@@ -921,8 +922,9 @@ impl Sim {
 
     /// `publishBuildable()` with `DifferentialBuildableEngine`: nothing to
     /// do for diffs without a revision, manual buildables, buildables still
-    /// building, and when the revision's buildable status stays the same.
-    fn publish_buildable(&self) -> Result<(), EngineError> {
+    /// building, and when the revision's buildable status stays the same;
+    /// otherwise the revision's editor sets it ([`Op::Publish`]).
+    fn publish_buildable(&mut self) -> Result<(), EngineError> {
         let Some(revision) = &self.diff.revision else {
             return Ok(());
         };
@@ -947,14 +949,14 @@ impl Sim {
             (Some(Value::String(old)), Some(new)) => old == new,
             _ => false,
         };
-        if same {
-            Ok(())
-        } else {
-            Err(unsupported(
-                "buildable status changes published to revisions (harbormaster:buildable \
-                 transactions)",
-            ))
+        if !same {
+            self.ops.push(Op::Publish {
+                revision_id: revision.id,
+                buildable_phid: self.buildable.phid.clone(),
+                status: new,
+            });
         }
+        Ok(())
     }
 }
 
@@ -962,18 +964,20 @@ impl Sim {
 /// `continueBuild()` under the build's lock (and the buildable's, which
 /// `updateBuildable()` takes).
 pub(super) async fn continue_build_task(
-    database: &Database,
+    context: &Context,
     (id, display): (i64, String),
     now: i64,
     mode: Mode,
 ) -> Result<(), EngineError> {
+    let database = &context.database;
     let invalid = || EngineError::Permanent(format!("Invalid build ID \"{display}\"."));
     let build = rows::build_by_id(database, id).await?.ok_or_else(invalid)?;
     let mut sim = Sim::load_build(database, &build, now)
         .await?
         .ok_or_else(invalid)?;
     if mode == Mode::Inspect {
-        return sim.continue_build();
+        sim.continue_build()?;
+        return write::check(context, &sim.ops, now).await;
     }
     let build_lock = GlobalLock::lock(database, &format!("harbormaster.build:{id}")).await?;
     let buildable_lock = match GlobalLock::lock(
@@ -995,7 +999,7 @@ pub(super) async fn continue_build_task(
             .await?
             .ok_or_else(invalid)?;
         sim.continue_build()?;
-        write::apply(database, &sim.ops, now).await
+        write::apply(context, &sim.ops, now).await
     }
     .await;
     buildable_lock.unlock().await?;
@@ -1006,11 +1010,12 @@ pub(super) async fn continue_build_task(
 /// `HarbormasterBuildWorker` for a buildable: `loadBuildable()`, then
 /// `updateBuildable()` under its lock.
 pub(super) async fn update_buildable_task(
-    database: &Database,
+    context: &Context,
     phid: &str,
     now: i64,
     mode: Mode,
 ) -> Result<(), EngineError> {
+    let database = &context.database;
     let invalid = || EngineError::Permanent(format!("Invalid buildable PHID \"{phid}\"."));
     let load = || async {
         let buildable = rows::buildable_by_phid(database, phid)
@@ -1022,7 +1027,8 @@ pub(super) async fn update_buildable_task(
     };
     let mut sim = load().await?;
     if mode == Mode::Inspect {
-        return sim.update_buildable();
+        sim.update_buildable()?;
+        return write::check(context, &sim.ops, now).await;
     }
     let lock = GlobalLock::lock(
         database,
@@ -1032,7 +1038,7 @@ pub(super) async fn update_buildable_task(
     let result = async {
         sim = load().await?;
         sim.update_buildable()?;
-        write::apply(database, &sim.ops, now).await
+        write::apply(context, &sim.ops, now).await
     }
     .await;
     lock.unlock().await?;

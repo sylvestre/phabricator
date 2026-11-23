@@ -28,6 +28,12 @@ const DATABASES: &[&str] = &[
     "differential",
     "repository",
     "herald",
+    "user",
+    "project",
+    "policy",
+    "spaces",
+    "audit",
+    "file",
 ];
 
 type Row = Map<String, Value>;
@@ -415,12 +421,116 @@ async fn ignores_commands_without_effect() {
 /// A `fail` message to the waiting target fails it, which fails the build
 /// (a failed step fails it whatever the others do), releases its artifacts
 /// and fails the buildable. The revision has no status for the buildable
-/// yet, so Differential would publish it: left to PHP.
+/// yet, so Differential publishes it (`publishBuildable()`): the
+/// `harbormaster:buildable` transaction of the Harbormaster application,
+/// with the daemons' content source, the revision's `buildables` property
+/// and its publish task.
+#[tokio::test]
+async fn publishes_buildables_to_revisions() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture.message("PHID-HMBT-run", "fail").await;
+    let id = fixture
+        .schedule("HarbormasterBuildWorker", &json!({"buildID": "1"}))
+        .await;
+    succeeded(fixture.run(id).await);
+    assert_eq!(
+        fixture
+            .value("SELECT buildableStatus FROM `{ns}_harbormaster`.harbormaster_buildable")
+            .await,
+        json!("failed")
+    );
+    let xactions = fixture
+        .rows(
+            "SELECT authorPHID, objectPHID, viewPolicy, editPolicy, transactionType, oldValue, \
+             newValue, contentSource, metadata FROM \
+             `{ns}_differential`.differential_transaction ORDER BY id",
+        )
+        .await;
+    assert_eq!(xactions.len(), 1);
+    let xaction = &xactions[0];
+    assert_eq!(
+        xaction["authorPHID"],
+        json!("PHID-APPS-PhabricatorHarbormasterApplication")
+    );
+    assert_eq!(xaction["objectPHID"], json!("PHID-DREV-1"));
+    assert_eq!(xaction["editPolicy"], json!("no-one"));
+    assert_eq!(xaction["transactionType"], json!("harbormaster:buildable"));
+    assert_eq!(xaction["oldValue"], json!("null"));
+    assert_eq!(xaction["newValue"], json!("\"failed\""));
+    assert_eq!(
+        xaction["contentSource"],
+        json!(r#"{"source":"daemon","params":[]}"#)
+    );
+    let metadata = xaction["metadata"].as_str().unwrap();
+    assert!(
+        metadata.starts_with(r#"{"harbormaster:buildablePHID":"PHID-HMBB-1","core.groupID":""#),
+        "{metadata}"
+    );
+    assert_eq!(
+        fixture
+            .value("SELECT properties FROM `{ns}_differential`.differential_revision")
+            .await,
+        json!(r#"{"buildables":{"PHID-HMBB-1":{"status":"failed"}}}"#)
+    );
+    let queued = fixture.queued(id).await;
+    let publish: Vec<_> = queued
+        .iter()
+        .filter(|(class, ..)| class == "PhabricatorApplicationTransactionPublishWorker")
+        .collect();
+    assert_eq!(publish.len(), 1, "{queued:?}");
+    assert_eq!(publish[0].1, "PHID-DREV-1 1000");
+    assert!(
+        publish[0]
+            .2
+            .contains(r#""actorPHID":"PHID-APPS-PhabricatorHarbormasterApplication""#)
+    );
+
+    // Run again, the revision knows the buildable failed: nothing more.
+    fixture
+        .execute(
+            "UPDATE `{ns}_harbormaster`.harbormaster_buildable SET buildableStatus = 'building'",
+        )
+        .await;
+    let id = fixture
+        .schedule(
+            "HarbormasterBuildWorker",
+            &json!({"buildablePHID": "PHID-HMBB-1"}),
+        )
+        .await;
+    succeeded(fixture.run(id).await);
+    assert_eq!(
+        fixture
+            .value(
+                "SELECT CAST(COUNT(*) AS CHAR) FROM `{ns}_differential`.differential_transaction"
+            )
+            .await,
+        json!("1")
+    );
+    fixture.finish().await;
+}
+
+/// Herald rules Differential's editor doesn't evaluate leave the publishing
+/// of the buildable, and the whole task, to PHP.
 #[tokio::test]
 async fn leaves_revision_publishing_to_php() {
     let Some(fixture) = fixture().await else {
         return;
     };
+    fixture
+        .execute(
+            "INSERT INTO `{ns}_herald`.herald_rule (id, name, authorPHID, contentType, \
+               mustMatchAll, configVersion, dateCreated, dateModified, repetitionPolicy, \
+               ruleType, phid, isDisabled, triggerObjectPHID) VALUES \
+             (1, 'Build', 'PHID-USER-admin', 'differential', 1, 38, 1, 1, 'every', 'global', \
+               'PHID-HRUL-one', 0, NULL); \
+             INSERT INTO `{ns}_herald`.herald_condition (id, ruleID, fieldName, \
+               fieldCondition, value) VALUES (1, 1, 'new-object', 'true', 'null'); \
+             INSERT INTO `{ns}_herald`.herald_action (id, ruleID, action, target) VALUES \
+             (1, 1, 'harbormaster.build', '[\"PHID-HMCP-1\"]')",
+        )
+        .await;
     fixture.message("PHID-HMBT-run", "fail").await;
     let id = fixture
         .schedule("HarbormasterBuildWorker", &json!({"buildID": "1"}))
@@ -432,43 +542,6 @@ async fn leaves_revision_publishing_to_php() {
             .await,
         json!("target/waiting")
     );
-
-    // Once the revision knows the buildable failed, publishing changes
-    // nothing.
-    fixture
-        .execute(
-            "UPDATE `{ns}_differential`.differential_revision SET properties = \
-             '{\"buildables\":{\"PHID-HMBB-1\":{\"status\":\"failed\"}}}'",
-        )
-        .await;
-    succeeded(fixture.run(id).await);
-    let target = fixture
-        .rows(
-            "SELECT targetStatus, CAST(dateCompleted AS CHAR) completed FROM \
-             `{ns}_harbormaster`.harbormaster_buildtarget",
-        )
-        .await;
-    assert_eq!(target[0]["targetStatus"], json!("target/failed"));
-    assert!(target[0]["completed"].is_string());
-    assert_eq!(
-        fixture
-            .value("SELECT buildStatus FROM `{ns}_harbormaster`.harbormaster_build")
-            .await,
-        json!("failed")
-    );
-    assert_eq!(
-        fixture
-            .value("SELECT buildableStatus FROM `{ns}_harbormaster`.harbormaster_buildable")
-            .await,
-        json!("failed")
-    );
-    assert_eq!(
-        fixture
-            .value("SELECT CAST(isReleased AS CHAR) FROM `{ns}_harbormaster`.harbormaster_buildartifact")
-            .await,
-        json!("1")
-    );
-    assert_eq!(fixture.queued(id).await.len(), 0);
     fixture.finish().await;
 }
 

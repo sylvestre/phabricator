@@ -27,6 +27,22 @@ pub const YIELD_OWNER: &str = "(yield)";
 
 /// `PhabricatorWorker::PRIORITY_DEFAULT`.
 pub const PRIORITY_DEFAULT: i64 = 2000;
+/// The context of the handlers' Conduit calls, editors and Herald
+/// transcripts: the host name is `php_uname('n')`.
+pub(crate) fn context(
+    database: &phab_db::Database,
+    config: &phab_core::Config,
+) -> phab_conduit::Context {
+    phab_conduit::Context {
+        database: database.clone(),
+        config: config.clone(),
+        hostname: rustix::system::uname()
+            .nodename()
+            .to_string_lossy()
+            .into_owned(),
+    }
+}
+
 /// PHP's `time()`.
 pub(crate) fn time() -> i64 {
     let elapsed = std::time::SystemTime::now()

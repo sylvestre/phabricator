@@ -16,8 +16,6 @@ use phab_app_diffusion::import::{
     CHANGE_PARSER, ImportError, MESSAGE_PARSER, PUBLISHER, change, message, publish,
 };
 use phab_app_files::mime::MimeCommand;
-use phab_conduit::Context;
-use phab_core::Config;
 use phab_db::Database;
 use serde_json::Value;
 
@@ -172,19 +170,6 @@ impl Handler for ChangeParserWorker {
     }
 }
 
-/// The context of the publish step's Conduit calls and Herald transcripts:
-/// the host name is `php_uname('n')`.
-fn context(database: &Database, config: &Config) -> Context {
-    Context {
-        database: database.clone(),
-        config: config.clone(),
-        hostname: rustix::system::uname()
-            .nodename()
-            .to_string_lossy()
-            .into_owned(),
-    }
-}
-
 impl Handler for PublishWorker {
     fn class(&self) -> &'static str {
         PUBLISHER
@@ -200,7 +185,7 @@ impl Handler for PublishWorker {
             claim(
                 async {
                     let parser = load(task.database, task.data).await?;
-                    let context = context(task.database, task.config);
+                    let context = crate::context(task.database, task.config);
                     publish::prepare(&context, &parser, self.mime.as_ref())
                         .await
                         .map_err(before_writes)?;
@@ -214,7 +199,7 @@ impl Handler for PublishWorker {
     fn do_work<'a>(&'a self, work: &'a Work<'a>) -> WorkFuture<'a> {
         Box::pin(async move {
             let mut parser = load(work.database, work.data()).await?;
-            let context = context(work.database, work.config);
+            let context = crate::context(work.database, work.config);
             let prepared = publish::prepare(&context, &parser, self.mime.as_ref())
                 .await
                 .map_err(before_writes)?;

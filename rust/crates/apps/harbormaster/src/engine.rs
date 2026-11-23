@@ -25,17 +25,19 @@
 //!   `HarbormasterTargetWorker` tasks, and artifact releases;
 //! - the buildable messages (`build`, `container`) and the buildable status
 //!   (`buildable` plan behavior), and Differential's side of publishing a
-//!   buildable (`DifferentialBuildableEngine::publishBuildable()`) when it
-//!   leaves the revision's buildable status as it is.
+//!   buildable (`DifferentialBuildableEngine::publishBuildable()`): the
+//!   revision's `harbormaster:buildable` transaction, through Differential's
+//!   editor ([`phab_app_differential::edit::publish_buildable()`]), planned
+//!   with the rest before anything is written, and written in its own
+//!   transaction where PHP's engine publishes.
 //!
 //! [`target`] runs the targets of "Make HTTP Request" steps (the only step
 //! of Mozilla's plans) and of the Arcanist lint and unit autotargets.
 //!
 //! Left to PHP: buildables of commits and other objects; targets for diffs
 //! of revisions with a repository (their variables need the repository's
-//! clone URIs); a buildable status change Differential publishes, which is
-//! a `harbormaster:buildable` transaction of the revision through
-//! `DifferentialTransactionEditor` and Herald; restarts of plans
+//! clone URIs); a buildable status change whose revision edit Differential's
+//! editor leaves to PHP; restarts of plans
 //! restartable only if failed (PHP fails with an `Error` there); builds
 //! whose plan is gone; step implementations which are not installed; rows
 //! whose JSON PHP would encode differently on save; and lock logs
@@ -49,8 +51,9 @@ mod sim;
 pub mod target;
 mod write;
 
+use phab_conduit::Context;
 use phab_core::Config;
-use phab_db::{Database, DbError};
+use phab_db::DbError;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -133,26 +136,25 @@ fn check_config(config: &Config) -> Result<(), EngineError> {
 
 /// `HarbormasterBuildWorker::doWork()` for the task data `data`, at `now`.
 pub async fn build_worker(
-    database: &Database,
-    config: &Config,
+    context: &Context,
     data: &Value,
     now: i64,
     mode: Mode,
 ) -> Result<(), EngineError> {
-    check_config(config)?;
+    check_config(&context.config)?;
     let Value::Object(map) = data else {
         return Err(unsupported("build tasks whose data is not a dictionary"));
     };
     let build_id = map.get("buildID");
     if build_id.is_some_and(phab_core::php::is_truthy) {
         let id = rows::id_param(build_id)?;
-        sim::continue_build_task(database, id, now, mode).await
+        sim::continue_build_task(context, id, now, mode).await
     } else {
         let phid = match map.get("buildablePHID") {
             None | Some(Value::Null) => String::new(),
             Some(Value::String(phid)) => phid.clone(),
             Some(_) => return Err(unsupported("buildable PHIDs which are not strings")),
         };
-        sim::update_buildable_task(database, &phid, now, mode).await
+        sim::update_buildable_task(context, &phid, now, mode).await
     }
 }

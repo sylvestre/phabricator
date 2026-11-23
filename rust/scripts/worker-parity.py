@@ -40,9 +40,10 @@ stores it), then the build worker of the build, as `sendmessage` queues it
 - `restart`, `abort` (as the build is, and building), `pause` (building)
   and `resume` (paused), and a pending build without message (its start);
 - `pass` and `fail` to each target of the build's generation, made to wait
-  for them, the build building: as the revision is (Rust leaves the
-  publishing of a buildable's new status to its revision to PHP) and with
-  the revision already holding the status the buildable gets;
+  for them, the build building: as the revision is (the buildable's new
+  status is published to the revision, a `harbormaster:buildable`
+  transaction) and with the revision already holding the status the
+  buildable gets;
 - the build worker of B1 and B2 (`{"buildablePHID": ...}`) after a `build`
   message to the buildable, made preparing, and after a `container`
   message;

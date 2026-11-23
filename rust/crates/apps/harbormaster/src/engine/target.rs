@@ -18,6 +18,7 @@
 //! settings or URI PHP would read differently, and requests the build was
 //! restarted during (PHP checks the build every 5 seconds while it waits).
 
+use phab_conduit::Context;
 use phab_core::{Config, Phid, PhidType};
 use phab_db::Database;
 use serde_json::{Map, Value, json};
@@ -229,13 +230,13 @@ fn outcomes() -> [HttpResponse; 2] {
 /// `HarbormasterTargetWorker::doWork()` for the task data `data`, at
 /// `now`; requests go through `client`.
 pub async fn target_worker(
-    database: &Database,
-    config: &Config,
+    context: &Context,
     data: &Value,
     now: i64,
     client: Option<&dyn HttpClient>,
     mode: Mode,
 ) -> Result<(), EngineError> {
+    let (database, config) = (&context.database, &context.config);
     check_config(config)?;
     let Value::Object(map) = data else {
         return Err(unsupported("target tasks whose data is not a dictionary"));
@@ -246,7 +247,8 @@ pub async fn target_worker(
     let request = run_target(&mut planned, index, config, None).await?;
     if mode == Mode::Inspect {
         if request.is_none() {
-            return planned.continue_build();
+            planned.continue_build()?;
+            return write::check(context, &planned.ops, now).await;
         }
         if client.is_none() {
             return Err(unsupported("HTTP requests without an HTTP client"));
@@ -255,6 +257,7 @@ pub async fn target_worker(
             let mut outcome = sim.clone();
             run_target(&mut outcome, index, config, Some(&response)).await?;
             outcome.continue_build()?;
+            write::check(context, &outcome.ops, now).await?;
         }
         return Ok(());
     }
@@ -291,7 +294,7 @@ pub async fn target_worker(
             ));
         }
         sim.continue_build()?;
-        write::apply(database, &sim.ops, now).await
+        write::apply(context, &sim.ops, now).await
     }
     .await;
     buildable_lock.unlock().await?;

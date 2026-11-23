@@ -207,7 +207,10 @@ engine (`crates/apps/harbormaster/src/engine`) for builds of diffs'
 buildables: build commands (restart, abort, pause, resume) as
 `message/*` transactions with their publish task, target messages
 (`pass`, `fail`), build and buildable status changes, new targets with
-their tasks, artifact releases and buildable messages; and the targets of
+their tasks, artifact releases and buildable messages, and the buildable
+status Differential publishes to the revision (the Rust revision
+editor's `harbormaster:buildable` transaction, as the Harbormaster
+application, with its Herald rules); and the targets of
 "Make HTTP Request" steps and Arcanist autotargets. They take PHP's
 `harbormaster.build:<id>` and `harbormaster.buildable:<id>` locks. An HTTP
 step whose URI PHP wouldn't fetch (`phabricator.silent`, a domain which
@@ -215,11 +218,11 @@ doesn't resolve or is blacklisted) logs and fails as PHP's does; one which
 would send a request is left to PHP (the handler sends requests only
 through an `HttpClient` it is given, `TargetWorker::with_client()`, and
 none is configured). Also left to PHP: buildables of commits, a buildable
-status change Differential would publish to its revision (a
-`harbormaster:buildable` transaction through the revision editor and
-Herald), targets of revisions with a repository (clone URI variables),
-restarts of plans restartable only if failed, the other step
-implementations, credentials, and lock logs (`daemon.lock-log`).
+status the revision editor leaves to PHP (Herald rules it doesn't
+evaluate, project watchers...), targets of revisions with a repository
+(clone URI variables), restarts of plans restartable only if failed, the
+other step implementations, credentials, and lock logs
+(`daemon.lock-log`).
 
 The import of Git commits (`crates/apps/diffusion/src/import`) runs the
 three steps discovery queues for each commit:

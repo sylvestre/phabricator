@@ -5,6 +5,8 @@
 //! it changed (and `dateModified`), having checked that the others, the
 //! JSON ones in particular, would be written back as they are stored.
 
+use phab_app_differential::edit;
+use phab_conduit::{Context, MethodError};
 use phab_db::Database;
 use phab_db::sqlx::MySqlConnection;
 use phab_db::worker::{self, Task};
@@ -70,6 +72,13 @@ pub(super) enum Op {
         priority: i64,
         object_phid: Option<String>,
     },
+    /// `DifferentialBuildableEngine::publishBuildable()` changing the
+    /// revision's status of the buildable: the revision's editor.
+    Publish {
+        revision_id: i64,
+        buildable_phid: String,
+        status: Option<&'static str>,
+    },
     /// A log written and closed.
     Log {
         phid: String,
@@ -80,11 +89,63 @@ pub(super) enum Op {
     },
 }
 
-/// Writes `ops` in one transaction, at `now`.
-pub(super) async fn apply(database: &Database, ops: &[Op], now: i64) -> Result<(), EngineError> {
+/// How the revision editor's refusal ends the task.
+fn edit_error(error: MethodError) -> EngineError {
+    match error {
+        MethodError::Unsupported(what) => EngineError::Unsupported(what.to_owned()),
+        other => EngineError::Failed(format!("{other:?}")),
+    }
+}
+
+/// Plans the revision edits of `ops` ([`Op::Publish`]) without writing:
+/// what Differential's editor leaves to PHP is [`EngineError::Unsupported`].
+pub(super) async fn check(context: &Context, ops: &[Op], now: i64) -> Result<(), EngineError> {
+    for op in ops {
+        if let Op::Publish {
+            revision_id,
+            buildable_phid,
+            status,
+        } = op
+        {
+            edit::publish_buildable(
+                context,
+                *revision_id,
+                (buildable_phid, *status),
+                (now, false),
+            )
+            .await
+            .map_err(edit_error)?;
+        }
+    }
+    Ok(())
+}
+
+/// Writes `ops` at `now`: in one transaction, but for the revision edits,
+/// which are the editor's own (once [`check()`] passes).
+pub(super) async fn apply(context: &Context, ops: &[Op], now: i64) -> Result<(), EngineError> {
+    check(context, ops, now).await?;
+    let database = &context.database;
     let mut transaction = database.pool().begin().await?;
     let mut new_targets = Vec::new();
     for op in ops {
+        if let Op::Publish {
+            revision_id,
+            buildable_phid,
+            status,
+        } = op
+        {
+            transaction.commit().await?;
+            edit::publish_buildable(
+                context,
+                *revision_id,
+                (buildable_phid, *status),
+                (now, true),
+            )
+            .await
+            .map_err(edit_error)?;
+            transaction = database.pool().begin().await?;
+            continue;
+        }
         apply_one(&mut transaction, database, op, now, &mut new_targets).await?;
     }
     transaction.commit().await?;
@@ -239,6 +300,8 @@ async fn apply_one(
             )
             .await?;
         }
+        // The editor's, in `apply()`.
+        Op::Publish { .. } => {}
         Op::Log {
             phid,
             target_phid,

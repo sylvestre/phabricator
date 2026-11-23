@@ -59,7 +59,8 @@ async fn build(
     config: &Config,
     mode: Mode,
 ) -> Result<(), EngineError> {
-    engine::build_worker(database, config, data, crate::time(), mode).await
+    let context = crate::context(database, config);
+    engine::build_worker(&context, data, crate::time(), mode).await
 }
 
 impl Handler for BuildWorker {
@@ -91,8 +92,7 @@ impl TargetWorker {
         mode: Mode,
     ) -> Result<(), EngineError> {
         engine::target::target_worker(
-            database,
-            config,
+            &crate::context(database, config),
             data,
             crate::time(),
             self.client.as_deref(),
