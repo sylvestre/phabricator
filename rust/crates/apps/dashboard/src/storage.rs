@@ -478,6 +478,95 @@ pub async fn load_panels_by_ids(
     .await
 }
 
+/// `PhabricatorDashboardPanelUsedByObjectEdgeType`.
+const PANEL_USED_BY_OBJECT: i64 = 72;
+
+/// The objects using a panel, dashboards and tab panels, newest first
+/// (`loadDestinationPHIDs()`).
+pub async fn panel_users(database: &Database, panel: &Phid) -> Result<Vec<Phid>, DbError> {
+    let sql = format!(
+        "SELECT dst FROM {} WHERE src = ? AND type = ? ORDER BY dateCreated DESC, seq DESC",
+        database.table("dashboard", "edge"),
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(panel.as_str())
+        .bind(PANEL_USED_BY_OBJECT)
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| rows::text(row, "dst").map(Phid::new))
+        .collect()
+}
+
+/// A builtin list query of dashboards or panels (`authored`, `open` or
+/// `active`, `all`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ListFilter {
+    /// `authorPHIDs`.
+    pub author: Option<Phid>,
+    /// Only active dashboards (`statuses`) or panels (`withArchived(false)`).
+    pub active_only: bool,
+}
+
+/// A page of rows of `table` matching `filter`, newest first, before the
+/// row `before` (the list's cursor).
+async fn load_page<T>(
+    database: &Database,
+    (table, columns, active): (&str, &str, &str),
+    filter: &ListFilter,
+    (before, limit): (Option<i64>, usize),
+    from_row: fn(&MySqlRow) -> Result<T, DbError>,
+) -> Result<Vec<T>, DbError> {
+    let mut conditions = vec!["1 = 1".to_owned()];
+    if filter.author.is_some() {
+        conditions.push("authorPHID = ?".to_owned());
+    }
+    if filter.active_only {
+        conditions.push(active.to_owned());
+    }
+    if before.is_some() {
+        conditions.push("id < ?".to_owned());
+    }
+    let sql = format!(
+        "SELECT {columns} FROM {} WHERE {} ORDER BY id DESC LIMIT {limit}",
+        database.table("dashboard", table),
+        conditions.join(" AND "),
+    );
+    let mut query = phab_db::sqlx::query(&sql);
+    if let Some(author) = &filter.author {
+        query = query.bind(author.as_str());
+    }
+    if let Some(before) = before {
+        query = query.bind(before);
+    }
+    query
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(from_row)
+        .collect()
+}
+
+/// A page of dashboards (`PhabricatorDashboardQuery`), newest first.
+pub async fn dashboard_page(
+    database: &Database,
+    filter: &ListFilter,
+    page: (Option<i64>, usize),
+) -> Result<Vec<Dashboard>, DbError> {
+    let spec = ("dashboard", DASHBOARD_COLUMNS, "status = 'active'");
+    load_page(database, spec, filter, page, Dashboard::from_row).await
+}
+
+/// A page of panels (`PhabricatorDashboardPanelQuery`), newest first.
+pub async fn panel_page(
+    database: &Database,
+    filter: &ListFilter,
+    page: (Option<i64>, usize),
+) -> Result<Vec<Panel>, DbError> {
+    let spec = ("dashboard_panel", PANEL_COLUMNS, "isArchived = 0");
+    load_page(database, spec, filter, page, Panel::from_row).await
+}
+
 /// Which of `subjects` `viewer` has every one of `capabilities` on.
 pub async fn filter_subjects(
     database: &Database,
@@ -627,10 +716,21 @@ pub async fn dashboard_transactions(
     database: &Database,
     object: &Phid,
 ) -> Result<Vec<Transaction>, DbError> {
+    object_transactions(database, ("dashboard", "dashboard_transaction"), object).await
+}
+
+/// The transactions of `object` in the transaction table `(database,
+/// table)`, like `("dashboard", "dashboard_paneltransaction")` or `("user",
+/// "user_transaction")`, oldest first.
+pub async fn object_transactions(
+    database: &Database,
+    (schema, table): (&str, &str),
+    object: &Phid,
+) -> Result<Vec<Transaction>, DbError> {
     let sql = format!(
         "SELECT phid, authorPHID, viewPolicy, editPolicy, commentPHID, transactionType, \
          oldValue, newValue, metadata, dateCreated FROM {} WHERE objectPHID = ? ORDER BY id ASC",
-        database.table("dashboard", "dashboard_transaction"),
+        database.table(schema, table),
     );
     phab_db::sqlx::query(&sql)
         .bind(object.as_str())

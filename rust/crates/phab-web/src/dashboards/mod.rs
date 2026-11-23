@@ -1,5 +1,6 @@
 //! Dashboards and portals (`PhabricatorDashboardApplication`), read-only:
-//! `/dashboard/view/<id>/` and `/portal/view/<id>/`. Edits, menu
+//! `/dashboard/view/<id>/`, `/portal/view/<id>/`, the panel page `/W<id>`
+//! and the builtin queries of the dashboard and panel lists. Edits, menu
 //! configuration and the panel workflows link to PHP.
 //!
 //! Panels render as `PhabricatorDashboardPanelRenderingEngine` does: a
@@ -9,6 +10,7 @@
 //! deeper than PHP allows send the page to PHP.
 
 mod dashboard;
+mod lists;
 mod portal;
 
 use std::collections::{HashMap, HashSet};
@@ -21,6 +23,10 @@ use phab_remarkup::Mode;
 use serde_json::Value;
 
 pub(crate) use dashboard::show as dashboard;
+pub(crate) use lists::{
+    dashboard_query, dashboards as dashboard_list, panel, panel_query, panels as panel_list,
+    parse_panel_monogram,
+};
 pub(crate) use portal::show as portal;
 
 use crate::diff_html::escape;

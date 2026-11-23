@@ -497,6 +497,16 @@ impl IconSet {
         }
     }
 
+    /// The icon specifications.
+    pub(crate) fn icons(&self) -> &[Value] {
+        &self.icons
+    }
+
+    /// The color specifications.
+    pub(crate) fn colors(&self) -> &[Value] {
+        &self.colors
+    }
+
     /// `getMilestoneIconKey()`.
     pub(crate) fn milestone_key(&self) -> Value {
         self.icons

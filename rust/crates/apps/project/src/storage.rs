@@ -6,6 +6,8 @@ use phab_db::{Database, DbError, rows};
 
 /// `PhabricatorProjectStatus::STATUS_ARCHIVED`.
 const STATUS_ARCHIVED: &str = "100";
+/// `PhabricatorProjectStatus::STATUS_ACTIVE`.
+pub(crate) const STATUS_ACTIVE: &str = "0";
 
 const COLUMNS: &str = "p.id, p.phid, p.name, p.status, p.icon, p.color, p.viewPolicy, p.editPolicy, \
      p.joinPolicy, p.parentProjectPHID, p.milestoneNumber, p.primarySlug, p.spacePHID";
@@ -154,6 +156,16 @@ pub async fn load_children(database: &Database, parent: &Phid) -> Result<Vec<Pro
 /// The description (`PhabricatorProjectDescriptionField`), from the
 /// custom field storage.
 pub async fn load_description(database: &Database, project: &Phid) -> Result<String, DbError> {
+    Ok(load_stored_description(database, project)
+        .await?
+        .unwrap_or_default())
+}
+
+/// The stored description, `None` without a storage row.
+pub async fn load_stored_description(
+    database: &Database,
+    project: &Phid,
+) -> Result<Option<String>, DbError> {
     let sql = format!(
         "SELECT fieldValue FROM {} WHERE objectPHID = ? AND fieldIndex = ?",
         database.table("project", "project_customfieldstorage")
@@ -165,7 +177,7 @@ pub async fn load_description(database: &Database, project: &Phid) -> Result<Str
         ))
         .fetch_optional(database.pool())
         .await?;
-    row.map_or_else(|| Ok(String::new()), |row| rows::text(&row, "fieldValue"))
+    row.map(|row| rows::text(&row, "fieldValue")).transpose()
 }
 
 /// The destinations of a project's edges of one type, like members

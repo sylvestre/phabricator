@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Projects: {{ title }}</h1>
+  <nav class="bucket-switch" aria-label="Projects">
+    <a href="/project/query/joined/"{% if query == "joined" %} aria-current="page"{% endif %}>Joined</a>
+    <a href="/project/query/watching/"{% if query == "watching" %} aria-current="page"{% endif %}>Watching</a>
+    <a href="/project/query/active/"{% if query == "active" %} aria-current="page"{% endif %}>Active</a>
+    <a href="/project/query/all/"{% if query == "all" %} aria-current="page"{% endif %}>All</a>
+    <a href="/project/edit/"><span class="fa fa-plus-square" aria-hidden="true"></span> Create Project</a>
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No projects found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li{% if item.archived %} class="hm-disabled"{% endif %}>
+    <p class="hm-item"><span class="fa {{ item.icon }} project-color-{{ item.color }}" aria-hidden="true"></span> <a href="{{ item.uri }}">{{ item.name }}</a>
+      {%- if let Some(hashtag) = item.hashtag %} <span class="muted">#{{ hashtag }}</span>{% endif %}
+      {%- if item.member %} <span class="tag"><span class="fa fa-user" aria-hidden="true"></span> Member</span>{% endif %}
+      {%- if item.archived %} <span class="tag"><span class="fa fa-ban" aria-hidden="true"></span> Archived</span>{% endif %}</p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/project/query/{{ query }}/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 8 | 25 | 120 |
-| Web routes | 26 | – | 13 | 7 | 332 | 378 |
+| Web routes | 26 | – | 23 | 7 | 322 | 378 |
 
 Of the 25 methods not ported, 22 write (or depend on a write); the read-only ones left are `auth.querypublickeys`, `conduit.query`, `diffusion.findsymbols`.
 
@@ -371,8 +371,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/W{id}` | `PhabricatorDashboardPanelViewController` | not ported | panel page (`/W1`); read-only, uses the dashboard renderer Rust has |
-| `/dashboard/[query/{queryKey}/]` | `PhabricatorDashboardListController` | not ported | dashboard search engine page; read-only |
+| `/W{id}` | `PhabricatorDashboardPanelViewController` | partial | panel page with its usage and timeline; query panels, panels used by other objects and timelines with text, tab or query changes 421 |
+| `/dashboard/[query/{queryKey}/]` | `PhabricatorDashboardListController` | partial | the builtin queries (`authored`, the default, `open`, `all`); saved queries and search parameters 421 |
 | `/dashboard/view/{id}/` | `PhabricatorDashboardViewController` | Rust | dashboard with its panels |
 | `/dashboard/archive/{id}/` | `PhabricatorDashboardArchiveController` | not ported | write (form or action) |
 | `/dashboard/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardEditController` | not ported | write (form or action) |
@@ -380,7 +380,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/dashboard/console/` | `PhabricatorDashboardConsoleController` | not ported | console; read-only, static |
 | `/dashboard/adjust/{remove\|add\|move}/` | `PhabricatorDashboardAdjustController` | not ported | write (form or action) |
 | `/dashboard/panel/install/{engineKey}/[{queryKey}/]` | `PhabricatorDashboardQueryPanelInstallController` | not ported | write (form or action) |
-| `/dashboard/panel/[query/{queryKey}/]` | `PhabricatorDashboardPanelListController` | not ported | panel search engine page; read-only |
+| `/dashboard/panel/[query/{queryKey}/]` | `PhabricatorDashboardPanelListController` | partial | the builtin queries (`authored`, the default, `active`, `all`); saved queries and search parameters 421 |
 | `/dashboard/panel/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPanelEditController` | not ported | write (form or action) |
 | `/dashboard/panel/render/{id}/` | `PhabricatorDashboardPanelRenderController` | not ported | async panel rendering of PHP pages |
 | `/dashboard/panel/archive/{id}/` | `PhabricatorDashboardPanelArchiveController` | not ported | write (form or action) |
@@ -477,7 +477,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/favorites/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
+| `/favorites/` | `PhabricatorFavoritesMenuItemController` | partial | the viewer's favorites menu, read-only; items of other types and configured project or repository forms 421 |
 | `/favorites/menu/view/{itemID}/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
 | `/favorites/menu/hide/{itemID}/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
 | `/favorites/menu/default/{itemID}/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
@@ -620,7 +620,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/people/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorPeopleListController` | not ported | people search engine page; read-only |
+| `/people/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorPeopleListController` | partial | the builtin queries `active` (the default) and `all`, through `user.search`; the approval queue, saved queries and search parameters 421 |
 | `/people/logs/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorPeopleLogsController` | not ported | admin: user activity logs (search engine) |
 | `/people/logs/{id}/` | `PhabricatorPeopleLogViewController` | not ported | admin: one log entry |
 | `/people/invite/[query/{queryKey}/]` | `PhabricatorPeopleInviteListController` | not ported | admin: invites (unused with BMO login) |
@@ -638,7 +638,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/people/commits/{id}/` | `PhabricatorPeopleProfileCommitsController` | not ported | read-only; needs commits by author across repositories with their policies |
 | `/people/revisions/{id}/` | `PhabricatorPeopleProfileRevisionsController` | Rust | new: recent revisions of a user |
 | `/people/picture/{id}/` | `PhabricatorPeopleProfilePictureController` | not ported | write (form or action) |
-| `/people/manage/{id}/` | `PhabricatorPeopleProfileManageController` | not ported | read-only management summary; actions write |
+| `/people/manage/{id}/` | `PhabricatorPeopleProfileManageController` | partial | details, timeline and the actions, which link to PHP; timelines with custom field changes or comments 421 |
 | `/p/{username}/` | `PhabricatorPeopleProfileViewController` | Rust | profile |
 
 ### Policy (`PhabricatorPolicyApplication`)
@@ -652,7 +652,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/project/[query/{queryKey}/]` | `PhabricatorProjectListController` | not ported | project search engine page; read-only |
+| `/project/[query/{queryKey}/]` | `PhabricatorProjectListController` | partial | the builtin queries (`joined`, the default, `watching`, `active`, `all`); saved queries and search parameters 421 |
 | `/project/filter/{filter}/` | `PhabricatorProjectListController` | not ported | project search engine page; read-only |
 | `/project/archive/{id}/` | `PhabricatorProjectArchiveController` | not ported | write (form or action) |
 | `/project/lock/{id}/` | `PhabricatorProjectLockController` | not ported | write (form or action) |
@@ -662,7 +662,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/project/profile/{id}/` | `PhabricatorProjectProfileController` | Rust | project profile |
 | `/project/view/{id}/` | `PhabricatorProjectViewController` | Rust | project profile |
 | `/project/picture/{id}/` | `PhabricatorProjectEditPictureController` | not ported | write (form or action) |
-| `/project/edit/[{id}/][{editAction}/]` | `PhabricatorProjectEditController` | not ported | write (form or action) |
+| `/project/edit/[{id}/][{editAction}/]` | `PhabricatorProjectEditController` | partial | `/project/edit/{id}/`: the form, and its posts which change the name, icon, color or hashtags, written by the Rust editor with a web content source; description and policy changes, milestones, subprojects, archived projects, custom fields, spaces and configured forms 421 before writing; new projects go to PHP |
 | `/project/{projectID}/item/view/{itemID}/` | `PhabricatorProjectMenuItemController` | not ported | profile menu items (custom menus; writes for configure/reorder/edit) |
 | `/project/{projectID}/item/hide/{itemID}/` | `PhabricatorProjectMenuItemController` | not ported | profile menu items (custom menus; writes for configure/reorder/edit) |
 | `/project/{projectID}/item/default/{itemID}/` | `PhabricatorProjectMenuItemController` | not ported | profile menu items (custom menus; writes for configure/reorder/edit) |
@@ -673,9 +673,9 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/project/{projectID}/item/new/{global\|custom}/{itemKey}/[{id}/][{editAction}/]` | `PhabricatorProjectMenuItemController` | not ported | profile menu items (custom menus; writes for configure/reorder/edit) |
 | `/project/{projectID}/item/builtin/{itemID}/[{id}/][{editAction}/]` | `PhabricatorProjectMenuItemController` | not ported | profile menu items (custom menus; writes for configure/reorder/edit) |
 | `/project/subprojects/{id}/` | `PhabricatorProjectSubprojectsController` | Rust | new: read-only; the actions link to PHP |
-| `/project/update/{id}/{action}/` | `PhabricatorProjectUpdateController` | not ported | write (form or action) |
+| `/project/update/{id}/{action}/` | `PhabricatorProjectUpdateController` | partial | joining and leaving (dialog and post), written by the Rust editor; parents, milestones, subprojects, archived projects, workflow requests and edits without effect 421 |
 | `/project/manage/{id}/` | `PhabricatorProjectManageController` | not ported | read-only "Manage" page (history, details) |
-| `/project/{watch\|unwatch}/{id}/` | `PhabricatorProjectWatchController` | not ported | write (form or action) |
+| `/project/{watch\|unwatch}/{id}/` | `PhabricatorProjectWatchController` | partial | dialog and post, written by the Rust editor; subprojects, milestones, parents, archived projects, workflow requests and edits without effect 421 |
 | `/project/silence/{id}/` | `PhabricatorProjectSilenceController` | not ported | write (form or action) |
 | `/project/warning/{id}/` | `PhabricatorProjectSubprojectWarningController` | not ported | dialog before the first subproject |
 | `/tag/{slug}/` | `PhabricatorProjectViewController` | Rust | project profile; other hashtags redirect |

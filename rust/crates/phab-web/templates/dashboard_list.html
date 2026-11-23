@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>{{ heading }}</h1>
+  <nav class="bucket-switch" aria-label="{{ heading }}">
+    {%- for (key, name) in queries %}
+    <a href="/{{ base }}/query/{{ key }}/"{% if query == *key %} aria-current="page"{% endif %}>{{ name }}</a>
+    {%- endfor %}
+    {%- if base == "dashboard" %}
+    <a href="/dashboard/panel/">Panels</a>
+    <a href="/dashboard/edit/"><span class="fa fa-plus-square" aria-hidden="true"></span> Create Dashboard</a>
+    {%- else %}
+    <a href="/dashboard/">Dashboards</a>
+    <a href="/dashboard/panel/edit/"><span class="fa fa-plus-square" aria-hidden="true"></span> Create Panel</a>
+    {%- endif %}
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No {% if base == "dashboard" %}dashboards{% else %}panels{% endif %} found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li{% if item.archived %} class="hm-disabled"{% endif %}>
+    <p class="hm-item"><span class="fa {{ item.icon }}" aria-hidden="true"></span> {% if let Some(monogram) = item.monogram %}<span class="muted">{{ monogram }}</span> {% endif %}<a href="{{ item.uri }}">{{ item.name }}</a>
+      {%- if item.archived %} <span class="tag"><span class="fa fa-ban" aria-hidden="true"></span> Archived</span>{% endif %}</p>
+    {%- if let Some(author) = item.author_html %}
+    <p class="hm-attribute muted">Author: {{ author|safe }}</p>
+    {%- endif %}
+    {%- if let Some(kind) = item.kind %}
+    <p class="hm-attribute muted">{{ kind }}</p>
+    {%- endif %}
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/{{ base }}/query/{{ query }}/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

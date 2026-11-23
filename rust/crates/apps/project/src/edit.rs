@@ -13,7 +13,7 @@ use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
 use phab_core::{Phid, php};
 use serde_json::{Value, json};
 
-use crate::editor::{self, Change, Operation, Target};
+use crate::editor::{self, Change, Operation, Source, Target};
 use crate::{Project, policy, search, storage};
 
 /// `PhabricatorProjectEditEngine::ENGINECONST`.
@@ -113,7 +113,7 @@ async fn load_project(
 }
 
 /// Forms configured in the web UI may change the fields.
-async fn check_configuration(request: &ApiRequest<'_>) -> Result<(), MethodError> {
+pub(crate) async fn check_configuration(request: &ApiRequest<'_>) -> Result<(), MethodError> {
     let database = &request.context.database;
     let sql = format!(
         "SELECT id FROM {} WHERE engineKey = ? LIMIT 1",
@@ -152,7 +152,7 @@ impl ProjectEdit {
         if changes.is_empty() {
             return Err(unsupported("empty transaction lists"));
         }
-        let outcome = editor::apply(request, target, changes).await?;
+        let outcome = editor::apply(request, target, changes, Source::Conduit).await?;
         Ok(json!({
             "object": {"id": outcome.id, "phid": outcome.phid},
             "transactions": outcome

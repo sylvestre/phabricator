@@ -13,6 +13,8 @@ pub mod whoami;
 
 use phab_conduit::{Application, Registry};
 
+pub use editor::can_disable_users;
+
 /// `PhabricatorPeopleApplication`.
 pub const APPLICATION: Application = Application {
     class: "PhabricatorPeopleApplication",

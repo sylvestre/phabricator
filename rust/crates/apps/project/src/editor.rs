@@ -10,9 +10,11 @@
 //! `PhabricatorApplicationTransactionPublishWorker` task, so mail, feed
 //! stories and search indexing still come from PHP's daemons.
 //!
-//! Ported transactions: the name, icon, color, additional hashtags and
-//! members of root projects, which are neither milestones, nor parents,
-//! nor archived. Left to PHP: everything else, with custom fields (the
+//! Ported transactions: the name, icon, color, additional hashtags,
+//! members and watchers of root projects, which are neither milestones,
+//! nor parents, nor archived. Edits come from Conduit or from the web
+//! forms and actions ([`Source`]), which only differ by their content
+//! source. Left to PHP: everything else, with custom fields (the
 //! description), spaces, Herald rules about projects, transactions
 //! without effect on an existing project when none has one, names and
 //! hashtags which are not printable ASCII (PHP lowercases them with
@@ -41,9 +43,43 @@ const HERALD_CONTENT_TYPE: &str = "PhabricatorProjectHeraldAdapter";
 /// The byte length of the `name` column (`sort128`).
 const NAME_LENGTH: usize = 128;
 
+/// `PhabricatorObjectHasWatcherEdgeType`.
+const OBJECT_HAS_WATCHER: i64 = crate::storage::OBJECT_HAS_WATCHER;
+/// `PhabricatorWatcherHasObjectEdgeType`.
+const WATCHER_HAS_OBJECT: i64 = 48;
+/// The content source of web requests (`PhabricatorWebContentSource`).
+const WEB_SOURCE: &str = r#"{"source":"web","params":[]}"#;
+
+/// Where an edit comes from (`setContentSource()`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    /// `project.edit` and `project.create`.
+    Conduit,
+    /// The web forms and actions (`setContentSourceFromRequest()`).
+    Web,
+}
+
+impl Source {
+    /// The serialized content source of the transactions.
+    fn content_source(self) -> &'static str {
+        match self {
+            Self::Conduit => CONDUIT_SOURCE,
+            Self::Web => WEB_SOURCE,
+        }
+    }
+
+    /// The `via` mail stamp.
+    fn via(self) -> &'static str {
+        match self {
+            Self::Conduit => "conduit",
+            Self::Web => "web",
+        }
+    }
+}
+
 /// What a list transaction does (`+`, `-` or `=`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Operation {
+pub enum Operation {
     /// `members.add`.
     Add,
     /// `members.remove`.
@@ -52,10 +88,10 @@ pub(crate) enum Operation {
     Set,
 }
 
-/// One transaction of the request, as the edit engine or `project.create`
-/// builds it.
+/// One transaction of the request, as the edit engine, `project.create`
+/// or a web action builds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Change {
+pub enum Change {
     /// `core:create`.
     Create,
     /// `project:name`.
@@ -68,6 +104,19 @@ pub(crate) enum Change {
     Slugs(Vec<String>),
     /// The member edge transaction.
     Members(Operation, Vec<String>),
+    /// The watcher edge transaction (`PhabricatorProjectWatchController`).
+    Watchers(Operation, Vec<String>),
+}
+
+impl Change {
+    /// The edge type of an edge transaction, and its inverse.
+    fn edge_types(&self) -> Option<(i64, i64)> {
+        match self {
+            Self::Members(..) => Some((edges::PROJECT_HAS_MEMBER, edges::MEMBER_OF_PROJECT)),
+            Self::Watchers(..) => Some((OBJECT_HAS_WATCHER, WATCHER_HAS_OBJECT)),
+            _ => None,
+        }
+    }
 }
 
 /// The project an edit applies to: `None` creates one.
@@ -89,6 +138,13 @@ pub(crate) struct Outcome {
 struct Extra {
     is_membership_locked: bool,
     has_subprojects: bool,
+}
+
+/// The edge lists of a project before the edit.
+#[derive(Default)]
+struct Lists {
+    members: Vec<String>,
+    watchers: Vec<String>,
 }
 
 /// A transaction once its values are known.
@@ -121,6 +177,7 @@ struct State {
 /// The planned edit.
 struct Plan {
     actor: String,
+    source: Source,
     state: State,
     transactions: Vec<Planned>,
     group_id: String,
@@ -144,7 +201,7 @@ fn normalize_slug(slug: &str) -> String {
 }
 
 /// `PhabricatorProjectTransactionEditor::normalizeSlugs()`.
-fn normalize_slugs(slugs: &[String]) -> Vec<String> {
+pub(crate) fn normalize_slugs(slugs: &[String]) -> Vec<String> {
     let mut normal: Vec<String> = Vec::new();
     for slug in slugs {
         let slug = normalize_slug(slug);
@@ -483,7 +540,7 @@ fn transaction_phid() -> String {
 fn plan_transaction(
     change: Change,
     state: &State,
-    (slugs, members): (&[String], &[String]),
+    (slugs, lists): (&[String], &Lists),
     is_new: bool,
 ) -> (Planned, bool) {
     let string_or_null = |value: Option<&String>| value.map_or(Value::Null, |text| json!(text));
@@ -510,10 +567,15 @@ fn plan_transaction(
                 None,
             )
         }
-        Change::Members(operation, phids) => {
-            let new = new_list(members, *operation, phids);
-            let removed = minus(members, &new);
-            let added = minus(&new, members);
+        Change::Members(operation, phids) | Change::Watchers(operation, phids) => {
+            let old = if matches!(change, Change::Members(..)) {
+                &lists.members
+            } else {
+                &lists.watchers
+            };
+            let new = new_list(old, *operation, phids);
+            let removed = minus(old, &new);
+            let added = minus(&new, old);
             (
                 "core:edge",
                 json!(removed),
@@ -539,7 +601,12 @@ fn plan_transaction(
 }
 
 /// The `state` of the publish task (`getWorkerState()`).
-fn worker_state(plan_state: &State, actor: &str, is_new: bool, header: &str) -> Value {
+fn worker_state(
+    plan_state: &State,
+    (actor, source): (&str, Source),
+    is_new: bool,
+    header: &str,
+) -> Value {
     let stamp =
         |kind: &str, key: &str, value: Value| json!({"type": kind, "key": key, "value": value});
     let stamps = vec![
@@ -547,7 +614,7 @@ fn worker_state(plan_state: &State, actor: &str, is_new: bool, header: &str) -> 
         stamp("string", "phid", json!(plan_state.phid)),
         stamp("string", "object-type", json!("PROJ")),
         stamp("phid", "actor", json!(actor)),
-        stamp("string", "via", json!("conduit")),
+        stamp("string", "via", json!(source.via())),
         stamp("bool", "silent", Value::Null),
         stamp("bool", "encrypted", json!([])),
         stamp("bool", "new", json!(is_new)),
@@ -659,7 +726,7 @@ async fn validate(
     for change in changes {
         match change {
             Change::Slugs(given) => check_slugs(database, object, given).await?,
-            Change::Members(_, phids) => {
+            Change::Members(_, phids) | Change::Watchers(_, phids) => {
                 if !users_exist(database, phids).await? {
                     return Err(unsupported("members which are not users"));
                 }
@@ -696,7 +763,7 @@ async fn validate(
 async fn existing_state(
     database: &Database,
     project: &Project,
-) -> Result<(State, Vec<String>, Vec<String>, Extra), MethodError> {
+) -> Result<(State, Vec<String>, Lists, Extra), MethodError> {
     if project.parent_phid.is_some() || project.is_milestone() {
         return Err(unsupported("subprojects and milestones"));
     }
@@ -709,16 +776,22 @@ async fn existing_state(
     }
     let phid = project.phid.as_str();
     let slugs = load_slugs(database, phid).await?;
-    let members: Vec<String> = edges::load_destination_phids(
-        database,
-        std::slice::from_ref(&project.phid),
-        &[edges::PROJECT_HAS_MEMBER],
-        None,
-    )
-    .await?
-    .into_iter()
-    .map(Phid::into_string)
-    .collect();
+    let mut lists = Lists::default();
+    for (edge_type, list) in [
+        (edges::PROJECT_HAS_MEMBER, &mut lists.members),
+        (OBJECT_HAS_WATCHER, &mut lists.watchers),
+    ] {
+        *list = edges::load_destination_phids(
+            database,
+            std::slice::from_ref(&project.phid),
+            &[edge_type],
+            None,
+        )
+        .await?
+        .into_iter()
+        .map(Phid::into_string)
+        .collect();
+    }
     let state = State {
         id: Some(project.id),
         phid: phid.to_owned(),
@@ -731,7 +804,7 @@ async fn existing_state(
         edit_policy: project.edit_policy.clone(),
         join_policy: project.join_policy.clone(),
     };
-    Ok((state, slugs, members, extra))
+    Ok((state, slugs, lists, extra))
 }
 
 /// Plans the edit of `target` by `changes`.
@@ -739,6 +812,7 @@ async fn plan(
     request: &ApiRequest<'_>,
     target: Target,
     changes: Vec<Change>,
+    source: Source,
 ) -> Result<Plan, MethodError> {
     let context = request.context;
     let database = &context.database;
@@ -758,11 +832,11 @@ async fn plan(
         }
     }
     let is_new = target.project.is_none();
-    let (mut state, slugs, members, extra) = match &target.project {
-        None => (new_state(request)?, Vec::new(), Vec::new(), None),
+    let (mut state, slugs, lists, extra) = match &target.project {
+        None => (new_state(request)?, Vec::new(), Lists::default(), None),
         Some(project) => {
-            let (state, slugs, members, extra) = existing_state(database, project).await?;
-            (state, slugs, members, Some(extra))
+            let (state, slugs, lists, extra) = existing_state(database, project).await?;
+            (state, slugs, lists, Some(extra))
         }
     };
     let object = target.project.as_ref().map(|project| project.phid.as_str());
@@ -772,13 +846,15 @@ async fn plan(
     let mut transactions = Vec::new();
     let mut capabilities = Vec::new();
     for change in changes {
-        let (planned, effect) = plan_transaction(change, &state, (&slugs, &members), is_new);
+        let (planned, effect) = plan_transaction(change, &state, (&slugs, &lists), is_new);
         if let Some(extra) = &extra {
-            let capability = match &planned.edge {
-                Some((removed, added)) => {
+            let capability = match (&planned.change, &planned.edge) {
+                // See PHI1024: watching needs no capability.
+                (Change::Watchers(..), _) => None,
+                (_, Some((removed, added))) => {
                     member_capability(&actor, (removed, added), extra.is_membership_locked)
                 }
-                None => Some(Capability::EDIT),
+                (_, None) => Some(Capability::EDIT),
             };
             capabilities.extend(capability);
         }
@@ -811,9 +887,10 @@ async fn plan(
         .map(|planned| planned.phid.clone())
         .collect();
     let (transcript, herald_header, worker_data) =
-        publication(database, &state, (&actor, is_new), applied).await?;
+        publication(database, &state, (&actor, source, is_new), applied).await?;
     Ok(Plan {
         actor,
+        source,
         state,
         transactions,
         group_id: random::random_characters(32),
@@ -827,7 +904,7 @@ async fn plan(
 async fn publication(
     database: &Database,
     state: &State,
-    (actor, is_new): (&str, bool),
+    (actor, source, is_new): (&str, Source, bool),
     applied: Vec<String>,
 ) -> Result<(engine::TranscriptRow, String, String), MethodError> {
     let subject = Subject {
@@ -848,7 +925,7 @@ async fn publication(
         "objectPHID": state.phid,
         "actorPHID": actor,
         "xactionPHIDs": applied,
-        "state": worker_state(state, actor, is_new, &herald_header),
+        "state": worker_state(state, (actor, source), is_new, &herald_header),
     }));
     Ok((transcript, herald_header, worker_data))
 }
@@ -1145,8 +1222,8 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<i64, MethodError
         .any(|planned| matches!(planned.change, Change::Create));
     for planned in &plan.transactions {
         let mut metadata = serde_json::Map::new();
-        if planned.edge.is_some() {
-            metadata.insert("edge:type".to_owned(), json!(edges::PROJECT_HAS_MEMBER));
+        if let Some((edge_type, _)) = planned.change.edge_types() {
+            metadata.insert("edge:type".to_owned(), json!(edge_type));
         }
         if create {
             metadata.insert("core.create".to_owned(), json!(true));
@@ -1166,7 +1243,7 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<i64, MethodError
             old: &old,
             new: &new,
             metadata: &metadata,
-            content_source: CONDUIT_SOURCE,
+            content_source: plan.source.content_source(),
         };
         db_editor::insert_transaction(connection, &table, row, now).await?;
     }
@@ -1197,10 +1274,13 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<i64, MethodError
                 }
                 remove_slugs(connection, database, project, &minus(&old, &new)).await?;
             }
-            (_, Some((removed, added))) => {
-                let types = (project, edges::PROJECT_HAS_MEMBER, edges::MEMBER_OF_PROJECT);
+            (change, Some((removed, added))) => {
+                let Some((edge_type, inverse)) = change.edge_types() else {
+                    continue;
+                };
+                let types = (project, edge_type, inverse);
                 db_editor::save_edges(connection, database, types, (removed, added), now).await?;
-                materialize = true;
+                materialize |= edge_type == edges::PROJECT_HAS_MEMBER;
             }
             _ => {}
         }
@@ -1237,8 +1317,9 @@ pub(crate) async fn apply(
     request: &ApiRequest<'_>,
     target: Target,
     changes: Vec<Change>,
+    source: Source,
 ) -> Result<Outcome, MethodError> {
-    let plan = plan(request, target, changes).await?;
+    let plan = plan(request, target, changes, source).await?;
     let id = write(request, &plan).await?;
     Ok(Outcome {
         id,

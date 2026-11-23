@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Favorites</h1>
+</header>
+<ul class="hm-actions">
+  {%- for entry in entries %}
+  {%- match entry %}
+  {%- when Entry::Link with { name, icon, uri } %}
+  <li><a href="{{ uri }}"><span class="fa {{ icon }}" aria-hidden="true"></span> {{ name }}</a></li>
+  {%- when Entry::Label(label) %}
+  <li><strong>{{ label }}</strong></li>
+  {%- when Entry::Divider %}
+  <li><hr></li>
+  {%- endmatch %}
+  {%- endfor %}
+</ul>
+{% endblock %}

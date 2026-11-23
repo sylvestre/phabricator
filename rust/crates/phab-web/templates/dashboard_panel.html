@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-window-maximize" aria-hidden="true"></span> {{ name }}</h1>
+  <ul class="tags"><li class="tag">{% if archived %}<span class="fa fa-ban" aria-hidden="true"></span> Archived{% else %}<span class="fa fa-check" aria-hidden="true"></span> Active{% endif %}</li></ul>
+  <nav class="bucket-switch" aria-label="Dashboards">
+    <a href="/dashboard/panel/">Panels</a>
+  </nav>
+</header>
+<div class="columns">
+  <section class="main-column">
+    {{ panel_html|safe }}
+    <h2>Panel Used By</h2>
+    {%- if usage.is_empty() %}
+    <p class="muted">This panel is not used by any objects.</p>
+    {%- else %}
+    <table class="hm-table">
+      <thead><tr><th></th><th>Type</th><th>Used By</th></tr></thead>
+      <tbody>
+        {%- for row in usage %}
+        <tr><td><span class="fa {{ row.icon }}" aria-hidden="true"></span></td><td>{{ row.kind }}</td><td class="hm-pri">{{ row.link_html|safe }}</td></tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+    {% include "hm_timeline.html" %}
+  </section>
+  {% include "hm_actions.html" %}
+</div>
+{% endblock %}

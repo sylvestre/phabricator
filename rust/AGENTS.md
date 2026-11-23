@@ -129,7 +129,12 @@ page's own form (`/DN/action`) is that comment form, which it posts to
 PHP as the user when Rust doesn't write it, and with inline comments a
 `differential.revision.edit` call, which the Rust editor makes (with a
 Conduit content source, as PHP's would) or else PHP's Conduit API as the
-user. `rust/scripts/web-write-parity.py`
+user. So do the project edit form (`/project/edit/N/`: name, icon,
+color and hashtags), joining and leaving (`/project/update/N/join|leave/`)
+and watching (`/project/watch|unwatch/N/`), through the Rust project
+editor with a web content source (`crates/phab-web/src/project_edit.rs`);
+description and policy changes, subprojects and milestones go to PHP.
+`rust/scripts/web-write-parity.py`
 compares these writes with PHP's on the dev stack, with the scenarios of
 `parity/web-writes/`:
 

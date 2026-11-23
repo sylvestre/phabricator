@@ -34,6 +34,7 @@
   <aside class="side-column">
     <ul class="object-list">
       <li>{% if is_member %}<a href="/project/update/{{ id }}/leave/">Leave Project</a>{% else %}<a href="/project/update/{{ id }}/join/">Join Project</a>{% endif %}</li>
+      <li><a href="/project/edit/{{ id }}/">Edit Project</a></li>
       <li>{% if is_watcher %}<a href="/project/unwatch/{{ id }}/">Unwatch Project</a>{% else %}<a href="/project/watch/{{ id }}/">Watch Project</a>{% endif %}</li>
     </ul>
   </aside>

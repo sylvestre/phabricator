@@ -11,7 +11,7 @@ use phab_core::php;
 use serde_json::{Value, json};
 
 use crate::edit::strings;
-use crate::editor::{self, Change, Operation, Target};
+use crate::editor::{self, Change, Operation, Source, Target};
 use crate::search;
 
 fn unsupported(what: &'static str) -> MethodError {
@@ -50,7 +50,8 @@ impl ProjectCreate {
             changes.push(Change::Slugs(strings(tags)?));
         }
         changes.push(Change::Members(Operation::Add, members));
-        let outcome = editor::apply(request, Target { project: None }, changes).await?;
+        let outcome =
+            editor::apply(request, Target { project: None }, changes, Source::Conduit).await?;
         // `buildProjectInfoDictionary()` of the object the editor saved,
         // whose members and slugs are still the empty lists
         // `initializeNewProject()` attached.

@@ -65,7 +65,7 @@ pub(crate) struct TranscriptList {
 
 /// The `after` cursor of a list's query string; any other parameter is a
 /// query PHP builds.
-fn cursor(query: Option<&str>) -> Result<Option<i64>, PageError> {
+pub(crate) fn cursor(query: Option<&str>) -> Result<Option<i64>, PageError> {
     let mut after = None;
     for (key, value) in form_urlencoded::parse(query.unwrap_or("").as_bytes()) {
         match key.as_ref() {

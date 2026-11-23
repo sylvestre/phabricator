@@ -1,13 +1,14 @@
 //! Project pages: `/tag/<slug>/`, `/project/view/<id>/` and
 //! `/project/profile/<id>/` (`PhabricatorProjectViewController` and
 //! `PhabricatorProjectProfileController`), `/project/members/<id>/` and
-//! `/project/subprojects/<id>/`. Workboards went with Maniphest, so every
-//! project shows its profile.
+//! `/project/subprojects/<id>/`, and the builtin queries of the project
+//! list (`/project/`, `/project/query/<key>/`, `PhabricatorProjectListController`).
+//! Workboards went with Maniphest, so every project shows its profile.
 
 use std::sync::Arc;
 
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderValue, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use phab_app_differential::storage as differential;
@@ -371,6 +372,131 @@ pub(crate) async fn subprojects<S: WebState>(
         uri: project.uri(),
         lists,
     }))
+}
+
+/// `PhabricatorApplicationSearchEngine` shows this many results a page.
+const PAGE_SIZE: usize = 100;
+
+/// A project of the list.
+pub(crate) struct ListItem {
+    name: String,
+    uri: String,
+    icon: String,
+    color: String,
+    hashtag: Option<String>,
+    archived: bool,
+    member: bool,
+}
+
+#[derive(Template)]
+#[template(path = "project_list.html")]
+pub(crate) struct ProjectList {
+    shell: Shell,
+    query: &'static str,
+    title: &'static str,
+    items: Vec<ListItem>,
+    next: Option<i64>,
+}
+
+/// The builtin queries (`getBuiltinQueryNames()`), for a logged-in viewer.
+fn builtin_query(key: &str) -> Option<(&'static str, &'static str)> {
+    Some(match key {
+        "joined" => ("joined", "Joined"),
+        "watching" => ("watching", "Watching"),
+        "active" => ("active", "Active"),
+        "all" => ("all", "All"),
+        _ => return None,
+    })
+}
+
+async fn project_list<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    key: &str,
+    query: Option<&str>,
+    uri: &Uri,
+) -> Result<Page<ProjectList>, PageError> {
+    let (key, title) = builtin_query(key).ok_or(PageError::Fallback("a saved search query"))?;
+    let after = crate::herald::cursor(query)?;
+    let viewer_phid = viewer.user.phid.as_str().to_owned();
+    let list_query = phab_app_project::web::ListQuery {
+        member: (key == "joined").then(|| viewer_phid.clone()),
+        watcher: (key == "watching").then(|| viewer_phid.clone()),
+        active_only: key != "all",
+    };
+    let scope = crate::harbormaster::Scope::new(state, viewer);
+    let request = scope.request();
+    let (projects, more) = phab_app_project::web::list(&request, &list_query, after, PAGE_SIZE)
+        .await
+        .map_err(crate::harbormaster::method_error)?;
+    let database = state.database();
+    let graph = policy::Graph::load(database, &projects).await?;
+    let joined: Vec<Phid> = storage::load_member_projects(database, &viewer.user.phid)
+        .await?
+        .into_iter()
+        .map(|project| project.phid)
+        .collect();
+    let next = if more {
+        projects.last().map(|project| project.id)
+    } else {
+        None
+    };
+    let items = projects
+        .iter()
+        .map(|project| ListItem {
+            name: project.display_name(graph.parent(project)),
+            uri: project.uri(),
+            icon: project.icon.clone(),
+            color: project.color.clone(),
+            hashtag: project.primary_slug.clone(),
+            archived: project.is_archived(),
+            member: joined.contains(&project.phid),
+        })
+        .collect();
+    Ok(Page(ProjectList {
+        shell: Shell::for_user(state.config(), viewer, "Projects", current(uri)),
+        query: key,
+        title,
+        items,
+        next,
+    }))
+}
+
+/// `GET /project/`: the viewer's default query, the first builtin one
+/// ("Joined") unless they saved or reordered queries.
+pub(crate) async fn list<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    RawQuery(query): RawQuery,
+    uri: Uri,
+) -> Result<Page<ProjectList>, PageError> {
+    viewer
+        .require_application(&*state, application::PROJECT)
+        .await?;
+    if phab_app_harbormaster::web::has_named_queries(
+        state.database(),
+        &viewer.user.phid,
+        "PhabricatorProjectSearchEngine",
+    )
+    .await?
+    {
+        return Err(PageError::Fallback("saved search queries"));
+    }
+    project_list(state.as_ref(), &viewer, "joined", query.as_deref(), &uri).await
+}
+
+/// `GET /project/query/{key}/`: a builtin query.
+pub(crate) async fn query<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(key): Path<String>,
+    RawQuery(query): RawQuery,
+    uri: Uri,
+) -> Result<Page<ProjectList>, PageError> {
+    viewer
+        .require_application(&*state, application::PROJECT)
+        .await?;
+    project_list(state.as_ref(), &viewer, &key, query.as_deref(), &uri).await
 }
 
 /// `GET /project/view/{id}/` and `/project/profile/{id}/`.

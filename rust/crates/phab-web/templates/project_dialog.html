@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="dialog" aria-labelledby="dialog-title">
+  <h1 id="dialog-title">{{ title }}</h1>
+  {%- for paragraph in paragraphs %}
+  <p>{{ paragraph }}</p>
+  {%- endfor %}
+  <form class="settings-form" method="post" action="{{ action }}">
+    {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+    <input type="hidden" name="__form__" value="1">
+    {%- for (name, value) in hidden %}
+    <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {%- endfor %}
+    {%- if let Some(submit) = submit %}
+    <button type="submit">{{ submit }}</button>
+    {%- endif %}
+    <a href="{{ cancel }}">{% if submit.is_some() %}Cancel{% else %}Close{% endif %}</a>
+  </form>
+</section>
+{% endblock %}

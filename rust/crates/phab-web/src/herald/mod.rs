@@ -20,7 +20,7 @@ use phab_db::phpser::Value as Php;
 use phab_policy::application;
 
 pub(crate) use lists::{
-    rules as rule_list, rules_query as rule_query, transcripts as transcript_list,
+    cursor, rules as rule_list, rules_query as rule_query, transcripts as transcript_list,
 };
 pub(crate) use rule::show as rule;
 pub(crate) use transcript::{show as transcript, show_view as transcript_view};

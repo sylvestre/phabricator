@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>{% if !real_name.is_empty() %}{{ real_name }} <span class="muted">({{ user_name }})</span>{% else %}{{ user_name }}{% endif %}</h1>
+  <p class="profile-title">{% if let Some(icon) = icon %}<span class="fa {{ icon }}" aria-hidden="true"></span> {% endif %}{{ title }}</p>
+  <nav class="bucket-switch" aria-label="Profile">
+    <a href="/p/{{ user_name }}/">Profile</a>
+    <a href="/people/revisions/{{ user_id }}/">Recent Revisions</a>
+    <strong>Manage</strong>
+  </nav>
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>Details</h2>
+    <dl class="properties">
+      {%- if !real_name.is_empty() %}
+      <dt>Real Name</dt><dd>{{ real_name }}</dd>
+      {%- endif %}
+      {%- if let Some(since) = since %}
+      <dt>User Since</dt><dd><time>{{ since }}</time></dd>
+      {%- endif %}
+      {%- if !roles.is_empty() %}
+      <dt>Roles</dt><dd>{{ roles|join(", ") }}</dd>
+      {%- endif %}
+    </dl>
+    {%- if blurb.is_some() %}
+    <div class="remarkup">{{ self.blurb_html()|safe }}</div>
+    {%- endif %}
+    {% include "hm_timeline.html" %}
+  </section>
+  {% include "hm_actions.html" %}
+</div>
+{% endblock %}

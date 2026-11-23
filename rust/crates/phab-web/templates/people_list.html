@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>People: {{ title }}</h1>
+  <nav class="bucket-switch" aria-label="People">
+    <a href="/people/query/active/"{% if query == "active" %} aria-current="page"{% endif %}>Active</a>
+    <a href="/people/query/all/"{% if query == "all" %} aria-current="page"{% endif %}>All</a>
+    {%- if is_admin %}
+    <a href="/people/query/approval/">Approval Queue</a>
+    {%- endif %}
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No users found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li{% if item.disabled %} class="hm-disabled"{% endif %}>
+    <p class="hm-item"><a href="/p/{{ item.user_name }}/"{% if item.disabled %} class="remarkup-mention-disabled"{% endif %}>{{ item.user_name }}</a>{% if !item.real_name.is_empty() %} <span class="muted">({{ item.real_name }})</span>{% endif %}
+      {%- for role in item.roles %} <span class="tag">{{ role }}</span>{% endfor %}</p>
+    <p class="hm-attribute muted">Joined {{ item.since }}</p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/people/query/{{ query }}/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

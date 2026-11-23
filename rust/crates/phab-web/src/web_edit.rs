@@ -267,7 +267,7 @@ fn transactions(form: &CommentForm) -> Result<(Vec<Value>, bool), &'static str> 
 }
 
 /// A Conduit request of the viewer, for the editor.
-fn request<'a, S: WebState>(
+pub(crate) fn request<'a, S: WebState>(
     state: &S,
     context: &'a Context,
     viewer: &WebUser,
@@ -286,7 +286,7 @@ fn request<'a, S: WebState>(
 
 /// The editor's context, with the service's host name for Herald's
 /// transcripts.
-fn context<S: WebState>(state: &S) -> Context {
+pub(crate) fn context<S: WebState>(state: &S) -> Context {
     Context {
         database: state.database().clone(),
         config: state.config().clone(),
@@ -513,7 +513,7 @@ pub(crate) async fn comment<S: WebState>(
 /// Whether the request is a plain form post PHP's controllers accept
 /// (`isFormOrHisecPost()`), with a valid CSRF token; PHP answers the
 /// others, and the workflow requests its pages make.
-fn check_form_post<S: WebState>(
+pub(crate) fn check_form_post<S: WebState>(
     state: &S,
     viewer: &WebUser,
     request: &LoginRequest,

@@ -208,7 +208,7 @@ pub(crate) async fn check_environment(request: &ApiRequest<'_>) -> Result<(), Me
 }
 
 /// `requireApplicationCapability(PeopleDisableUsersCapability)`.
-async fn can_disable_users(request: &ApiRequest<'_>) -> Result<bool, MethodError> {
+pub async fn can_disable_users(request: &ApiRequest<'_>) -> Result<bool, MethodError> {
     let context = request.context;
     let applications = phab_policy::ApplicationPolicies::from_config(&context.config);
     let policy = applications.custom_policy(APPLICATION_CLASS, DISABLE_USERS, POLICY_ADMIN);

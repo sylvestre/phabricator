@@ -167,6 +167,68 @@ pub async fn portal_items(database: &Database, portal: &Phid) -> Result<Vec<Menu
     Ok(items)
 }
 
+/// `PhabricatorFavoritesProfileMenuEngine::loadItems(MODE_COMBINED)` for
+/// `user`: the builtin items `forms` (builtin key, item key and form key,
+/// in order) then a divider and "Edit Favorites", with their stored
+/// changes, and the items stored for everyone or for `user`, sorted.
+pub async fn favorites_items(
+    database: &Database,
+    profile: &Phid,
+    user: &Phid,
+    forms: Vec<(String, &str, Option<String>)>,
+) -> Result<Vec<MenuItem>, DbError> {
+    let mut items = Vec::new();
+    let mut order = 1;
+    for (key, item_key, form_key) in forms {
+        let mut item = MenuItem::builtin(profile, &key, item_key, order);
+        item.is_tail = false;
+        if let Some(form_key) = form_key {
+            item.properties
+                .insert("formKey".to_owned(), Value::String(form_key));
+        }
+        items.push(item);
+        order += 1;
+    }
+    items.push(MenuItem::builtin(profile, "tail", DIVIDER, order));
+    items.push(MenuItem::builtin(
+        profile,
+        "item.configure",
+        MANAGE_MENU,
+        order + 1,
+    ));
+    let sql = format!(
+        "SELECT id, profilePHID, menuItemKey, builtinKey, menuItemOrder, visibility, \
+         menuItemProperties, customPHID FROM {} \
+         WHERE profilePHID = ? AND (customPHID = ? OR customPHID IS NULL OR customPHID = '') \
+         ORDER BY id DESC",
+        database.table("search", "search_profilepanelconfiguration"),
+    );
+    let stored: Vec<MenuItem> = phab_db::sqlx::query(&sql)
+        .bind(profile.as_str())
+        .bind(user.as_str())
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(MenuItem::from_row)
+        .collect::<Result<_, _>>()?;
+    for mut stored in stored {
+        match stored.builtin_key.clone() {
+            Some(key) => {
+                if let Some(builtin) = items
+                    .iter_mut()
+                    .find(|item| item.builtin_key.as_deref() == Some(&key))
+                {
+                    stored.is_tail = builtin.is_tail;
+                    *builtin = stored;
+                }
+            }
+            None => items.push(stored),
+        }
+    }
+    items.sort_by_key(MenuItem::sort_vector);
+    Ok(items)
+}
+
 /// The items of any menu which point to `object` (`withAffectedObjectPHIDs()`),
 /// global or personal to `custom` (`withCustomPHIDs(..., true)`), by ID.
 pub async fn items_affecting(

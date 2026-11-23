@@ -6,8 +6,9 @@ use axum::{Router, routing};
 
 use crate::state::WebState;
 use crate::{
-    actions, assets, dashboards, diffusion, feed, harbormaster, herald, login, notifications,
-    opt_in, people, preview, projects, queue, revision, settings, typeahead, web_edit,
+    actions, assets, dashboards, diffusion, favorites, feed, harbormaster, herald, login,
+    notifications, opt_in, people, people_lists, preview, project_edit, projects, queue, revision,
+    settings, typeahead, web_edit,
 };
 
 /// Profiles, projects, the feed and notifications.
@@ -18,7 +19,18 @@ fn people_and_activity<S: WebState>() -> Router<Arc<S>> {
             "/people/revisions/{id}/",
             routing::get(people::revisions::<S>),
         )
+        .route("/people/", routing::get(people_lists::list::<S>))
+        .route(
+            "/people/query/{key}/",
+            routing::get(people_lists::query::<S>),
+        )
+        .route(
+            "/people/manage/{id}/",
+            routing::get(people_lists::manage::<S>),
+        )
         .route("/tag/{slug}/", routing::get(projects::by_slug::<S>))
+        .route("/project/", routing::get(projects::list::<S>))
+        .route("/project/query/{key}/", routing::get(projects::query::<S>))
         .route("/project/view/{id}/", routing::get(projects::by_id::<S>))
         .route("/project/profile/{id}/", routing::get(projects::by_id::<S>))
         .route(
@@ -29,6 +41,7 @@ fn people_and_activity<S: WebState>() -> Router<Arc<S>> {
             "/project/subprojects/{id}/",
             routing::get(projects::subprojects::<S>),
         )
+        .route("/favorites/", routing::get(favorites::show::<S>))
         .route("/feed/", routing::get(feed::show::<S>))
         .route("/feed/query/{key}/", routing::get(feed::query::<S>))
         .route("/feed/{key}/", routing::get(feed::detail::<S>))
@@ -36,6 +49,29 @@ fn people_and_activity<S: WebState>() -> Router<Arc<S>> {
         .route(
             "/notification/query/{key}/",
             routing::get(notifications::query::<S>),
+        )
+}
+
+/// Dashboards, portals and their panels.
+fn dashboards<S: WebState>() -> Router<Arc<S>> {
+    Router::new()
+        .route(
+            "/dashboard/view/{id}/",
+            routing::get(dashboards::dashboard::<S>),
+        )
+        .route("/portal/view/{id}/", routing::get(dashboards::portal::<S>))
+        .route("/dashboard/", routing::get(dashboards::dashboard_list::<S>))
+        .route(
+            "/dashboard/query/{key}/",
+            routing::get(dashboards::dashboard_query::<S>),
+        )
+        .route(
+            "/dashboard/panel/",
+            routing::get(dashboards::panel_list::<S>),
+        )
+        .route(
+            "/dashboard/panel/query/{key}/",
+            routing::get(dashboards::panel_query::<S>),
         )
 }
 
@@ -48,6 +84,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .route("/{monogram}", routing::get(revision::by_monogram::<S>))
         .route("/{monogram}/action", routing::post(actions::submit::<S>))
         .merge(web_edit::routes::<S>())
+        .merge(project_edit::routes::<S>())
         .merge(people_and_activity::<S>())
         .route(
             "/harbormaster/",
@@ -90,11 +127,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
             "/herald/transcript/{id}/{view}/",
             routing::get(herald::transcript_view::<S>),
         )
-        .route(
-            "/dashboard/view/{id}/",
-            routing::get(dashboards::dashboard::<S>),
-        )
-        .route("/portal/view/{id}/", routing::get(dashboards::portal::<S>))
+        .merge(dashboards::<S>())
         .route(
             "/source/{short}/",
             routing::get(diffusion::source_root::<S>),

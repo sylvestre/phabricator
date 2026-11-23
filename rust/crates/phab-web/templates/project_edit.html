@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1>{{ project_name }}</h1>
+</header>
+<form class="settings-form" method="post" action="/project/edit/{{ id }}/">
+  {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+  <input type="hidden" name="__form__" value="1">
+  <input type="hidden" name="editEngine" value="true">
+  <div class="settings-field">
+    <label for="project-name">Name</label>
+    <input type="text" id="project-name" name="name" value="{{ name }}" required>
+  </div>
+  <div class="settings-field">
+    <label for="project-description">Description</label>
+    <textarea id="project-description" name="std:project:internal:description" rows="8">{{ description }}</textarea>
+  </div>
+  <div class="settings-field">
+    <label for="project-icon">Icon</label>
+    <select id="project-icon" name="icon">
+      {%- for icon in icons %}
+      <option value="{{ icon.value }}"{% if icon.selected %} selected{% endif %}>{{ icon.label }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <div class="settings-field">
+    <label for="project-color">Color</label>
+    <select id="project-color" name="color">
+      {%- for color in colors %}
+      <option value="{{ color.value }}"{% if color.selected %} selected{% endif %}>{{ color.label }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <div class="settings-field">
+    <label for="project-slugs">Additional Hashtags</label>
+    <input type="text" id="project-slugs" name="slugs" value="{{ slugs }}">
+  </div>
+  {%- for field in policies %}
+  <div class="settings-field">
+    <label for="project-{{ field.key }}">{{ field.label }}</label>
+    <select id="project-{{ field.key }}" name="{{ field.key }}">
+      {%- for option in field.options %}
+      <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  {%- endfor %}
+  <button type="submit">Save Changes</button>
+  <a href="/project/manage/{{ id }}/">Cancel</a>
+</form>
+{% endblock %}
