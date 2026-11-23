@@ -9,6 +9,7 @@
 
 pub mod call;
 mod context;
+pub mod edit;
 mod envelope;
 pub mod form;
 pub mod json;

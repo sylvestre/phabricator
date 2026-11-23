@@ -30,7 +30,7 @@ const MAX_SUBSCRIBERS: usize = 10;
 
 /// `HarbormasterBuildPlanBehavior::newPlanBehaviors()`: each behavior's
 /// key, its options, and the default one.
-const BEHAVIORS: &[(&str, &[&str], &str)] = &[
+pub(crate) const BEHAVIORS: &[(&str, &[&str], &str)] = &[
     ("hold-drafts", &["always", "building", "never"], "always"),
     (
         "arc-land",

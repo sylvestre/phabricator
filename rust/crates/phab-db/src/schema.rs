@@ -1248,6 +1248,118 @@ pub const CONTRACT: &[TableContract] = &[
         table: "differential_revision",
         columns: &["id", "phid", "repositoryPHID", "properties"],
     },
+    // diffusion.filecontentquery, diffusion.rawdiffquery, diffusion.looksoon.
+    TableContract {
+        database: "file",
+        table: "file_attachment",
+        columns: &[
+            "objectPHID",
+            "filePHID",
+            "attachmentMode",
+            "attacherPHID",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_statusmessage",
+        columns: &[
+            "repositoryID",
+            "statusType",
+            "statusCode",
+            "parameters",
+            "epoch",
+            "messageCount",
+        ],
+    },
+    // auth.querypublickeys.
+    TableContract {
+        database: "auth",
+        table: "auth_sshkey",
+        columns: &[
+            "id",
+            "phid",
+            "objectPHID",
+            "name",
+            "keyType",
+            "keyBody",
+            "keyComment",
+            "keyIndex",
+            "isTrusted",
+            "isActive",
+        ],
+    },
+    // The *.edit methods of build plans, panels and portals.
+    TableContract {
+        database: "harbormaster",
+        table: "harbormaster_buildplan",
+        columns: &[
+            "id",
+            "phid",
+            "name",
+            "planStatus",
+            "planAutoKey",
+            "viewPolicy",
+            "editPolicy",
+            "properties",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "dashboard",
+        table: "dashboard_panel",
+        columns: &[
+            "id",
+            "phid",
+            "name",
+            "viewPolicy",
+            "editPolicy",
+            "properties",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "dashboard",
+        table: "dashboard_portal",
+        columns: &[
+            "id",
+            "phid",
+            "name",
+            "viewPolicy",
+            "editPolicy",
+            "properties",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "dashboard",
+        table: "dashboard_paneltransaction",
+        columns: &TRANSACTION_COLUMNS,
+    },
+    TableContract {
+        database: "dashboard",
+        table: "dashboard_portaltransaction",
+        columns: &TRANSACTION_COLUMNS,
+    },
+];
+
+/// The columns `phab_db::editor::insert_transaction()` writes.
+const TRANSACTION_COLUMNS: [&str; 14] = [
+    "phid",
+    "authorPHID",
+    "objectPHID",
+    "viewPolicy",
+    "editPolicy",
+    "commentPHID",
+    "commentVersion",
+    "transactionType",
+    "oldValue",
+    "newValue",
+    "contentSource",
+    "metadata",
+    "dateCreated",
+    "dateModified",
 ];
 
 /// `PhabricatorFerretEngine::getDocumentSchemaColumns()`.

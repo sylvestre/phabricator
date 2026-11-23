@@ -7,10 +7,13 @@
 //! Harbormaster objects inherit their policies along a chain: a buildable
 //! from the object it builds (a diff or a commit), a build from its
 //! buildable, a target from its build, artifacts and logs from their
-//! target; a step from its build plan, which has policies of its own. The
+//! target; a step from its build plan, which has policies of its own.
+//! `harbormaster.buildplan.edit` edits plans ([`plan_edit`]); the other
 //! `*.edit` methods stay in PHP: `harbormaster.build.edit` and
 //! `harbormaster.buildable.edit` have no field but `mfa` (their commands
-//! are messages, sent by `sendmessage`). The write methods queue the
+//! are messages, sent by `sendmessage`), and the fields of
+//! `harbormaster.step.edit` are the custom fields of the step
+//! implementations (`core:customfield`). The write methods queue the
 //! build workers' tasks, which [`engine`] runs. [`web`] is what the web
 //! pages read.
 
@@ -22,6 +25,7 @@ mod constraints;
 pub mod engine;
 pub mod message;
 pub mod plan;
+pub mod plan_edit;
 mod query;
 mod storage;
 pub mod target;
@@ -49,6 +53,7 @@ pub fn register(registry: &mut Registry) {
     registry.register(build::QueryBuilds);
     registry.register(plan::BuildPlanSearch);
     registry.register(plan::StepSearch);
+    registry.register(plan_edit::BuildPlanEdit);
     registry.register(target::TargetSearch);
     registry.register(target::ArtifactSearch);
     registry.register(target::LogSearch);
