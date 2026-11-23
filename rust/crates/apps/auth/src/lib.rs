@@ -1,5 +1,8 @@
-//! Methods of `PhabricatorAuthApplication`. Registered only when Rust logs
-//! users in (`PHAB_RUST_LOGIN=1`); otherwise they stay with PHP.
+//! Methods of `PhabricatorAuthApplication`. Those which write are
+//! registered only when Rust logs users in (`PHAB_RUST_LOGIN=1`); otherwise
+//! they stay with PHP.
+
+pub mod public_keys;
 
 use phab_auth::{Writes, session};
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture, Registry};
@@ -48,7 +51,12 @@ impl Method for AuthLogout {
     }
 }
 
-/// Registers the Auth methods.
+/// Registers the Auth methods which write, for when Rust logs users in.
 pub fn register(registry: &mut Registry) {
     registry.register(AuthLogout);
+}
+
+/// Registers the read-only Auth methods.
+pub fn register_queries(registry: &mut Registry) {
+    registry.register(public_keys::QueryPublicKeys);
 }

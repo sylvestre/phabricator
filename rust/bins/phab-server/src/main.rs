@@ -24,6 +24,7 @@ fn methods(login: bool) -> Registry {
     if login {
         phab_app_auth::register(&mut registry);
     }
+    phab_app_auth::register_queries(&mut registry);
     phab_app_conduit::register(&mut registry);
     phab_app_people::register(&mut registry);
     phab_app_feed::register(&mut registry);

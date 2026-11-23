@@ -1,0 +1,16 @@
+[
+  {"name": "auth.querypublickeys: all", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "auth.querypublickeys: limit", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 1}},
+  {"name": "auth.querypublickeys: after", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 1, "after": "2"}},
+  {"name": "auth.querypublickeys: before", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 1, "before": "1"}},
+  {"name": "auth.querypublickeys: ids", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"ids": [1, "2"]}},
+  {"name": "auth.querypublickeys: phids", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"phids": ["PHID-AKEY-doesnotexist00000"]}},
+  {"name": "auth.querypublickeys: objectPHIDs", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"objectPHIDs": ["PHID-USER-doesnotexist00000"]}},
+  {"name": "auth.querypublickeys: keys", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample me@host"]}},
+  {"name": "auth.querypublickeys: a key without a body", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"keys": ["ssh-rsa"]}},
+  {"name": "auth.querypublickeys: a key of an unknown type", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"keys": ["ssh-foo AAAA"]}},
+  {"name": "auth.querypublickeys: a private key", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"keys": ["-----BEGIN OPENSSH PRIVATE KEY----- x"]}},
+  {"name": "auth.querypublickeys: an empty key", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"keys": ["  "]}},
+  {"name": "auth.querypublickeys: an unknown parameter", "method": "auth.querypublickeys", "token": "$PHAB_REPLAY_TOKEN", "params": {"nope": 1}},
+  {"name": "auth.querypublickeys: without a token", "method": "auth.querypublickeys"}
+]
