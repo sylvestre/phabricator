@@ -157,10 +157,26 @@ milestones, mail truncated by `metamta.email-body-limit`, mail to a user
 without a settings cache, and addresses PHPMailer might reject are left to
 PHP.
 
+`PhabricatorApplicationTransactionPublishWorker` publishes edits of
+Differential revisions (`crates/apps/transactions`): the search indexing
+task, the feed story with its notifications, and one mail per recipient
+(`metamta_mail` rows with their recipient edges and tasks, which
+`PhabricatorMetaMTAWorker` sends later). It declines other objects,
+webhooks (Herald's or firehose), outbound mail Herald rules, the first
+broadcast of a revision (summary and test plan in the mail), diff
+updates and inline comments in mail, comments which mention or reference
+objects, transaction types whose mail title isn't ported, reply addresses
+(`metamta.reply-handler-domain`, `metamta.public-replies`), mail to all
+recipients at once (`metamta.one-mail-per-recipient` off), custom
+`differential.fields`, recipients who use another language or have no
+settings cache, and subprojects among the recipients.
+
 `phab-worker --once [--id N]` leases and runs one task, prints the outcome
 as JSON and exits (3 when the task was left to PHP).
 `rust/scripts/worker-parity.py` compares its rows with PHP's
-`bin/worker execute --id` on the dev stack.
+`bin/worker execute --id` on the dev stack (`--feed N`, `--metamta N` and
+`--publish N` requeue the newest stories, mails and revision publish
+tasks).
 
 ## Checking a deployment
 

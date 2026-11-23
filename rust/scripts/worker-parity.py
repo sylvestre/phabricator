@@ -3,7 +3,7 @@
 the development stack.
 
     rust/scripts/worker-parity.py [--sides php,rust] [--show] [--feed N]
-        [--metamta N] [--rust-worker CMD] [scenarios.json]...
+        [--metamta N] [--publish N] [--rust-worker CMD] [scenarios.json]...
 
 A scenario queues one task: `{"name": ..., "class": "FeedPublisherWorker",
 "data": {"key": 7301...}, "priority": 2000, "objectPHID": null, "setup":
@@ -16,7 +16,12 @@ the N newest mails, each put back in the queue: as configured (the stack has
 no mailers: voided), with a `test` mailer in `cluster.mailers` (recipients
 get Mozilla's mail by default: voided without recipients), and with a test
 mailer and `email.default` 0 (sent), plus one for a mail which does not
-exist.
+exist. `--publish N` adds a PhabricatorApplicationTransactionPublishWorker
+scenario for each of the N newest publish tasks of revisions in
+`worker_archivetask`, requeued with their data as stored (`rawData`, which a
+scenario may give instead of `data`), as configured and with
+`email.default` 0 (Phabricator's own mail, so notifications of mailed users
+are read).
 
 For each scenario and side, from the same snapshot of every `phabricator_*`
 database, the script queues the task with the SQL of
@@ -30,7 +35,9 @@ normalized, as `write-parity.py` does (PHIDs, the current time), plus:
   while `phab-worker` leases the task as its daemon does;
 - `cache_markupcache`, `user_cache` and the daemon logs, ignored as
   `write-parity.py` ignores them (PHP renders the summary of a comment
-  story into the markup cache while loading it; Rust doesn't).
+  story into the markup cache while loading it; Rust doesn't);
+- the chronological key of a new feed story, whose lower 32 bits are
+  random: `<chronological key N>`, by order of appearance.
 
 A side is `php` (`bin/worker execute --id`, in the PHP container) or `rust`
 (`--rust-worker`, `phab-worker --once --id` in the Rust container by
@@ -44,6 +51,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -60,6 +68,9 @@ RUST_WORKER = f"docker exec {RUST} phab-worker --once --id {{id}}"
 DECLINED = 3
 # Columns of the task's own row which depend on how it was leased.
 LEASE_COLUMNS = {"leaseOwner", "leaseExpires", "duration"}
+# A feed story's chronological key: the time, shifted, plus a random number.
+CHRONOLOGICAL_KEY = re.compile(r"(?<![\w.-])\d{19}(?![\w.])")
+PUBLISH_WORKER = "PhabricatorApplicationTransactionPublishWorker"
 
 
 def query(sql):
@@ -83,6 +94,13 @@ def php_json(value):
     return json.dumps(value, separators=(",", ":")).replace("/", "\\/")
 
 
+def task_data(scenario):
+    """The `data` column: `rawData` as given, or `data` encoded like PHP."""
+    if "rawData" in scenario:
+        return scenario["rawData"]
+    return php_json(scenario["data"])
+
+
 def enqueue(scenario):
     """`PhabricatorWorker::scheduleTask()`: the data row, an ID from the
     `worker_activetask` counter, the task row. Returns the task ID."""
@@ -90,7 +108,7 @@ def enqueue(scenario):
     sql = (
         "USE phabricator_worker; "
         f"INSERT INTO worker_taskdata (data) VALUES "
-        f"({quote(php_json(scenario['data']))}); "
+        f"({quote(task_data(scenario))}); "
         "SET @data = LAST_INSERT_ID(); "
         "INSERT INTO lisk_counter (counterName, counterValue) VALUES "
         "('worker_activetask', LAST_INSERT_ID(1)) ON DUPLICATE KEY UPDATE "
@@ -173,6 +191,21 @@ def mask_lease(changes, task_id, names):
     return masked
 
 
+def mask_keys(changes, started, finished):
+    """Replaces the chronological keys of the stories made between `started`
+    and `finished`."""
+    keys = {}
+
+    def key(match):
+        value = int(match.group(0))
+        if not started - 5 <= value >> 32 <= finished + 5:
+            return match.group(0)
+        return keys.setdefault(value, f"<chronological key {len(keys) + 1}>")
+
+    return {(table, CHRONOLOGICAL_KEY.sub(key, values))
+            for table, values in sorted(changes)}
+
+
 def run_side(side, scenario, saved, before, known, names, rust_worker):
     started = int(time.time())
     for statement in scenario.get("setup", []):
@@ -189,10 +222,12 @@ def run_side(side, scenario, saved, before, known, names, rust_worker):
         wrote = (after ^ queued)
         WP.restore(saved, changed)
         return None, wrote
-    added = WP.normalize(mask_lease(after - queued, task_id, names), known,
-                         started, finished)
-    removed = WP.normalize(mask_lease(queued - after, task_id, names), known,
-                           started, finished)
+    added = mask_keys(WP.normalize(mask_lease(after - queued, task_id, names),
+                                   known, started, finished),
+                      started, finished)
+    removed = mask_keys(WP.normalize(mask_lease(queued - after, task_id, names),
+                                     known, started, finished),
+                        started, finished)
     WP.restore(saved, changed)
     return (status, added, removed), set()
 
@@ -248,6 +283,29 @@ def metamta_scenarios(count):
     return scenarios
 
 
+def publish_scenarios(count):
+    """The newest publish tasks of revisions, requeued with their data."""
+    rows = query(
+        "SELECT task.id, task.priority, HEX(data.data) "
+        "FROM phabricator_worker.worker_archivetask task "
+        "JOIN phabricator_worker.worker_taskdata data ON data.id = task.dataID "
+        f"WHERE task.taskClass = '{PUBLISH_WORKER}' "
+        "AND task.objectPHID LIKE 'PHID-DREV-%' "
+        f"ORDER BY task.id DESC LIMIT {int(count)}")
+    legacy = config_entry("email.default", "0")
+    scenarios = []
+    for task_id, priority, data in rows:
+        raw = bytes.fromhex(data).decode("utf-8")
+        object_phid = json.loads(raw).get("objectPHID")
+        for label, setup in (("as configured", []),
+                             ("with legacy mail", [legacy])):
+            scenarios.append({"name": f"publish task {task_id} {label}",
+                              "class": PUBLISH_WORKER, "rawData": raw,
+                              "priority": int(priority),
+                              "objectPHID": object_phid, "setup": setup})
+    return scenarios
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sides", default="php,rust")
@@ -257,6 +315,9 @@ def main():
                         help="add scenarios for the N newest feed stories")
     parser.add_argument("--metamta", type=int, default=0,
                         help="add scenarios for the N newest mails")
+    parser.add_argument("--publish", type=int, default=0,
+                        help="add scenarios for the N newest publish tasks "
+                        "of revisions")
     parser.add_argument("--rust-worker", default=RUST_WORKER,
                         help="command running one task, {id} its ID")
     parser.add_argument("files", nargs="*")
@@ -271,8 +332,10 @@ def main():
         scenarios.extend(feed_scenarios(args.feed))
     if args.metamta:
         scenarios.extend(metamta_scenarios(args.metamta))
+    if args.publish:
+        scenarios.extend(publish_scenarios(args.publish))
     if not scenarios:
-        parser.error("no scenarios: give files, --feed or --metamta")
+        parser.error("no scenarios: give files, --feed, --metamta or --publish")
 
     names = {table: columns(table) for table in (
         "phabricator_worker.worker_activetask",

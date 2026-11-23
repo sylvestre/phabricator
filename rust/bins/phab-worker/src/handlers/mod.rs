@@ -4,6 +4,7 @@ use crate::handler::Registry;
 
 pub mod feed_publisher;
 pub mod metamta;
+pub mod publish;
 pub mod test_worker;
 
 /// Every ported class.
@@ -11,6 +12,7 @@ pub fn registry() -> Registry {
     let mut registry = Registry::default();
     registry.register(feed_publisher::FeedPublisherWorker);
     registry.register(metamta::MetaMTAWorker::default());
+    registry.register(publish::PublishWorker);
     registry.register(test_worker::TestWorker);
     registry
 }

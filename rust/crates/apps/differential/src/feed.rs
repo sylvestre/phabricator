@@ -94,7 +94,7 @@ fn as_list(value: &Value) -> Option<Vec<&Value>> {
 }
 
 /// `isSelfSubscription()`; `None` if the values aren't lists (PHP throws).
-fn is_self_subscription(transaction: &Transaction) -> Option<bool> {
+pub fn is_self_subscription(transaction: &Transaction) -> Option<bool> {
     if transaction.transaction_type != TYPE_SUBSCRIBERS {
         return Some(false);
     }

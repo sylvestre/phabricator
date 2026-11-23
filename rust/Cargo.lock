@@ -1928,6 +1928,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-transactions"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "phab-app-differential",
+ "phab-app-metamta",
+ "phab-app-project",
+ "phab-app-settings",
+ "phab-auth",
+ "phab-core",
+ "phab-db",
+ "phab-policy",
+ "phab-remarkup",
+ "rand 0.9.5",
+ "rstest",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "phab-auth"
 version = "0.1.0"
 dependencies = [
@@ -2141,6 +2161,7 @@ dependencies = [
  "md-5",
  "phab-app-feed",
  "phab-app-metamta",
+ "phab-app-transactions",
  "phab-core",
  "phab-db",
  "rustix",

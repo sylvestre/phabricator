@@ -48,6 +48,8 @@ impl PhidType {
     pub const TRANSACTION_COMMENT: Self = Self(*b"XCMT");
     /// `PhabricatorAuthSessionPHIDType`.
     pub const SESSION: Self = Self(*b"SSSN");
+    /// `PhabricatorMetaMTAMailPHIDType`.
+    pub const MAIL: Self = Self(*b"MTAM");
 
     /// Wraps a four-byte type code.
     pub const fn new(code: [u8; 4]) -> Self {

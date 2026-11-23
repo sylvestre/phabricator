@@ -66,6 +66,7 @@ pub fn edge_database(phid_type: PhidType) -> Option<&'static str> {
         PhidType::FILE => "file",
         PhidType::SPACE => "spaces",
         PhidType::POLICY => "policy",
+        PhidType::MAIL => "metamta",
         // Harbormaster's objects (HarbormasterDAO): build plans, steps,
         // buildables, builds, targets, artifacts and logs.
         phid_type

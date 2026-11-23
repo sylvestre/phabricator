@@ -224,7 +224,8 @@ fn all_actor_phids(from: &str, to: &[String], cc: &[String]) -> Vec<String> {
 
 /// `PhabricatorMetaMTAMemberQuery`: projects expand to their members who
 /// haven't silenced them, plus their watchers; everything else to itself.
-async fn expansion_map(
+/// Every PHID gets an entry.
+pub async fn expansion_map(
     database: &Database,
     phids: &[String],
 ) -> Result<HashMap<String, Vec<String>>, Error> {
@@ -532,20 +533,8 @@ pub async fn load(
         actors.insert(phid.clone(), actor);
     }
 
-    // The preferences of the users (`PhabricatorUserPreferencesQuery` with
-    // synthetic preferences: users without a row get an empty one), the
-    // global preferences attached as their defaults.
     let global_row = phab_app_settings::preferences::load_global(database).await?;
-    for phid in &loaded {
-        let stored = phab_app_settings::preferences::load(database, &Phid::new(*phid)).await?;
-        recipients.preferences.insert(
-            (*phid).to_owned(),
-            Preferences {
-                values: stored.values,
-                defaults: global_row.clone(),
-            },
-        );
-    }
+    recipients.preferences = user_preferences(database, &loaded, global_row.as_ref()).await?;
     recipients.global = Preferences {
         values: global_row.unwrap_or_default(),
         defaults: None,
@@ -556,6 +545,37 @@ pub async fn load(
     }
     recipients.actors = actors;
     Ok(recipients)
+}
+
+/// The preferences of these users (`PhabricatorUserPreferencesQuery` with
+/// synthetic preferences: users without a row get an empty one), the
+/// global preferences (`global`, from
+/// [`phab_app_settings::preferences::load_global`]) attached as their
+/// defaults. The PHIDs must be those of existing users.
+pub async fn user_preferences(
+    database: &Database,
+    phids: &[&str],
+    global: Option<&Map<String, Value>>,
+) -> Result<HashMap<String, Preferences>, Error> {
+    let mut preferences = HashMap::new();
+    for phid in phids {
+        let stored = phab_app_settings::preferences::load(database, &Phid::new(*phid)).await?;
+        preferences.insert(
+            (*phid).to_owned(),
+            Preferences {
+                values: stored.values,
+                defaults: global.cloned(),
+            },
+        );
+    }
+    Ok(preferences)
+}
+
+/// Fails as [`Error::Unsupported`] unless every user of `phids` has the
+/// settings cache a people query with `needUserSettings()` reads: PHP
+/// builds and writes a missing one, which Rust doesn't.
+pub async fn check_settings_caches(database: &Database, phids: &[&str]) -> Result<(), Error> {
+    load_settings_caches(database, phids).await.map(|_| ())
 }
 
 /// The rules of `loadActors()` after the actor query, weakest first.

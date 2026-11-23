@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 phab-app-feed.workspace = true
 phab-app-metamta.workspace = true
+phab-app-transactions.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
 rustix.workspace = true
