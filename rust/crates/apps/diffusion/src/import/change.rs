@@ -35,13 +35,13 @@ const TYPE_MULTICOPY: i64 = 8;
 const TYPE_CHILD: i64 = 10;
 
 /// `DifferentialChangeType::FILE_NORMAL`.
-const FILE_NORMAL: i64 = 1;
+const FILE_NORMAL: i64 = 7;
 /// `FILE_DIRECTORY`.
-const FILE_DIRECTORY: i64 = 2;
+const FILE_DIRECTORY: i64 = 4;
 /// `FILE_SYMLINK`.
 const FILE_SYMLINK: i64 = 5;
 /// `FILE_SUBMODULE`.
-const FILE_SUBMODULE: i64 = 7;
+const FILE_SUBMODULE: i64 = 8;
 
 /// A change of `parseCommitChanges()`, before its paths have IDs.
 #[derive(Debug, Clone, PartialEq, Eq)]

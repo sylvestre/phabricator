@@ -484,10 +484,10 @@ async fn parses_every_commit() {
     assert_eq!(
         changes,
         [
-            "/ 3 10 2 0 1794600100 NULL NULL",
-            "/README 3 2 1 1 1794600100 NULL NULL",
-            "/dir 3 1 2 1 1794600100 NULL NULL",
-            "/dir/a.txt 3 1 1 1 1794600100 NULL NULL",
+            "/ 3 10 4 0 1794600100 NULL NULL",
+            "/README 3 2 7 1 1794600100 NULL NULL",
+            "/dir 3 1 4 1 1794600100 NULL NULL",
+            "/dir/a.txt 3 1 7 1 1794600100 NULL NULL",
             "/link 3 1 5 1 1794600100 NULL NULL",
         ]
     );
@@ -503,7 +503,7 @@ async fn parses_every_commit() {
                  ORDER BY p.path"
             )
             .await,
-        ["/ 10 2 0", "/dir 3 1 1", "/dir/a.txt 3 1 1"]
+        ["/ 10 4 0", "/dir 3 7 1", "/dir/a.txt 3 7 1"]
     );
     // Paths are shared, each with its md5.
     let paths = fixture
