@@ -18,7 +18,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 17 | 70 | – | 12 | 21 | 120 |
+| Conduit methods | 17 | 70 | – | 13 | 20 | 120 |
 | Web routes | 42 | – | 52 | 7 | 277 | 378 |
 
 Of the 25 methods not ported, 22 write (or depend on a write); the read-only ones left are `auth.querypublickeys`, `conduit.query`, `diffusion.findsymbols`.
@@ -48,7 +48,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `conduit.getcapabilities` | stable | shadowed |  |
 | `conduit.getcertificate` | stable | not ported | legacy `arc install-certificate` token exchange (writes). |
 | `conduit.ping` | stable | Rust |  |
-| `conduit.query` | stable | not ported | needs the metadata (params, return types, statuses) of every PHP method, ported or not. |
+| `conduit.query` | stable | ported, not routed | from the method catalog (`crates/phab-web/catalog/conduit.json`, regenerate it when PHP's methods change), filtered by installed applications the viewer can see. |
 
 ### Dashboards
 

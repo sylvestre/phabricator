@@ -1,5 +1,7 @@
 //! Methods of `PhabricatorConduitApplication`.
 
+pub mod query;
+
 use phab_conduit::{ApiRequest, Application, Method, MethodFuture, Registry};
 use serde_json::{Value, json};
 
@@ -71,4 +73,5 @@ impl Method for ConduitGetCapabilities {
 pub fn register(registry: &mut Registry) {
     registry.register(ConduitGetCapabilities);
     registry.register(ConduitPing);
+    registry.register(query::ConduitQuery);
 }
