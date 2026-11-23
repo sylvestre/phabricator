@@ -1696,6 +1696,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "form_urlencoded",
+ "md-5",
  "pcre2",
  "phab-app-herald",
  "phab-app-project",

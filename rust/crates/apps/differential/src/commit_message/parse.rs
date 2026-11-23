@@ -129,6 +129,42 @@ fn parse_corpus(corpus: &str, fields: &[Field]) -> (Vec<(Field, String)>, Vec<St
     (texts, errors)
 }
 
+/// `validateMessageCorpus()` of a summary or test plan: whether, below a
+/// placeholder title, it has lines `newStandardParser()` reads as fields
+/// other than the title and the summary it falls back to. A "Summary:"
+/// label counts. Texts with carriage returns are left to PHP.
+pub(crate) fn names_fields(config: &phab_core::Config, text: &str) -> Result<bool, MethodError> {
+    if text.is_empty() {
+        return Ok(false);
+    }
+    if text.contains('\r') {
+        return Err(MethodError::Unsupported("texts with carriage returns"));
+    }
+    let fields = fields::enabled_fields(config)?;
+    let corpus = format!("<placeholder>\n{text}");
+    let (texts, _) = parse_corpus(&corpus, &fields);
+    if texts
+        .iter()
+        .any(|(field, _)| !matches!(field, Field::Title | Field::Summary))
+    {
+        return Ok(true);
+    }
+    // A labeled summary keeps its key, which PHP reports; the one after
+    // the title's blank line doesn't.
+    let labels: Vec<String> = Field::Summary
+        .aliases()
+        .iter()
+        .chain([&Field::Summary.name()])
+        .map(|label| label.to_ascii_lowercase())
+        .collect();
+    let labeled = fields.contains(&Field::Summary)
+        && split_lines(php_trim(&corpus)).iter().skip(1).any(|line| {
+            line.split_once(':')
+                .is_some_and(|(label, _)| labels.contains(&label.to_ascii_lowercase()))
+        });
+    Ok(labeled)
+}
+
 /// A parsed field value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Parsed {
@@ -472,6 +508,18 @@ mod tests {
         Field::Reviewers,
         Field::Subscribers,
     ];
+
+    #[test]
+    fn finds_fields_in_texts_like_php() {
+        let config = phab_core::Config::default();
+        let names = |text| names_fields(&config, text).unwrap();
+        assert!(!names(""));
+        assert!(!names("Fixes the crash.\n\nSee the bug."));
+        assert!(names("Fixes the crash.\nTest Plan: ran it"));
+        assert!(names("Fixes the crash.\nSummary: again"));
+        assert!(names("Reviewers: bob"));
+        assert!(!names("Ratio: 2:1"));
+    }
 
     fn parse(corpus: &str) -> (Vec<(Field, String)>, Vec<String>) {
         parse_corpus(corpus, FIELDS)

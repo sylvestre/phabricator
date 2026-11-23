@@ -16,7 +16,21 @@
 //! ([`reviewers`]); or a comment and one of those. With the review status
 //! change they cause, when Herald's rules are ones
 //! [`phab_app_herald::engine`] evaluates. A comment subscribes its author
-//! when nothing else does (`applyImplicitCC()`).
+//! when nothing else does (`applyImplicitCC()`). A new diff ([`update`]),
+//! alone or with a comment, a new title, summary, test plan, subscribers
+//! or tags.
+//!
+//! Without `objectIdentifier`, a new revision (`core:create`): a diff, a
+//! title, a summary and a test plan, reviewers, subscribers and tags,
+//! whose texts have no remarkup effect (mentions, references, files and
+//! dependencies of new revisions are left to PHP). New revisions are
+//! drafts which don't broadcast, and this fork doesn't promote drafts in
+//! the editor (moz-phab requests review): Herald's mail actions are
+//! forbidden on drafts (`setForbiddenAction()`), and their rules don't
+//! match. Mozilla's extensions add no editor effect on creation: their
+//! event listeners only render pages, and the Bugzilla bug ID (which asks
+//! Bugzilla) and uplift fields only act on their own transactions, which
+//! are left to PHP.
 
 mod commits;
 mod dependencies;
@@ -31,6 +45,7 @@ mod reviewers;
 mod stack;
 mod subscribers;
 mod tags;
+mod update;
 
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
 use phab_conduit::{ApiRequest, Method, MethodError, MethodFuture};
@@ -49,6 +64,9 @@ const PROJECT_HAS_WATCHER: i64 = 47;
 
 /// `PhabricatorProjectProjectHasObjectEdgeType`.
 const PROJECT_HAS_OBJECT: i64 = 42;
+
+/// `DifferentialHeraldStateReasons::REASON_DRAFT`.
+const DRAFT_REASON: &str = "differential.draft";
 
 /// The Herald adapter of revisions (`HeraldDifferentialRevisionAdapter`),
 /// for the fields and actions Rust implements.
@@ -179,11 +197,12 @@ enum Action {
     Review,
     Author,
     Title,
-    Text,
+    Text(TextField),
     Reviewers,
     Subscribers,
     Projects,
     Stack,
+    Update,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -199,8 +218,10 @@ struct Wanted {
     author_action: Option<AuthorAction>,
     /// A new title.
     title: Option<String>,
-    /// A new summary or test plan.
-    text: Option<(TextField, String)>,
+    /// The new summary or test plan, or both for a new revision.
+    texts: Vec<(TextField, String)>,
+    /// The diff to attach (`update`).
+    update: Option<String>,
     /// Reviewers added, removed or set.
     reviewers: Option<reviewers::Wanted>,
     /// Subscribers added, removed or set.
@@ -212,8 +233,8 @@ struct Wanted {
 }
 
 /// The ported transactions of the `transactions` parameter: a comment, a
-/// review, or both.
-fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
+/// review, or both. `is_new` when they create a revision.
+fn wanted(request: &ApiRequest<'_>, is_new: bool) -> Result<Wanted, MethodError> {
     let Some(Value::Array(transactions)) = request.value("transactions") else {
         return Err(MethodError::Unsupported("unusual transaction lists"));
     };
@@ -256,16 +277,24 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
                 wanted.title = Some(title.clone());
                 wanted.order.push(Action::Title);
             }
-            (Some(kind @ ("summary" | "testPlan")), Some(Value::String(text)))
-                if wanted.text.is_none() =>
-            {
+            (Some(kind @ ("summary" | "testPlan")), Some(Value::String(text))) => {
                 let field = if kind == "summary" {
                     TextField::Summary
                 } else {
                     TextField::TestPlan
                 };
-                wanted.text = Some((field, text.clone()));
-                wanted.order.push(Action::Text);
+                // One of each for a new revision, one for the others.
+                if wanted.texts.iter().any(|(known, _)| *known == field)
+                    || (!is_new && !wanted.texts.is_empty())
+                {
+                    return Err(MethodError::Unsupported("transactions not ported"));
+                }
+                wanted.texts.push((field, text.clone()));
+                wanted.order.push(Action::Text(field));
+            }
+            (Some("update"), Some(value)) if wanted.update.is_none() => {
+                wanted.update = Some(update::parse(value)?);
+                wanted.order.push(Action::Update);
             }
             (Some(kind), Some(value)) if kind.contains('.') => {
                 wanted_list(&mut wanted, kind, value)?;
@@ -276,21 +305,52 @@ fn wanted(request: &ApiRequest<'_>) -> Result<Wanted, MethodError> {
     if wanted == Wanted::default() {
         return Err(MethodError::Unsupported("empty transaction lists"));
     }
-    check_combination(&wanted)?;
+    if is_new {
+        check_creation(&wanted)?;
+    }
+    check_combination(&wanted, is_new)?;
     Ok(wanted)
+}
+
+/// The transactions of a new revision: a diff and a title, which PHP
+/// requires, and lists or texts. Comments, actions and stack edits of new
+/// revisions are left to PHP.
+fn check_creation(wanted: &Wanted) -> Result<(), MethodError> {
+    if wanted.update.is_none() || wanted.title.is_none() {
+        // "You must specify an initial diff", "Revisions must have a title".
+        return Err(MethodError::Unsupported("creations PHP refuses"));
+    }
+    let ported = |action: &Action| {
+        matches!(
+            action,
+            Action::Update
+                | Action::Title
+                | Action::Text(_)
+                | Action::Reviewers
+                | Action::Subscribers
+                | Action::Projects
+        )
+    };
+    if wanted.comment.is_some() || !wanted.order.iter().all(ported) {
+        return Err(MethodError::Unsupported("creations not ported"));
+    }
+    Ok(())
 }
 
 /// Several actions, but those whose combination isn't ported: stack edits
 /// (written with the links), "Request Review" (whose void comes later), and
 /// reviews or author actions with a reviewer edit (both change reviewers).
-fn check_combination(wanted: &Wanted) -> Result<(), MethodError> {
+fn check_combination(wanted: &Wanted, is_new: bool) -> Result<(), MethodError> {
     if wanted.order.len() < 2 {
         return Ok(());
     }
     let has = |action| wanted.order.contains(&action);
+    // A new diff voids reviews, which actions on reviewers would see.
+    let changes_reviewers = has(Action::Reviewers) || has(Action::Review) || has(Action::Author);
     if has(Action::Stack)
         || wanted.author_action == Some(AuthorAction::RequestReview)
         || (has(Action::Reviewers) && (has(Action::Review) || has(Action::Author)))
+        || (has(Action::Update) && changes_reviewers && !is_new)
     {
         return Err(MethodError::Unsupported("several actions"));
     }
@@ -330,6 +390,73 @@ fn wanted_list(wanted: &mut Wanted, kind: &str, value: &Value) -> Result<(), Met
         _ => return Err(unsupported()),
     }
     Ok(())
+}
+
+/// Whether the call creates a revision: it names none.
+fn is_creation(request: &ApiRequest<'_>) -> Result<bool, MethodError> {
+    match request.value("objectIdentifier") {
+        None | Some(Value::Null) => Ok(true),
+        // `if ($identifier)`: other falsy values create too.
+        Some(value) if !php::is_truthy(value) => Err(MethodError::Unsupported(
+            "creations and unusual identifiers",
+        )),
+        Some(_) => Ok(false),
+    }
+}
+
+/// `initializeNewRevision()`: a draft of the actor, which doesn't
+/// broadcast, with the application's default view policy for both
+/// policies. Its ID is known once saved.
+fn new_revision(request: &ApiRequest<'_>, actor: &str) -> (Revision, Facts) {
+    let policies = phab_policy::ApplicationPolicies::from_config(&request.context.config);
+    let policy = policies
+        .custom_policy(
+            phab_policy::application::DIFFERENTIAL,
+            phab_policy::Capability("differential.default.view"),
+            phab_policy::POLICY_USER,
+        )
+        .to_owned();
+    let revision = Revision {
+        id: 0,
+        phid: Phid::generate(PhidType::REVISION, None),
+        title: String::new(),
+        status: "draft".to_owned(),
+        author_phid: Some(Phid::new(actor)),
+        view_policy: policy.clone(),
+        edit_policy: policy,
+        repository_phid: None,
+        active_diff_phid: None,
+        date_modified: request.now,
+        reviewers: Vec::new(),
+    };
+    let facts = Facts {
+        mentioned: json!([]),
+        should_broadcast: false,
+        reviewers: Vec::new(),
+        projects: Vec::new(),
+        subscribers: Vec::new(),
+        muted: Vec::new(),
+        old_recipients: (Vec::new(), Vec::new()),
+    };
+    (revision, facts)
+}
+
+/// `PhabricatorPolicyFilter::hasCapability()` of `CAN_EDIT`; nothing is
+/// required to edit a new revision (`applyCapabilityChecks()`).
+async fn can_edit(request: &ApiRequest<'_>, revision: &Revision) -> Result<bool, MethodError> {
+    if revision.id == 0 {
+        return Ok(true);
+    }
+    let context = request.context;
+    crate::storage::can_edit(
+        &context.database,
+        &context.config,
+        &request.viewer,
+        revision,
+        request.now,
+    )
+    .await
+    .map_err(MethodError::internal)
 }
 
 /// `newObjectFromIdentifier()`: the revision, which the viewer must see.
@@ -567,7 +694,7 @@ async fn plan_subscription(
     request: &ApiRequest<'_>,
     revision: &Revision,
     facts: &mut Facts,
-    (wanted, old_text): (&Wanted, Option<&(TextField, String)>),
+    (wanted, old_texts): (&Wanted, &[(TextField, String)]),
     actor: &str,
 ) -> Result<Option<Subscription>, MethodError> {
     let context = request.context;
@@ -584,7 +711,7 @@ async fn plan_subscription(
             }
         }
     }
-    if let Some((_, old)) = old_text {
+    for (_, old) in old_texts {
         let before = mentioned_users(request, old).await?;
         mentioned.retain(|user| !before.iter().any(|known| known.0 == user.0));
     }
@@ -644,17 +771,7 @@ async fn plan_subscription(
     }
     // getLegacyRequiredCapabilities(): subscribing others needs CAN_EDIT,
     // or else CAN_INTERACT, which revisions don't have: PHP throws.
-    if added.iter().any(|phid| phid != actor)
-        && !crate::storage::can_edit(
-            database,
-            &context.config,
-            &request.viewer,
-            revision,
-            request.now,
-        )
-        .await
-        .map_err(MethodError::internal)?
-    {
+    if added.iter().any(|phid| phid != actor) && !can_edit(request, revision).await? {
         return Err(MethodError::Unsupported("subscriptions PHP refuses"));
     }
     let old = facts.subscribers.clone();
@@ -1020,9 +1137,11 @@ struct Actions {
     author_action: Option<(AuthorAction, String)>,
     /// The `differential.revision.title` transaction, with the old title.
     title: Option<(String, String)>,
-    /// The summary or test plan transaction: the field, its PHID, the old
-    /// and the new text.
-    text: Option<(TextField, String, String, String)>,
+    /// The summary and test plan transactions: the field, its PHID, the
+    /// old and the new text.
+    texts: Vec<(TextField, String, String, String)>,
+    /// The `differential:update` transaction and its void.
+    update: Option<update::Planned>,
     /// The `differential.revision.reviewers` transaction.
     reviewer_edit: Option<reviewers::Planned>,
     /// The `core:subscribers` transaction of `subscribers.*`.
@@ -1047,7 +1166,18 @@ impl Actions {
                     phids.extend(self.void.iter().map(|(phid, _, _)| phid));
                 }
                 Action::Title => phids.extend(self.title.iter().map(|(phid, _)| phid)),
-                Action::Text => phids.extend(self.text.iter().map(|(_, phid, ..)| phid)),
+                Action::Text(field) => phids.extend(
+                    self.texts
+                        .iter()
+                        .filter(|(known, ..)| *known == *field)
+                        .map(|(_, phid, ..)| phid),
+                ),
+                Action::Update => {
+                    if let Some(update) = &self.update {
+                        phids.push(&update.phid);
+                        phids.extend(update.void.iter().map(|(phid, _, _)| phid));
+                    }
+                }
                 Action::Reviewers => phids.extend(self.reviewer_edit.iter().map(|edit| &edit.phid)),
                 Action::Subscribers => {
                     phids.extend(self.subscriber_edit.iter().map(|edit| &edit.phid));
@@ -1060,10 +1190,22 @@ impl Actions {
     }
 }
 
+/// A merge conflict check an edit queues.
+enum MergeCheck {
+    /// `queueChecks()`: the revision and those stacked above it.
+    Stack(String),
+    /// `queueCheck()` of the revision's new diff, then
+    /// `queueDescendantChecks()`.
+    Diff(String, String),
+}
+
 /// The planned edit.
 struct Plan {
-    /// The revision as the edit leaves it.
+    /// The revision as the edit leaves it; a new one has no ID until
+    /// it is saved.
     revision: Revision,
+    /// The `core:create` transaction of a new revision.
+    create: Option<String>,
     actor: String,
     /// The `core:subscribers` transaction `applyImplicitCC()` adds: its
     /// PHID and the subscribers before.
@@ -1080,9 +1222,9 @@ struct Plan {
     /// The implicit `core:file` transaction of the files the texts
     /// reference.
     file_edit: Option<files::Planned>,
-    /// The revisions whose merge conflicts to recheck, with those stacked
-    /// above them: the linked revisions' sub-editors', then the edit's.
-    merge_checks: Vec<String>,
+    /// The merge conflict checks: the linked revisions' sub-editors', then
+    /// the edit's.
+    merge_checks: Vec<MergeCheck>,
     /// The Herald editor's transactions.
     herald: herald_actions::Edits,
     /// The IDs of the rules to mark as applied to the revision.
@@ -1093,7 +1235,9 @@ struct Plan {
     rules: Vec<Rule>,
     transcript: engine::TranscriptRow,
     herald_header: String,
-    worker_data: String,
+    /// The publish task's data, whose monogram stamp a new revision gets
+    /// once saved.
+    worker_data: Value,
 }
 
 /// `HeraldEngine::loadAndApplyRules()` and the effects, without writing.
@@ -1112,18 +1256,6 @@ async fn run_herald(
         .await
         .map_err(unsupported)?;
     engine::check_supported(&rules, &RevisionAdapter).map_err(unsupported)?;
-    // Drafts forbid the mailable state (`setForbiddenAction()`), which the
-    // email actions require: PHP records those rules as forbidden.
-    let mails = |rule: &Rule| {
-        rule.actions
-            .iter()
-            .any(|action| matches!(action.action.as_str(), "email.other" | "email.self"))
-    };
-    if !facts.should_broadcast && rules.iter().any(mails) {
-        return Err(MethodError::Unsupported(
-            "Herald mail rules on drafts, which forbid them",
-        ));
-    }
     let mut rules = rules;
     // needAppliedToPHIDs(): where the rules applied before.
     if !rules.is_empty() {
@@ -1155,7 +1287,14 @@ async fn run_herald(
     };
     let used = engine::fields_used(&rules);
     let values = herald_fields::values(database, revision, facts, input, &used).await?;
-    let evaluation = engine::evaluate(&rules, &subject, &values);
+    // Drafts forbid the mailable state (`setForbiddenAction()`), which the
+    // email actions require: those rules don't match.
+    let forbidden: &[(&str, &str)] = if facts.should_broadcast {
+        &[]
+    } else {
+        &[("email.other", DRAFT_REASON), ("email.self", DRAFT_REASON)]
+    };
+    let evaluation = engine::evaluate_forbidding(&rules, &subject, &values, forbidden);
     if let Some(what) = evaluation.unsupported {
         return Err(MethodError::Unsupported(what));
     }
@@ -1241,11 +1380,12 @@ fn add_old_recipients(
     removed
 }
 
-/// The `state` of the publish task (`getWorkerState()`).
+/// The `state` of the publish task (`getWorkerState()`); `is_new` for a
+/// revision the edit creates.
 fn worker_state(
     revision: &Revision,
     facts: &Facts,
-    actor: &str,
+    (actor, is_new): (&str, bool),
     must_encrypt: &[String],
     herald_header: &str,
 ) -> Value {
@@ -1302,7 +1442,7 @@ fn worker_state(
         stamp("string", "via", json!("conduit")),
         stamp("bool", "silent", Value::Null),
         stamp("bool", "encrypted", json!(must_encrypt)),
-        stamp("bool", "new", json!(false)),
+        stamp("bool", "new", json!(is_new)),
         stamp("phid", "mention", facts.mentioned.clone()),
         stamp("string", "herald", rule_monograms(herald_header)),
         stamp("phid", "removed", json!(removed)),
@@ -1311,7 +1451,7 @@ fn worker_state(
     ];
     json!({
         "parentMessageID": null,
-        "isNewObject": false,
+        "isNewObject": is_new,
         "heraldEmailPHIDs": [],
         "heraldForcedEmailPHIDs": [],
         "heraldHeader": herald_header,
@@ -1350,6 +1490,17 @@ async fn saved_header(database: &Database, phid: &Phid) -> Result<Option<String>
         .await?
         .map(|row| rows::text(&row, "header"))
         .transpose()?)
+}
+
+/// Sets the `monogram` stamp of the publish task's data of a revision
+/// saved with `id`.
+fn set_monogram(data: &mut Value, id: i64) {
+    let stamps = data["state"]["mailStamps"].as_array_mut();
+    for stamp in stamps.into_iter().flatten() {
+        if stamp["key"] == "monogram" {
+            stamp["value"] = json!(format!("D{id}"));
+        }
+    }
 }
 
 /// `differential.sticky-accept`, true by default.
@@ -1573,22 +1724,17 @@ fn plan_author_action(
     Ok(())
 }
 
-/// The `differential.revision.void` transaction "Request Review" adds
-/// (`expandTransaction()`): the reviewers whose accepts and rejections it
-/// voids, and the statuses it must void. Voids `revision`'s reviewers.
+/// The `differential.revision.void` transaction "Request Review" and new
+/// diffs add (`expandTransaction()`): the reviewers whose accepts and
+/// rejections it voids, and the statuses it must void (`force`, else
+/// sticky accepts stay). Voids `revision`'s reviewers.
 async fn plan_void(
     request: &ApiRequest<'_>,
     revision: &mut Revision,
-    old_status: &str,
+    force: Vec<&'static str>,
     actor: &str,
 ) -> Result<Option<(Voided, Vec<&'static str>)>, MethodError> {
     let database = &request.context.database;
-    // "Changes Planned" then "Request Review" keeps sticky accepts.
-    let force: Vec<&'static str> = if old_status == "changes-planned" {
-        Vec::new()
-    } else {
-        vec!["accepted"]
-    };
     let sql = format!(
         "SELECT id, reviewerPHID, reviewerStatus, options FROM {} WHERE revisionPHID = ? AND \
          voidedPHID IS NULL AND reviewerStatus IN ('accepted', 'rejected') ORDER BY id",
@@ -1629,10 +1775,14 @@ async fn plan_void(
     Ok(Some((voided, force)))
 }
 
+/// The byte length of the `title` column (`text255`).
+const TITLE_LENGTH: usize = 255;
+
 /// `DifferentialRevisionTitleTransaction`: the new title, which needs
 /// `CAN_EDIT` (PHP raises a policy exception otherwise). Returns the old
 /// title. An unchanged title has no effect, yet PHP still saves and
-/// publishes the revision; that is left to it.
+/// publishes the revision; that is left to it, as are the empty and
+/// overlong titles PHP refuses.
 async fn plan_title(
     request: &ApiRequest<'_>,
     revision: &mut Revision,
@@ -1641,34 +1791,29 @@ async fn plan_title(
     if title == revision.title {
         return Err(MethodError::Unsupported("edits without effect"));
     }
-    let context = request.context;
-    let can_edit = crate::storage::can_edit(
-        &context.database,
-        &context.config,
-        &request.viewer,
-        revision,
-        request.now,
-    )
-    .await
-    .map_err(MethodError::internal)?;
-    if !can_edit {
+    if title.is_empty() || title.len() > TITLE_LENGTH {
+        return Err(MethodError::Unsupported("titles PHP refuses"));
+    }
+    if !can_edit(request, revision).await? {
         return Err(MethodError::Unsupported("edits the actor may not make"));
     }
     Ok(std::mem::replace(&mut revision.title, title))
 }
 
-/// The new remarkup texts of an edit: the field's, then the comment.
+/// The new remarkup texts of an edit: the fields', then the comment.
 fn new_texts(wanted: &Wanted) -> Vec<&str> {
     wanted
-        .text
+        .texts
         .iter()
         .map(|(_, text)| text.as_str())
         .chain(wanted.comment.as_deref())
         .collect()
 }
 
-/// A new summary or test plan, which needs `CAN_EDIT`: the old text. An
-/// unchanged text is left to PHP, as an unchanged title is.
+/// A new summary or test plan, which needs `CAN_EDIT`: the old text, empty
+/// for a new revision. An unchanged text is left to PHP, as an unchanged
+/// title is, and so are texts PHP can't render unambiguously in a commit
+/// message (`validateMessageCorpus()`).
 async fn plan_text(
     request: &ApiRequest<'_>,
     revision: &Revision,
@@ -1677,34 +1822,67 @@ async fn plan_text(
 ) -> Result<String, MethodError> {
     let context = request.context;
     let database = &context.database;
-    let sql = format!(
-        "SELECT {} AS text FROM {} WHERE id = ?",
-        field.column(),
-        database.table("differential", "differential_revision")
-    );
-    let old = rows::text(
-        &phab_db::sqlx::query(&sql)
-            .bind(revision.id)
-            .fetch_one(database.pool())
-            .await?,
-        "text",
-    )?;
+    if crate::commit_message::parse::names_fields(&context.config, new)? {
+        return Err(MethodError::Unsupported(
+            "texts which read as commit message fields",
+        ));
+    }
+    let old = if revision.id == 0 {
+        String::new()
+    } else {
+        let sql = format!(
+            "SELECT {} AS text FROM {} WHERE id = ?",
+            field.column(),
+            database.table("differential", "differential_revision")
+        );
+        rows::text(
+            &phab_db::sqlx::query(&sql)
+                .bind(revision.id)
+                .fetch_one(database.pool())
+                .await?,
+            "text",
+        )?
+    };
     if old == new {
         return Err(MethodError::Unsupported("edits without effect"));
     }
-    let can_edit = crate::storage::can_edit(
-        database,
-        &context.config,
-        &request.viewer,
-        revision,
-        request.now,
-    )
-    .await
-    .map_err(MethodError::internal)?;
-    if !can_edit {
+    if !can_edit(request, revision).await? {
         return Err(MethodError::Unsupported("edits the actor may not make"));
     }
     Ok(old)
+}
+
+/// The texts of a new revision, whose remarkup must have no effect:
+/// mentions, references and files of new revisions are left to PHP, and so
+/// is a missing test plan, which PHP requires by default
+/// (`differential.require-test-plan-field`).
+fn check_new_texts(request: &ApiRequest<'_>, wanted: &Wanted) -> Result<(), MethodError> {
+    let config = &request.context.config;
+    let required = config
+        .value("differential.require-test-plan-field")
+        .is_none_or(php::is_truthy);
+    let has_plan = wanted
+        .texts
+        .iter()
+        .any(|(field, text)| *field == TextField::TestPlan && !text.is_empty());
+    if required && !has_plan {
+        return Err(MethodError::Unsupported("creations PHP refuses"));
+    }
+    let engine = phab_remarkup::phabricator::engine(crate::markup::engine_config(config));
+    for (_, text) in &wanted.texts {
+        let prepared = engine.prepare(text.as_bytes(), phab_remarkup::Mode::Html);
+        let inert = prepared.mentioned_usernames().is_empty()
+            && prepared.object_references().is_empty()
+            && prepared.file_attach_intent_ids().is_empty()
+            && dependencies::depends_on(text).is_empty()
+            && monograms::REVERTS.parse(text).is_empty();
+        if !inert {
+            return Err(MethodError::Unsupported(
+                "remarkup with effects in new revisions",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// A new transaction PHID of revisions.
@@ -1722,13 +1900,14 @@ struct Publication {
     rules: Vec<Rule>,
     transcript: engine::TranscriptRow,
     herald_header: String,
-    worker_data: String,
+    worker_data: Value,
 }
 
-/// What Herald's fields read of the edit: the actor, the summary or test
-/// plan set, and whether the edit unsubscribes anyone.
+/// What Herald's fields read of the edit: the actor, whether it creates
+/// the revision, the summary or test plan set, and whether the edit
+/// unsubscribes anyone.
 fn herald_input<'a>(
-    actor: &'a str,
+    (actor, is_new): (&'a str, bool),
     actions: &'a Actions,
     subscription: Option<&Subscription>,
 ) -> herald_fields::Input<'a> {
@@ -1746,10 +1925,12 @@ fn herald_input<'a>(
             .map(|edit| edit.added.clone())
             .unwrap_or_default(),
         actor,
-        text: actions
-            .text
-            .as_ref()
-            .map(|(field, _, _, new)| (*field, new.as_str())),
+        is_new,
+        texts: actions
+            .texts
+            .iter()
+            .map(|(field, _, _, new)| (*field, new.as_str()))
+            .collect(),
         removes_subscribers: subscription.is_some_and(removes)
             || actions.subscriber_edit.as_ref().is_some_and(removes),
     }
@@ -1789,18 +1970,18 @@ async fn publication(
     let mut state = worker_state(
         revision,
         facts,
-        input.actor,
+        (input.actor, input.is_new),
         &outcome.must_encrypt,
         &herald_header,
     );
     state["heraldEmailPHIDs"] = json!(herald.email);
     state["heraldForcedEmailPHIDs"] = json!(herald.forced_email);
-    let worker_data = php::json_encode(&json!({
+    let worker_data = json!({
         "objectPHID": revision.phid.as_str(),
         "actorPHID": input.actor,
         "xactionPHIDs": published,
         "state": state,
-    }));
+    });
     // Rules repeating the first time or on change which acted, and those on
     // change which matched again.
     let remembers = |rule_id: &String| {
@@ -1840,7 +2021,7 @@ async fn link_task(
     let header = saved.as_deref().unwrap_or_default();
     let mut state = match &target.object {
         Linked::Revision { revision, facts } => {
-            worker_state(revision, facts, actor, must_encrypt, header)
+            worker_state(revision, facts, (actor, false), must_encrypt, header)
         }
         Linked::Commit(commit) => commits::worker_state(commit, actor, must_encrypt, header),
     };
@@ -1882,7 +2063,13 @@ async fn plan_author(
     let old_status = revision.status.clone();
     plan_author_action(request, action, revision, facts, actor)?;
     let void = if action == AuthorAction::RequestReview {
-        plan_void(request, revision, &old_status, actor)
+        // "Changes Planned" then "Request Review" keeps sticky accepts.
+        let force = if old_status == "changes-planned" {
+            Vec::new()
+        } else {
+            vec!["accepted"]
+        };
+        plan_void(request, revision, force, actor)
             .await?
             .map(|(reviewers, force)| (transaction_phid(), reviewers, force))
     } else {
@@ -1894,27 +2081,29 @@ async fn plan_author(
 /// The planned title and text field edits.
 type FieldEdits = (
     Option<(String, String)>,
-    Option<(TextField, String, String, String)>,
+    Vec<(TextField, String, String, String)>,
 );
 
-/// The new title and the new summary or test plan, with their
+/// The new title and the new summary and test plan, with their
 /// transactions.
 async fn plan_fields(
     request: &ApiRequest<'_>,
     wanted: &Wanted,
     revision: &mut Revision,
-    old_text: Option<&(TextField, String)>,
+    old_texts: &[(TextField, String)],
 ) -> Result<FieldEdits, MethodError> {
-    let text = match &wanted.text {
-        Some((field, new)) => {
-            let old = old_text
-                .as_ref()
+    let texts = wanted
+        .texts
+        .iter()
+        .map(|(field, new)| {
+            let old = old_texts
+                .iter()
+                .find(|(known, _)| known == field)
                 .map(|(_, old)| old.clone())
                 .unwrap_or_default();
-            Some((*field, transaction_phid(), old, new.clone()))
-        }
-        None => None,
-    };
+            (*field, transaction_phid(), old, new.clone())
+        })
+        .collect();
     let title = match wanted.title.clone() {
         Some(title) => {
             let old = plan_title(request, revision, title).await?;
@@ -1922,7 +2111,33 @@ async fn plan_fields(
         }
         None => None,
     };
-    Ok((title, text))
+    Ok((title, texts))
+}
+
+/// The `update` transaction: its effects on the revision, and the void of
+/// the reviews of an existing revision (`expandTransaction()`: rejections,
+/// and accepts which aren't sticky).
+async fn plan_update(
+    request: &ApiRequest<'_>,
+    wanted: &Wanted,
+    revision: &mut Revision,
+    facts: &Facts,
+    actor: &str,
+) -> Result<Option<update::Planned>, MethodError> {
+    let Some(diff) = &wanted.update else {
+        return Ok(None);
+    };
+    let is_new = revision.id == 0;
+    let void = if is_new {
+        None
+    } else {
+        plan_void(request, revision, Vec::new(), actor)
+            .await?
+            .map(|(reviewers, force)| (transaction_phid(), reviewers, force))
+    };
+    let mut planned = update::plan(request, diff, revision, facts, is_new).await?;
+    planned.void = void;
+    Ok(Some(planned))
 }
 
 /// The acting user.
@@ -1957,11 +2172,12 @@ async fn plan_links(
     };
     // expandCustomRemarkupBlockTransactions(): the dependencies, then the
     // reverts, neither of which the texts then mention.
-    let (dependency, mut unmentionable) = match &wanted.text {
+    // Several texts are those of a new revision, which have no effect.
+    let (dependency, mut unmentionable) = match wanted.texts.first() {
         Some((_, text)) => dependencies::plan(request, revision, text).await?,
         None => (None, Vec::new()),
     };
-    let (revert, reverted) = match &wanted.text {
+    let (revert, reverted) = match wanted.texts.first() {
         Some((_, text)) => reverts::plan(request, revision, text).await?,
         None => (None, Vec::new()),
     };
@@ -2036,7 +2252,7 @@ async fn plan_merge_checks(
     revision: &Revision,
     actions: &Actions,
     links: &[Link],
-) -> Result<Vec<String>, MethodError> {
+) -> Result<Vec<MergeCheck>, MethodError> {
     let mut checks = Vec::new();
     let rewiring = links
         .iter()
@@ -2046,33 +2262,89 @@ async fn plan_merge_checks(
             if let Linked::Revision { revision, .. } = &target.object
                 && merge_checks::enabled(request, revision).await?
             {
-                checks.push(revision.phid.as_str().to_owned());
+                checks.push(MergeCheck::Stack(revision.phid.as_str().to_owned()));
             }
         }
     }
+    let phid = revision.phid.as_str().to_owned();
+    // A new diff is checked instead of the stack.
+    if let Some(update) = &actions.update {
+        if merge_checks::enabled(request, revision).await? {
+            checks.push(MergeCheck::Diff(phid, update.diff.phid.clone()));
+        }
+        return Ok(checks);
+    }
     let abandons = matches!(actions.author_action, Some((AuthorAction::Abandon, _)));
     if (abandons || rewiring.count() > 0) && merge_checks::enabled(request, revision).await? {
-        checks.push(revision.phid.as_str().to_owned());
+        checks.push(MergeCheck::Stack(phid));
     }
     Ok(checks)
 }
 
+/// Every transaction of the edit, in the order PHP applies them: the
+/// `core:create` of a new revision, the subscription (`array_unshift()`),
+/// the actions, the links and files, the comment (`sortTransactions()`),
+/// then the status (`applyFinalEffects()`). A subscription of mentions
+/// alone comes after the actions instead.
+fn applied_order(
+    (create, subscription, actions): (Option<&String>, Option<&Subscription>, &Actions),
+    (links, file_edit): (&[Link], Option<&files::Planned>),
+    (comment, status): (Option<&String>, Option<&String>),
+) -> Vec<String> {
+    let (first, late) = match subscription {
+        Some(subscription) if subscription.first => (Some(subscription.phid.clone()), None),
+        Some(subscription) => (None, Some(subscription.phid.clone())),
+        None => (None, None),
+    };
+    create
+        .cloned()
+        .into_iter()
+        .chain(first)
+        .chain(actions.phids())
+        .chain(late)
+        .chain(links.iter().map(|link| link.phid.clone()))
+        .chain(file_edit.map(|edit| edit.phid.clone()))
+        .chain(comment.cloned())
+        .chain(status.cloned())
+        .collect()
+}
+
+/// The revision the edit applies to, new or existing, its facts, and the
+/// old texts of the fields the edit sets.
+async fn load_target(
+    request: &ApiRequest<'_>,
+    wanted: &Wanted,
+    is_new: bool,
+    actor: &str,
+) -> Result<(Revision, Facts, Vec<(TextField, String)>), MethodError> {
+    let (revision, facts) = if is_new {
+        check_new_texts(request, wanted)?;
+        new_revision(request, actor)
+    } else {
+        let revision = load_revision(request).await?;
+        let facts = Facts::load(&request.context.database, &revision).await?;
+        (revision, facts)
+    };
+    check_side_effects(request, &revision, &facts).await?;
+    let mut old_texts = Vec::new();
+    for (field, new) in &wanted.texts {
+        old_texts.push((*field, plan_text(request, &revision, *field, new).await?));
+    }
+    Ok((revision, facts, old_texts))
+}
+
 async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Plan, MethodError> {
-    let wanted = wanted(request)?;
-    let mut revision = load_revision(request).await?;
+    let is_new = is_creation(request)?;
+    let wanted = wanted(request, is_new)?;
     let actor = actor_phid(request)?;
     let database = &request.context.database;
-    let mut facts = Facts::load(database, &revision).await?;
-    check_side_effects(request, &revision, &facts).await?;
-    let old_text = match &wanted.text {
-        Some((field, new)) => Some((*field, plan_text(request, &revision, *field, new).await?)),
-        None => None,
-    };
+    let (mut revision, mut facts, old_texts) =
+        load_target(request, &wanted, is_new, &actor).await?;
     let mut subscription = plan_subscription(
         request,
         &revision,
         &mut facts,
-        (&wanted, old_text.as_ref()),
+        (&wanted, &old_texts),
         &actor,
     )
     .await?;
@@ -2087,7 +2359,7 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         Some(action) => plan_author(request, action, &mut revision, &facts, &actor).await?,
         None => (None, None),
     };
-    let (title, text) = plan_fields(request, &wanted, &mut revision, old_text.as_ref()).await?;
+    let (title, texts) = plan_fields(request, &wanted, &mut revision, &old_texts).await?;
     let (reviewer_edit, subscriber_edit, tag_edit) = plan_lists(
         request,
         &wanted,
@@ -2097,9 +2369,11 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
     )
     .await?;
     let links = plan_links(request, &wanted, &revision).await?;
-    let old = old_text.as_ref().map(|(_, old)| old.as_str());
-    let texts = (&new_texts(&wanted)[..], old);
-    let file_edit = files::plan(request, finder, revision.phid.as_str(), texts).await?;
+    let old = old_texts.first().map(|(_, old)| old.as_str());
+    let new = (&new_texts(&wanted)[..], old);
+    let file_edit = files::plan(request, finder, revision.phid.as_str(), new).await?;
+    // The update's internal effects come after every check of the edit.
+    let update = plan_update(request, &wanted, &mut revision, &facts, &actor).await?;
     let comment = wanted.comment.map(|text| {
         (
             text,
@@ -2108,40 +2382,35 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         )
     });
     let status = plan_status(request, &mut revision);
-    // The subscription first (array_unshift()), the actions, the comment
-    // (sortTransactions()), then the status (applyFinalEffects()).
-    // A subscription of mentions alone comes before the comment instead.
-    let (first, late) = match &subscription {
-        Some(subscription) if subscription.first => (Some(subscription.phid.clone()), None),
-        Some(subscription) => (None, Some(subscription.phid.clone())),
-        None => (None, None),
-    };
     let actions = Actions {
         order: wanted.order,
         review,
         author_action,
         void,
         title,
-        text,
+        texts,
+        update,
         reviewer_edit,
         subscriber_edit,
         tag_edit,
     };
-    let applied_phids: Vec<String> = first
-        .into_iter()
-        .chain(actions.phids())
-        .chain(late)
-        .chain(links.iter().map(|link| link.phid.clone()))
-        .chain(file_edit.iter().map(|edit| edit.phid.clone()))
-        .chain(comment.iter().map(|(_, phid, _)| phid.clone()))
-        .chain(status.iter().map(|(phid, _)| phid.clone()))
-        .collect();
+    // The engine's `core:create` comes first.
+    let create = is_new.then(transaction_phid);
+    let applied_phids = applied_order(
+        (create.as_ref(), subscription.as_ref(), &actions),
+        (&links, file_edit.as_ref()),
+        (
+            comment.as_ref().map(|(_, phid, _)| phid),
+            status.as_ref().map(|(phid, _)| phid),
+        ),
+    );
     let merge_checks = plan_merge_checks(request, &revision, &actions, &links).await?;
-    let input = herald_input(&actor, &actions, subscription.as_ref());
+    let input = herald_input((&actor, is_new), &actions, subscription.as_ref());
     let published = publication(request, &mut revision, &mut facts, &input, &applied_phids).await?;
     let tasks = link_tasks(database, links, &actor, &published.must_encrypt).await?;
     Ok(Plan {
         actor,
+        create,
         group_id: random::random_characters(32),
         subscription,
         actions,
@@ -2207,24 +2476,102 @@ async fn insert_transaction_on(
     Ok(())
 }
 
-/// Writes the planned edit in one transaction.
-async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError> {
+/// The metadata of a transaction of the edit's group: `entries`, then
+/// `core.create` for a new revision (`setIsCreateTransaction()`).
+fn group_metadata(plan: &Plan, entries: Value) -> String {
+    let mut metadata = match entries {
+        Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    };
+    if plan.create.is_some() {
+        metadata.insert("core.create".to_owned(), json!(true));
+    }
+    metadata.insert("core.groupID".to_owned(), json!(plan.group_id));
+    php::json_encode(&Value::Object(metadata))
+}
+
+/// `$object->save()` of a new revision (`initializeNewRevision()` and the
+/// edit's internal effects). Returns its ID.
+async fn insert_revision(
+    request: &ApiRequest<'_>,
+    plan: &Plan,
+    connection: &mut phab_db::sqlx::MySqlConnection,
+) -> Result<i64, MethodError> {
+    let database = &request.context.database;
+    let revision = &plan.revision;
+    let update = plan
+        .actions
+        .update
+        .as_ref()
+        .ok_or_else(|| MethodError::internal("a new revision without a diff"))?;
+    let text = |field| {
+        plan.actions
+            .texts
+            .iter()
+            .find(|(known, ..)| *known == field)
+            .map(|(_, _, _, new)| new.as_str())
+            .unwrap_or_default()
+    };
+    let id = phab_db::sqlx::query(&format!(
+        "INSERT INTO {} (title, phid, status, summary, testPlan, authorPHID, \
+         lastReviewerPHID, lineCount, dateCreated, dateModified, attached, mailKey, branchName, \
+         viewPolicy, editPolicy, repositoryPHID, properties, activeDiffPHID) VALUES (?, ?, ?, \
+         ?, ?, ?, NULL, ?, ?, ?, '[]', ?, NULL, ?, ?, ?, ?, ?)",
+        database.table("differential", "differential_revision")
+    ))
+    .bind(&revision.title)
+    .bind(revision.phid.as_str())
+    .bind(&revision.status)
+    .bind(text(TextField::Summary))
+    .bind(text(TextField::TestPlan))
+    .bind(&plan.actor)
+    .bind(update.diff.line_count)
+    .bind(request.now)
+    .bind(request.now)
+    .bind(random::random_characters(40))
+    .bind(&revision.view_policy)
+    .bind(&revision.edit_policy)
+    .bind(&update.diff.repository_phid)
+    .bind(&update.properties)
+    .bind(&update.diff.phid)
+    .execute(&mut *connection)
+    .await?
+    .last_insert_id();
+    i64::try_from(id).map_err(MethodError::internal)
+}
+
+/// Writes the planned edit in one transaction. A new revision gets its ID.
+async fn write(request: &ApiRequest<'_>, plan: &mut Plan) -> Result<(), MethodError> {
     let database = &request.context.database;
     let now = request.now;
     let mut transaction = database.pool().begin().await?;
     let connection = &mut *transaction;
+    if plan.create.is_some() {
+        let id = insert_revision(request, plan, connection).await?;
+        plan.revision.id = id;
+        set_monogram(&mut plan.worker_data, id);
+    } else {
+        phab_db::sqlx::query(&format!(
+            "UPDATE {} SET status = ?, title = ?, dateModified = ? WHERE id = ?",
+            database.table("differential", "differential_revision")
+        ))
+        .bind(&plan.revision.status)
+        .bind(&plan.revision.title)
+        .bind(now)
+        .bind(plan.revision.id)
+        .execute(&mut *connection)
+        .await?;
+        if let Some(update) = &plan.actions.update {
+            update::write_revision(request, plan, update, connection).await?;
+        }
+    }
+    let plan = &*plan;
     let revision = &plan.revision;
-    phab_db::sqlx::query(&format!(
-        "UPDATE {} SET status = ?, title = ?, dateModified = ? WHERE id = ?",
-        database.table("differential", "differential_revision")
-    ))
-    .bind(&revision.status)
-    .bind(&revision.title)
-    .bind(now)
-    .bind(revision.id)
-    .execute(&mut *connection)
-    .await?;
-    let metadata = php::json_encode(&json!({"core.groupID": plan.group_id}));
+    let metadata = group_metadata(plan, json!({}));
+    if let Some(phid) = &plan.create {
+        let row = (phid.as_str(), "core:create", "null", "null", &*metadata);
+        insert_transaction(request, plan, connection, row).await?;
+    }
     // In the order PHP saves them: an implicit CC first, the actions, then
     // a subscription of mentions alone.
     let subscription = plan.subscription.as_ref();
@@ -2256,6 +2603,9 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
     for (link, _) in &plan.links {
         write_link(request, plan, link, connection).await?;
     }
+    if let Some(update) = &plan.actions.update {
+        update::write_final(request, plan, update, connection).await?;
+    }
     if let Some((phid, old)) = &plan.status {
         // populateTransaction() sets no group.
         let (old, new) = (
@@ -2271,7 +2621,20 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<(), MethodError>
         );
         insert_transaction(request, plan, connection, row).await?;
     }
-    merge_checks::queue(request, connection, &plan.merge_checks).await?;
+    // didCommitTransaction().
+    if let Some(update) = &plan.actions.update {
+        update::write_view_states(request, plan, update, connection).await?;
+    }
+    for check in &plan.merge_checks {
+        match check {
+            MergeCheck::Stack(phid) => {
+                merge_checks::queue(request, connection, std::slice::from_ref(phid)).await?;
+            }
+            MergeCheck::Diff(phid, diff) => {
+                merge_checks::queue_diff(request, connection, phid, diff).await?;
+            }
+        }
+    }
     let transcript_id = write_herald(request, plan, connection).await?;
     herald_actions::write(request, plan, transcript_id, connection).await?;
     queue_publishing(request, plan, connection).await?;
@@ -2338,6 +2701,11 @@ async fn write_action(
     let revision = &plan.revision;
     let actions = &plan.actions;
     match action {
+        Action::Update => {
+            if let Some(update) = &actions.update {
+                update::write_transaction(request, plan, update, metadata, connection).await?;
+            }
+        }
         Action::Review => {
             if let Some((review, phid, updates)) = &actions.review {
                 let row = (
@@ -2379,8 +2747,8 @@ async fn write_action(
                 insert_transaction(request, plan, connection, row).await?;
             }
         }
-        Action::Text => {
-            if let Some(text) = &actions.text {
+        Action::Text(field) => {
+            for text in actions.texts.iter().filter(|(known, ..)| *known == field) {
                 write_text(request, plan, text, metadata, connection).await?;
             }
         }
@@ -2423,7 +2791,7 @@ async fn write_action(
 
 /// The metadata of an edge transaction of the edit's group.
 fn edge_metadata(plan: &Plan, edge_type: i64) -> String {
-    php::json_encode(&json!({"edge:type": edge_type, "core.groupID": plan.group_id}))
+    group_metadata(plan, json!({"edge:type": edge_type}))
 }
 
 /// The transaction of a link's edge, in the slim format of edges: the
@@ -2462,7 +2830,11 @@ async fn write_link(
         insert_edge(database, connection, edge, seq, request.now).await?;
     }
     let source = php::json_encode(&json!([revision]));
-    let inverse = edge_metadata(plan, inverse_edge_type(link.edge_type)?);
+    // The sub-editors' transactions edit existing objects.
+    let inverse = php::json_encode(&json!({
+        "edge:type": inverse_edge_type(link.edge_type)?,
+        "core.groupID": plan.group_id,
+    }));
     for target in &link.targets {
         let phid = target.phid();
         let (old, new) = if target.added {
@@ -2568,10 +2940,7 @@ async fn write_void(
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
     let database = &request.context.database;
-    let metadata = php::json_encode(&json!({
-        "void.force": force,
-        "core.groupID": plan.group_id,
-    }));
+    let metadata = group_metadata(plan, json!({"void.force": force}));
     // mpull() keeps the rows' IDs as keys.
     let new = php::json_encode(&Value::Object(
         reviewers
@@ -2617,13 +2986,8 @@ async fn queue_publishing(
         object_phid: Some(object_phid),
     };
     let revision = plan.revision.phid.as_str();
-    worker::schedule_task(
-        connection,
-        database,
-        publish(&plan.worker_data, revision),
-        request.now,
-    )
-    .await?;
+    let data = php::json_encode(&plan.worker_data);
+    worker::schedule_task(connection, database, publish(&data, revision), request.now).await?;
     for (link, data) in &plan.links {
         for (target, data) in link.targets.iter().zip(data) {
             let target = target.phid();
@@ -2894,8 +3258,8 @@ impl Method for RevisionEdit {
 
     fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
         Box::pin(async move {
-            let plan = plan(request, self.files).await?;
-            write(request, &plan).await?;
+            let mut plan = plan(request, self.files).await?;
+            write(request, &mut plan).await?;
             Ok(json!({
                 "object": {"id": plan.revision.id, "phid": plan.revision.phid.as_str()},
                 "transactions": plan

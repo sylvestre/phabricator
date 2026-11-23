@@ -80,6 +80,55 @@ async fn descendants(
     Ok(found)
 }
 
+/// `RevisionMergeConflictWorker::queueCheck()`: a check of `diff`.
+async fn queue_check(
+    request: &ApiRequest<'_>,
+    connection: &mut MySqlConnection,
+    revision: &str,
+    diff: &str,
+) -> Result<(), MethodError> {
+    let database = &request.context.database;
+    let data = php::json_encode(&json!({"revisionPHID": revision, "diffPHID": diff}));
+    let task = worker::Task {
+        class: "RevisionMergeConflictWorker",
+        data: &data,
+        priority: PRIORITY_BULK,
+        object_phid: Some(revision),
+    };
+    worker::schedule_task(connection, database, task, request.now).await?;
+    Ok(())
+}
+
+/// `queueChecksForPHIDs()`: a check of each open revision with an active
+/// diff among `phids`, in the order of `DifferentialRevisionQuery`.
+async fn queue_open(
+    request: &ApiRequest<'_>,
+    connection: &mut MySqlConnection,
+    phids: &[String],
+) -> Result<(), MethodError> {
+    if phids.is_empty() {
+        return Ok(());
+    }
+    let database = &request.context.database;
+    let sql = format!(
+        "SELECT phid, activeDiffPHID FROM {} WHERE phid IN ({}) AND status NOT IN \
+         ('published', 'abandoned') ORDER BY dateModified DESC, id DESC",
+        database.table("differential", "differential_revision"),
+        phab_db::placeholders(phids.len())
+    );
+    let found = phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(String::as_str))
+        .fetch_all(&mut *connection)
+        .await?;
+    for row in &found {
+        let Some(diff) = rows::opt_text(row, "activeDiffPHID")? else {
+            continue;
+        };
+        let phid = rows::text(row, "phid")?;
+        queue_check(request, connection, &phid, &diff).await?;
+    }
+    Ok(())
+}
+
 /// `RevisionMergeConflictWorker::queueChecks()` for each of `revisions`:
 /// a check of each open revision with an active diff among them and
 /// those stacked above, in the order of `DifferentialRevisionQuery`.
@@ -88,35 +137,25 @@ pub(super) async fn queue(
     connection: &mut MySqlConnection,
     revisions: &[String],
 ) -> Result<(), MethodError> {
-    let database = &request.context.database;
     for revision in revisions {
         let mut phids = vec![revision.clone()];
         phids.extend(descendants(request, connection, std::slice::from_ref(revision)).await?);
-        let sql = format!(
-            "SELECT phid, activeDiffPHID FROM {} WHERE phid IN ({}) AND status NOT IN \
-             ('published', 'abandoned') ORDER BY dateModified DESC, id DESC",
-            database.table("differential", "differential_revision"),
-            phab_db::placeholders(phids.len())
-        );
-        let found = phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(String::as_str))
-            .fetch_all(&mut *connection)
-            .await?;
-        for row in &found {
-            let Some(diff) = rows::opt_text(row, "activeDiffPHID")? else {
-                continue;
-            };
-            let phid = rows::text(row, "phid")?;
-            let data = php::json_encode(&json!({"revisionPHID": phid, "diffPHID": diff}));
-            let task = worker::Task {
-                class: "RevisionMergeConflictWorker",
-                data: &data,
-                priority: PRIORITY_BULK,
-                object_phid: Some(&phid),
-            };
-            worker::schedule_task(connection, database, task, request.now).await?;
-        }
+        queue_open(request, connection, &phids).await?;
     }
     Ok(())
+}
+
+/// A new diff of `revision`: `queueCheck()` of the diff, then
+/// `queueDescendantChecks()` of the revisions stacked above it.
+pub(super) async fn queue_diff(
+    request: &ApiRequest<'_>,
+    connection: &mut MySqlConnection,
+    revision: &str,
+    diff: &str,
+) -> Result<(), MethodError> {
+    queue_check(request, connection, revision, diff).await?;
+    let above = descendants(request, connection, &[revision.to_owned()]).await?;
+    queue_open(request, connection, &above).await
 }
 
 /// Whether an edge type re-wires a stack.

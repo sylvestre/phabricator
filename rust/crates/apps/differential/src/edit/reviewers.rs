@@ -169,16 +169,7 @@ pub(super) async fn plan(
     if !has_effect(&old, &new) {
         return Err(MethodError::Unsupported("edits without effect"));
     }
-    let context = request.context;
-    let can_edit = crate::storage::can_edit(
-        &context.database,
-        &context.config,
-        &request.viewer,
-        revision,
-        request.now,
-    )
-    .await
-    .map_err(MethodError::internal)?;
+    let can_edit = super::can_edit(request, revision).await?;
     if !can_edit {
         return Err(MethodError::Unsupported("edits the actor may not make"));
     }

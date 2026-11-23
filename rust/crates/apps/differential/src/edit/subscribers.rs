@@ -43,16 +43,7 @@ pub(super) async fn plan(
         return Err(MethodError::Unsupported("subscribers PHP doesn't know"));
     }
     if added.iter().chain(&removed).any(|phid| phid != actor) {
-        let context = request.context;
-        let can_edit = crate::storage::can_edit(
-            &context.database,
-            &context.config,
-            &request.viewer,
-            revision,
-            request.now,
-        )
-        .await
-        .map_err(MethodError::internal)?;
+        let can_edit = super::can_edit(request, revision).await?;
         if !can_edit {
             return Err(MethodError::Unsupported("subscriptions PHP refuses"));
         }

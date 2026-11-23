@@ -368,6 +368,9 @@ pub struct Evaluation {
     /// The IDs of the `change` rules which matched again, whose effects
     /// were skipped: they stay marked as applied.
     pub skipped: Vec<String>,
+    /// The apply transcripts of the forbidden actions, which come before
+    /// those of the effects.
+    forbidden_transcripts: Vec<Php>,
     object_transcript: Php,
     rule_transcripts: Php,
     condition_transcripts: Php,
@@ -385,9 +388,46 @@ struct Engine<'a> {
     transcripts: Transcripts,
     unsupported: Option<&'static str>,
     skipped: Vec<String>,
+    /// The actions the adapter forbids, with the reason.
+    forbidden: &'a [(&'a str, &'a str)],
+    forbidden_transcripts: Vec<Php>,
 }
 
 impl<'a> Engine<'a> {
+    /// `isForbidden()`: whether the rule has actions the adapter forbids,
+    /// each of which gets an apply transcript saying why. No field the
+    /// ported adapters provide needs a state.
+    fn is_forbidden(&mut self, rule: &Rule) -> bool {
+        let private = |name| phpser::private("HeraldApplyTranscript", name);
+        let mut is_forbidden = false;
+        for action in &rule.actions {
+            let Some((_, reason)) = self
+                .forbidden
+                .iter()
+                .find(|(forbidden, _)| *forbidden == action.action)
+            else {
+                continue;
+            };
+            let reasons = Php::list([Php::Array(vec![
+                (Key::from("type"), Php::str("do.standard.forbidden")),
+                (Key::from("data"), Php::str(reason)),
+            ])]);
+            self.forbidden_transcripts.push(Php::Object {
+                class: "HeraldApplyTranscript".to_owned(),
+                properties: vec![
+                    (private("action"), Php::str(&action.action)),
+                    (private("target"), action.target.clone()),
+                    (private("ruleID"), Php::str(&rule.id)),
+                    (private("reason"), Php::Null),
+                    (private("applied"), Php::Bool(false)),
+                    (private("appliedReason"), reasons),
+                ],
+            });
+            is_forbidden = true;
+        }
+        is_forbidden
+    }
+
     fn rule(&self, phid: &str) -> Option<&'a Rule> {
         self.rules.iter().copied().find(|rule| rule.phid == phid)
     }
@@ -872,6 +912,19 @@ pub fn fields_used(rules: &[Rule]) -> Vec<String> {
 /// `HeraldEngine::applyRules()`: evaluates `rules` against the field
 /// `values` the adapter computed, and collects the effects.
 pub fn evaluate(rules: &[Rule], subject: &Subject, values: &[(String, Php)]) -> Evaluation {
+    evaluate_forbidding(rules, subject, values, &[])
+}
+
+/// [`evaluate()`] with the actions the adapter forbids
+/// (`setForbiddenAction()`), and why: the rules with such actions don't
+/// match (`object-state`). A forbidden rule another rule's condition
+/// evaluated first keeps that result in PHP, which is left to it.
+pub fn evaluate_forbidding(
+    rules: &[Rule],
+    subject: &Subject,
+    values: &[(String, Php)],
+    forbidden: &[(&str, &str)],
+) -> Evaluation {
     let started = Instant::now();
     let mut ordered: Vec<&Rule> = rules.iter().collect();
     ordered.sort_by_key(|rule| rule.sort_key());
@@ -885,6 +938,8 @@ pub fn evaluate(rules: &[Rule], subject: &Subject, values: &[(String, Php)]) -> 
         transcripts: Transcripts::default(),
         unsupported: None,
         skipped: Vec::new(),
+        forbidden,
+        forbidden_transcripts: Vec::new(),
     };
     let mut effects = Vec::new();
     for rule in ordered {
@@ -892,6 +947,11 @@ pub fn evaluate(rules: &[Rule], subject: &Subject, values: &[(String, Php)]) -> 
         // A rule repeating only the first time which applied before.
         let result = if rule.repetition_policy == "first" && rule.applied_before {
             Ok(ResultMap::new("already-applied"))
+        } else if engine.is_forbidden(rule) {
+            if engine.results.contains_key(&rule.phid) {
+                engine.unsupported = Some("forbidden Herald rules other rules read");
+            }
+            Ok(ResultMap::new("object-state"))
         } else {
             engine.rule_match(rule)
         };
@@ -935,6 +995,7 @@ pub fn evaluate(rules: &[Rule], subject: &Subject, values: &[(String, Php)]) -> 
         effects,
         unsupported: engine.unsupported,
         skipped: engine.skipped,
+        forbidden_transcripts: engine.forbidden_transcripts,
         object_transcript,
         rule_transcripts: keyed(engine.transcripts.rules),
         condition_transcripts: keyed(conditions),
@@ -1103,7 +1164,12 @@ impl Evaluation {
             object_transcript: phpser::serialize(&self.object_transcript),
             rule_transcripts: phpser::serialize(&self.rule_transcripts),
             condition_transcripts: phpser::serialize(&self.condition_transcripts),
-            apply_transcripts: phpser::serialize(&Php::list(applied.iter().map(Applied::to_php))),
+            apply_transcripts: phpser::serialize(&Php::list(
+                self.forbidden_transcripts
+                    .iter()
+                    .cloned()
+                    .chain(applied.iter().map(Applied::to_php)),
+            )),
         }
     }
 }
@@ -1258,6 +1324,52 @@ mod tests {
                 ("projects".to_owned(), 1),
             ]
         );
+    }
+
+    /// A draft forbids mail: the rule mailing doesn't match, and its apply
+    /// transcript says why.
+    #[test]
+    fn forbids_actions_like_php() {
+        let mail = ActionRecord {
+            action: "email.other".to_owned(),
+            target: Php::list([Php::str("PHID-USER-dave")]),
+        };
+        let always = || vec![condition("1", "always", "unconditionally", Php::Null)];
+        let rules = vec![
+            rule("1", true, always(), vec![mail]),
+            rule("2", true, always(), Vec::new()),
+        ];
+        let subject = Subject {
+            phid: "PHID-DREV-1".to_owned(),
+            content_type: "differential".to_owned(),
+            name: "Title".to_owned(),
+            applied_transaction_phids: None,
+        };
+        let values = vec![("always".to_owned(), Php::Bool(true))];
+        let forbidden = [("email.other", "differential.draft")];
+        let evaluation = evaluate_forbidding(&rules, &subject, &values, &forbidden);
+        assert_eq!(evaluation.effects, Vec::<Effect>::new());
+        let rules = String::from_utf8(phpser::serialize(&evaluation.rule_transcripts)).unwrap();
+        assert!(
+            rules.contains("s:4:\"code\";s:12:\"object-state\""),
+            "{rules}"
+        );
+        let row = evaluation.transcript(&subject, &[]);
+        let applied = String::from_utf8(row.apply_transcripts).unwrap();
+        assert!(
+            applied.contains(
+                "s:21:\"do.standard.forbidden\";s:4:\"data\";s:18:\"differential.draft\""
+            ),
+            "{applied}"
+        );
+        assert!(
+            applied.contains("\0HeraldApplyTranscript\0reason\";N;"),
+            "{applied}"
+        );
+        // No condition of the forbidden rule is evaluated.
+        let conditions =
+            String::from_utf8(phpser::serialize(&evaluation.condition_transcripts)).unwrap();
+        assert!(!conditions.contains("PHID-HRUL-1"), "{conditions}");
     }
 
     #[test]

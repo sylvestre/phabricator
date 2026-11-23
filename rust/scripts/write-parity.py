@@ -65,6 +65,8 @@ GROUP_ID = re.compile(r'(core\.groupID\\?":\\?")[a-z0-9]{32}')
 AVAILABILITY = re.compile(r"'\{\\\"until\\\":[^']*\}',(?:\d+|NULL)")
 # A new project's random mail key.
 MAIL_KEY = re.compile(r"'[a-z0-9]{20}'")
+# A new revision's random mail key (`Filesystem::readRandomCharacters(40)`).
+REVISION_MAIL_KEY = re.compile(r"(?:_binary )?'[a-z2-7]{40}'")
 # A new file's random secret and mail keys, the handles of chunked data,
 # and the content hash of a chunked file allocated without a hash.
 FILE_KEY = re.compile(r"'[a-z2-7]{20}'")
@@ -202,6 +204,8 @@ def normalize(changes, known, started, finished):
                 key = digest_for_index(value)[:4]
                 values = values.replace(f"'{key}'", "'<path key>'")
             values = MAIL_KEY.sub("'<mail key>'", values)
+        if table == "phabricator_differential.differential_revision":
+            values = REVISION_MAIL_KEY.sub("'<mail key>'", values)
         if table == "phabricator_file.file":
             values = FILE_KEY.sub("'<key>'", values)
             values = CHUNK_HASH.sub("_binary '<chunk hash>'", values)

@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 base64.workspace = true
+md-5.workspace = true
 phab-app-herald.workspace = true
 phab-auth.workspace = true
 phab-app-project.workspace = true

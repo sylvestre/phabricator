@@ -42,8 +42,10 @@ const PROJECT_MATERIALIZED_MEMBER: i64 = 60;
 /// What the fields read beyond the revision and its facts.
 pub(super) struct Input<'a> {
     pub(super) actor: &'a str,
-    /// The summary or test plan the edit sets.
-    pub(super) text: Option<(TextField, &'a str)>,
+    /// Whether the edit creates the revision.
+    pub(super) is_new: bool,
+    /// The summary and test plan the edit sets.
+    pub(super) texts: Vec<(TextField, &'a str)>,
     /// Whether the edit unsubscribes anyone.
     pub(super) removes_subscribers: bool,
     /// Who the edit subscribes, in the order of their edges.
@@ -80,7 +82,7 @@ pub(super) async fn values(
             continue;
         }
         let value = match field.as_str() {
-            "new-object" => Php::Bool(false),
+            "new-object" => Php::Bool(input.is_new),
             "rule" => Php::Null,
             "always" => Php::Bool(true),
             "contentsource" => Php::str("conduit"),
@@ -185,17 +187,19 @@ fn diff_value(changesets: &[(String, Changeset)], field: DiffField) -> Php {
     )
 }
 
-/// The summary or test plan after the edit.
+/// The summary or test plan after the edit: empty for a new revision
+/// which doesn't set it.
 async fn text(
     database: &Database,
     revision: &Revision,
     input: &Input<'_>,
     field: TextField,
 ) -> Result<String, phab_db::DbError> {
-    if let Some((edited, text)) = input.text
-        && edited == field
-    {
-        return Ok(text.to_owned());
+    if let Some((_, text)) = input.texts.iter().find(|(edited, _)| *edited == field) {
+        return Ok((*text).to_owned());
+    }
+    if input.is_new {
+        return Ok(String::new());
     }
     let sql = format!(
         "SELECT {} AS text FROM {} WHERE id = ?",
