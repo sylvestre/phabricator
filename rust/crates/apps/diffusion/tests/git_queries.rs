@@ -640,9 +640,17 @@ async fn filters_ancestors(context: &Context) {
     );
     // Abbreviated hashes are not in the graph.
     assert_eq!(ancestors("master", json!([&C2[..12]])).await, json!([]));
-    // A ref Git doesn't know fails the log, which is caught.
-    assert_eq!(ancestors("nope", json!([C1])).await, json!([]));
     assert_eq!(ancestors("master", json!([])).await, json!([]));
+    // A ref Git doesn't know fails the stream before the try, and PHP's
+    // answer quotes its command line.
+    assert!(
+        is_fallback(
+            context,
+            "diffusion.internal.ancestors",
+            json!({"repository": "GIT", "ref": "nope", "commits": [C1]}),
+        )
+        .await
+    );
     assert_eq!(
         error(
             context,

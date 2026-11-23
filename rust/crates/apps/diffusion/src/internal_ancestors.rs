@@ -50,7 +50,22 @@ impl QueryMethod for InternalAncestors {
             let commits = commits(request.value("commits"))?;
             let reference = php::string(request.value("ref"))?;
             // The constructor's gitsprintf() throws, outside the try block.
-            git::ref_selector(&reference)?;
+            let selector = git::ref_selector(&reference)?;
+            // PHP's stream fails on a ref Git can't read before the loop's
+            // try, quoting its command line: leave that answer to PHP.
+            drequest
+                .copy
+                .execx(
+                    vec![
+                        "log".to_owned(),
+                        "-n1".to_owned(),
+                        "--format=%H".to_owned(),
+                        selector,
+                        "--".to_owned(),
+                    ],
+                    None,
+                )
+                .await?;
             let mut graph =
                 GitGraphStream::new(&drequest.copy, Some(&reference)).map_err(method_error)?;
             let mut keep = Vec::new();
