@@ -206,7 +206,13 @@ def normalize(changes, known, started, finished):
 
     def now(match):
         value = int(match.group(0))
-        return "<now>" if started - 5 <= value <= finished + 5 else match.group(0)
+        if started - 5 <= value <= finished + 5:
+            return "<now>"
+        # Temporary files expire a day or two after they're made.
+        for days in (1, 2):
+            if started - 5 <= value - days * 86400 <= finished + 5:
+                return f"<now+{days}d>"
+        return match.group(0)
 
     # Name the PHIDs of new rows first, by table and row ID, so a row's name
     # doesn't depend on how its random PHID sorts among the rows that point
