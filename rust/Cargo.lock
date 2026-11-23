@@ -2176,9 +2176,11 @@ version = "0.1.0"
 dependencies = [
  "askama",
  "axum",
+ "base64 0.22.1",
  "flate2",
  "form_urlencoded",
  "hex",
+ "md-5",
  "phab-app-config",
  "phab-app-dashboard",
  "phab-app-differential",

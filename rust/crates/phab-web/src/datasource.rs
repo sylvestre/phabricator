@@ -638,7 +638,7 @@ pub(crate) async fn class<S: WebState>(
 }
 
 /// An `AphrontAjaxResponse`.
-fn ajax_response<S: WebState>(state: &S, request: &HeaderMap, body: String) -> Response {
+pub(crate) fn ajax_response<S: WebState>(state: &S, request: &HeaderMap, body: String) -> Response {
     let mut response = Response::new(Body::empty());
     let headers = response.headers_mut();
     php_headers::base_headers(headers, state.config(), request);

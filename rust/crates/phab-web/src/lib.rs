@@ -9,9 +9,12 @@
 
 mod actions;
 pub mod assets;
+mod changeset_ajax;
+mod changeset_view;
 mod dashboards;
 mod datasource;
 mod diff_html;
+mod diff_page;
 mod diffusion;
 mod error;
 mod favorites;
@@ -32,6 +35,7 @@ mod preview;
 mod project_edit;
 mod projects;
 mod queue;
+mod raw_diff;
 pub mod remarkup;
 mod response;
 mod revision;

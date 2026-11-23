@@ -339,6 +339,78 @@ pub(crate) async fn execute_one(
     Ok(None)
 }
 
+/// A diff the viewer may see, as the web pages show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VisibleDiff {
+    /// The row ID.
+    pub id: i64,
+    /// The diff PHID.
+    pub phid: Phid,
+    /// The revision it belongs to, if any.
+    pub revision_id: Option<i64>,
+    /// Who created it.
+    pub author_phid: Option<String>,
+    /// The repository, if known.
+    pub repository_phid: Option<String>,
+    /// `dateCreated`.
+    pub date_created: i64,
+}
+
+impl From<DiffRow> for VisibleDiff {
+    fn from(row: DiffRow) -> Self {
+        Self {
+            id: row.id,
+            phid: row.phid,
+            revision_id: row.revision_id,
+            author_phid: row.author_phid,
+            repository_phid: row.repository_phid,
+            date_created: row.date_created,
+        }
+    }
+}
+
+/// What `DifferentialDiffQuery::withIDs(array($id))->executeOne()` finds
+/// for a page's viewer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiffLookup {
+    /// The viewer sees the diff.
+    Visible(VisibleDiff),
+    /// No such diff, or its revision is hidden (`willFilterPage()` drops
+    /// it): a 404.
+    NotFound,
+    /// A diff without a revision the viewer may not see: the query raises
+    /// a policy exception.
+    Denied,
+}
+
+/// [`execute_one()`] for the web pages, which answer a hidden diff
+/// without a revision with PHP's policy exception page.
+pub async fn lookup(request: &ApiRequest<'_>, id: i64) -> Result<DiffLookup, MethodError> {
+    match execute_one(request, id).await {
+        Ok(Some(diff)) => Ok(DiffLookup::Visible(diff.into())),
+        Ok(None) => Ok(DiffLookup::NotFound),
+        Err(MethodError::Unsupported(_)) => Ok(DiffLookup::Denied),
+        Err(error) => Err(error),
+    }
+}
+
+/// The diffs of a revision the viewer may see, oldest first
+/// (`DifferentialDiffQuery::withRevisionIDs()`, reversed).
+pub async fn revision_diffs(
+    request: &ApiRequest<'_>,
+    revision_id: i64,
+) -> Result<Vec<VisibleDiff>, MethodError> {
+    let rows = query_diffs(
+        request,
+        None,
+        Some(vec![revision_id]),
+        IdOrder::Oldest,
+        Direction::Forward,
+    )
+    .await?;
+    Ok(rows.into_iter().map(VisibleDiff::from).collect())
+}
+
 /// The `arc:onto` and `local:commits` properties of diffs, by diff ID.
 async fn load_properties(
     database: &Database,

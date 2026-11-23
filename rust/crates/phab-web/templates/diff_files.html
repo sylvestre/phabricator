@@ -1,0 +1,15 @@
+<section>
+  <h2>Files</h2>
+  {%- if files.is_empty() %}
+  <p class="muted">No changesets found.</p>
+  {%- else %}
+  <table class="hm-table">
+    <thead><tr><th>Change</th><th>Path</th><th>Lines</th></tr></thead>
+    <tbody>
+      {%- for file in files %}
+      <tr><td>{{ file.change }}</td><td class="hm-pri"><a href="/differential/changeset/?ref={{ file.id }}">{{ file.path }}</a></td><td>{% if file.added > 0 %}+{{ file.added }}{% endif %}{% if file.removed > 0 %} -{{ file.removed }}{% endif %}</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+</section>

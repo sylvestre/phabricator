@@ -13,6 +13,7 @@ axum.workspace = true
 flate2.workspace = true
 form_urlencoded.workspace = true
 hex.workspace = true
+md-5.workspace = true
 phab-app-config.workspace = true
 phab-app-differential.workspace = true
 phab-app-diffusion.workspace = true
@@ -43,6 +44,7 @@ tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 flate2.workspace = true
 form_urlencoded.workspace = true
 serde_json.workspace = true

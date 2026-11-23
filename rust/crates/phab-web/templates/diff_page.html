@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="revision-header">
+  <h1>Diff {{ id }}</h1>
+</header>
+<section>
+  <form class="settings-form" method="post" action="/differential/diff/{{ id }}/">
+    {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+    <input type="hidden" name="__form__" value="1">
+    <p>Review the diff for correctness. When you are satisfied, either <strong>create a new revision</strong> or <strong>update an existing revision</strong>.</p>
+    <label>Attach To
+      <select name="revisionID">
+        <optgroup label="Create New Revision">
+          <option value="">Create a new Revision...</option>
+        </optgroup>
+        {%- if !revisions.is_empty() %}
+        <optgroup label="Update Existing Revision">
+          {%- for revision in revisions %}
+          <option value="{{ revision.id }}"{% if revision.selected %} selected{% endif %}>{{ revision.label }}</option>
+          {%- endfor %}
+        </optgroup>
+        {%- endif %}
+      </select>
+    </label>
+    <button type="submit">Continue</button>
+  </form>
+</section>
+{% include "diff_files.html" %}
+<section class="diff-section">
+  <h2>Diff {{ id }}</h2>
+  {%- for changeset in changesets %}
+  {{ changeset|safe }}
+  {%- endfor %}
+</section>
+{% endblock %}

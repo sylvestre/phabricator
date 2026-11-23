@@ -1,5 +1,8 @@
-//! `/D<id>`: a revision, read-only (`DifferentialRevisionViewController`,
-//! W4). The timeline, inline comments and diff history come next.
+//! `/D<id>`: a revision (`DifferentialRevisionViewController`, W4), with
+//! one of its diffs (`?id=`, the newest by default) or its raw diff
+//! (`?download`, [`crate::raw_diff`]), and `/D<id>/new/`, the changes since
+//! the viewer's last action. Comparisons between two diffs (`?vs=`) are
+//! left to PHP.
 
 use std::sync::Arc;
 
@@ -7,6 +10,7 @@ use askama::Template;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, Uri};
 use axum::response::{IntoResponse, Response};
+use phab_app_differential::diff_search::{self, VisibleDiff};
 use phab_app_differential::repository::{self, Repository};
 use phab_app_differential::storage::{self, Revision};
 use phab_app_differential::{details, merge_conflict};
@@ -422,7 +426,7 @@ pub(crate) fn diff_command() -> phab_diff::realign::DiffCommand {
 
 /// The inline comments on these changesets the viewer may see, ready to
 /// show, by changeset.
-async fn inlines<S: WebState>(
+pub(crate) async fn inlines<S: WebState>(
     state: &S,
     viewer: &Viewer,
     changesets: &[i64],
@@ -501,8 +505,8 @@ async fn repository<S: WebState>(
     Ok(visible.pop())
 }
 
-/// The changesets of the active diff, rendered with their inline comments.
-async fn changesets<S: WebState>(
+/// The changesets of a diff, rendered with their inline comments.
+pub(crate) async fn changesets<S: WebState>(
     state: &S,
     viewer: &Viewer,
     diff_phid: &Phid,
@@ -711,18 +715,132 @@ pub(crate) async fn by_monogram<S: WebState>(
             .await?
             .into_response());
     }
-    Ok(show(State(state), viewer, Path(monogram), uri)
-        .await?
-        .into_response())
+    show(
+        state,
+        viewer,
+        (monogram, false),
+        uri,
+        &headers,
+        query.0.as_deref(),
+    )
+    .await
 }
 
-/// `GET /D{id}`.
+/// The parameters of the revision page (`getInt('id')`, `getInt('vs')`,
+/// `getExists('download')`).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct ViewParams {
+    /// The diff to show.
+    id: Option<i64>,
+    /// The diff to compare it with.
+    vs: Option<i64>,
+    /// "Download Raw Diff".
+    download: bool,
+}
+
+/// `getInt()` of a parameter: `(int)` of plain integers; other values PHP
+/// would cast in ways not worth reproducing are left to it.
+fn int_param(value: &str) -> Result<i64, PageError> {
+    if value.is_empty() {
+        return Ok(0);
+    }
+    let digits = value.strip_prefix('-').unwrap_or(value);
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(PageError::Fallback("unusual diff IDs"));
+    }
+    value
+        .parse()
+        .map_err(|_| PageError::Fallback("unusual diff IDs"))
+}
+
+impl ViewParams {
+    /// The parameters of a query string; others are ignored, as PHP does.
+    pub(crate) fn parse(query: Option<&str>) -> Result<Self, PageError> {
+        let mut params = Self::default();
+        for (key, value) in form_urlencoded::parse(query.unwrap_or("").as_bytes()) {
+            match key.as_ref() {
+                "id" => params.id = Some(int_param(&value)?),
+                "vs" => params.vs = Some(int_param(&value)?),
+                "download" => params.download = true,
+                // `id[]=` and the like are arrays to PHP.
+                key if key.starts_with("id[") || key.starts_with("vs[") => {
+                    return Err(PageError::Fallback("unusual diff IDs"));
+                }
+                _ => {}
+            }
+        }
+        Ok(params)
+    }
+}
+
+/// The notices of `/D<id>/new/` (`PHUIInfoView`).
+const NO_ACTIONS: (&str, &str) = (
+    "No Actions",
+    "Showing all changes because you have never taken an action on this revision.",
+);
+const NO_RECENT_UPDATES: (&str, &str) = (
+    "No Recent Updates",
+    "Showing all changes because the diff for this revision has not been updated since your \
+     last action.",
+);
+
+/// `DifferentialRevisionUpdateTransaction::TRANSACTIONTYPE`.
+const UPDATE_TRANSACTION: &str = "differential:update";
+
+/// `getOldDiffID()` of `/D<id>/new/`: the diff that was active when the
+/// viewer last took an action, or the notice saying why all changes are
+/// shown.
+async fn since_last_action<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    revision: &Revision,
+    diffs: &[VisibleDiff],
+) -> Result<(Option<i64>, Option<(&'static str, &'static str)>), PageError> {
+    let transactions = storage::load_object_transactions(state.database(), &revision.phid).await?;
+    // The viewer's newest transaction, which they can always see.
+    let Some(last_action) = transactions
+        .iter()
+        .rev()
+        .find(|(transaction, _)| transaction.author_phid == viewer.user.phid)
+        .map(|(_, date)| *date)
+    else {
+        return Ok((None, Some(NO_ACTIONS)));
+    };
+    let mut older = std::collections::HashSet::new();
+    let mut has_newer = false;
+    for (transaction, date) in &transactions {
+        if transaction.transaction_type != UPDATE_TRANSACTION {
+            continue;
+        }
+        if *date <= last_action {
+            older.insert(phab_core::php::string_cast(&transaction.new_value).into_owned());
+        } else {
+            has_newer = true;
+        }
+    }
+    if !has_newer {
+        return Ok((None, Some(NO_RECENT_UPDATES)));
+    }
+    // The most recent diff from before the last action.
+    let old = diffs
+        .iter()
+        .take_while(|diff| older.contains(diff.phid.as_str()))
+        .last();
+    Ok((old.map(|diff| diff.id), None))
+}
+
+/// `GET /D{id}` and `GET /D{id}/new/` (`filter_new`): the revision, one of
+/// its diffs (`?id=`) or its raw diff (`?download`). Comparisons between
+/// diffs (`?vs=`, and what `/new/` shows when the diff changed since the
+/// viewer's last action) are left to PHP.
 pub(crate) async fn show<S: WebState>(
-    State(state): State<Arc<S>>,
+    state: Arc<S>,
     viewer: WebUser,
-    Path(monogram): Path<String>,
+    (monogram, filter_new): (String, bool),
     uri: Uri,
-) -> Result<Page<RevisionPage>, PageError> {
+    headers: &HeaderMap,
+    query: Option<&str>,
+) -> Result<Response, PageError> {
     viewer
         .require_application(&*state, application::DIFFERENTIAL)
         .await?;
@@ -745,6 +863,95 @@ pub(crate) async fn show<S: WebState>(
     .pop()
     .ok_or(PageError::PolicyDenied)?;
 
+    let params = ViewParams::parse(query)?;
+    let scope = crate::harbormaster::Scope::new(state.as_ref(), &viewer);
+    let diffs = diff_search::revision_diffs(&scope.request(), revision.id)
+        .await
+        .map_err(crate::harbormaster::method_error)?;
+    // PHP throws ("This revision has no diffs."); the page shows the
+    // revision without changesets.
+    let last = diffs.last();
+    let has_diff = |id: i64| diffs.iter().any(|diff| diff.id == id);
+    let is_set = |value: Option<i64>| value.is_some_and(|value| value != 0);
+    // `getOldDiffID()`, then `getNewDiffID()`.
+    let mut notice = None;
+    let old_id = if filter_new {
+        if is_set(params.vs) {
+            return Err(PageError::NotFound);
+        }
+        let (old_id, new_notice) =
+            since_last_action(state.as_ref(), &viewer, &revision, &diffs).await?;
+        notice = new_notice;
+        old_id
+    } else {
+        params.vs
+    };
+    if filter_new && is_set(params.id) {
+        return Err(PageError::NotFound);
+    }
+    let target = params
+        .id
+        .filter(|id| *id != 0 && has_diff(*id))
+        .and_then(|id| diffs.iter().find(|diff| diff.id == id))
+        .or(last);
+    if old_id.is_some_and(|id| id != 0 && has_diff(id)) {
+        return Err(PageError::Fallback("comparisons between diffs"));
+    }
+    if params.download {
+        let target = target.ok_or(PageError::Fallback("revisions without diffs"))?;
+        return crate::raw_diff::download(
+            state.as_ref(),
+            &viewer,
+            (&revision, target),
+            uri.path(),
+            headers,
+        )
+        .await;
+    }
+    let diff_phid = target.map(|diff| &diff.phid);
+    let mut page = page(state.as_ref(), &viewer, revision, diff_phid, &uri).await?;
+    if let Some((title, message_html)) = notice {
+        page.warnings.insert(
+            0,
+            Warning {
+                title: title.to_owned(),
+                message_html,
+            },
+        );
+    }
+    Ok(Page(page).into_response())
+}
+
+/// `GET /D{id}/new/`.
+pub(crate) async fn show_new<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(monogram): Path<String>,
+    uri: Uri,
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> Result<Response, PageError> {
+    show(
+        state,
+        viewer,
+        (monogram, true),
+        uri,
+        &headers,
+        query.as_deref(),
+    )
+    .await
+}
+
+/// The revision page, showing the changesets of `diff_phid`.
+async fn page<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    revision: Revision,
+    diff_phid: Option<&Phid>,
+    uri: &Uri,
+) -> Result<RevisionPage, PageError> {
+    let database = state.database();
+    let as_viewer = viewer.user.viewer();
     let details = details::load_details(database, &revision.phid)
         .await?
         .ok_or(PageError::NotFound)?;
@@ -757,41 +964,39 @@ pub(crate) async fn show<S: WebState>(
             (bug, format!("{base}/show_bug.cgi?id={bug}"))
         });
     let (parent_phids, child_phids) = details::load_stack_edges(database, &revision.phid).await?;
-    let scope = crate::harbormaster::Scope::new(state.as_ref(), &viewer);
+    let scope = crate::harbormaster::Scope::new(state, viewer);
     let merge_conflict = merge_conflict::property_view(&scope.request(), &revision)
         .await
         .map_err(crate::harbormaster::method_error)?
         .map(MergeConflictView::new);
 
-    let (author, reviewers, subscribers) = people(state.as_ref(), &as_viewer, &revision).await?;
-    let summary = remarkup_field(state.as_ref(), &as_viewer, &details.summary).await?;
-    let test_plan = remarkup_field(state.as_ref(), &as_viewer, &details.test_plan).await?;
-    let repository = repository(state.as_ref(), &as_viewer, &revision).await?;
+    let (author, reviewers, subscribers) = people(state, &as_viewer, &revision).await?;
+    let summary = remarkup_field(state, &as_viewer, &details.summary).await?;
+    let test_plan = remarkup_field(state, &as_viewer, &details.test_plan).await?;
+    let repository = repository(state, &as_viewer, &revision).await?;
     let searchfox = repository
         .as_ref()
         .and_then(|repository| state.searchfox_trees().tree_for(repository));
-    let (diff_id, changesets) = match &details.active_diff_phid {
-        Some(diff) => changesets(state.as_ref(), &as_viewer, diff, searchfox.clone()).await?,
+    let (diff_id, changesets) = match diff_phid {
+        Some(diff) => changesets(state, &as_viewer, diff, searchfox.clone()).await?,
         None => (None, Vec::new()),
     };
 
-    let subscription = subscription(&viewer, &revision, &subscribers);
+    let subscription = subscription(viewer, &revision, &subscribers);
     let monogram = format!("D{}", revision.id);
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
-    let warnings = warnings(state.as_ref(), &as_viewer, &revision).await?;
-    let timeline = crate::timeline::entries(state.as_ref(), &as_viewer, &revision).await?;
+    let warnings = warnings(state, &as_viewer, &revision).await?;
+    let timeline = crate::timeline::entries(state, &as_viewer, &revision).await?;
     let checks = match &details.active_diff_phid {
-        Some(diff) => {
-            crate::harbormaster::diff_checks(state.as_ref(), &viewer, &revision.phid, diff).await?
-        }
+        Some(diff) => crate::harbormaster::diff_checks(state, viewer, &revision.phid, diff).await?,
         None => crate::harbormaster::DiffChecks::default(),
     };
-    Ok(Page(RevisionPage {
+    Ok(RevisionPage {
         warnings,
         actions: crate::actions::ACTIONS,
         shell: Shell::for_user(
             state.config(),
-            &viewer,
+            viewer,
             &format!("{monogram} {}", revision.title),
             current,
         ),
@@ -806,8 +1011,8 @@ pub(crate) async fn show<S: WebState>(
         subscription,
         bug,
         merge_conflict,
-        parents: revision_links(state.as_ref(), &as_viewer, &parent_phids).await?,
-        children: revision_links(state.as_ref(), &as_viewer, &child_phids).await?,
+        parents: revision_links(state, &as_viewer, &parent_phids).await?,
+        children: revision_links(state, &as_viewer, &child_phids).await?,
         lando_uri: lando_uri(state.config(), database, &revision).await?,
         repository: repository
             .map(|repository| (repository.name, searchfox.as_ref().map(Tree::uri))),
@@ -818,5 +1023,33 @@ pub(crate) async fn show<S: WebState>(
         timeline,
         checks,
         monogram,
-    }))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn view_parameters_are_read_like_php() {
+        assert_eq!(
+            ViewParams::parse(Some("id=12&vs=&download")).unwrap(),
+            ViewParams {
+                id: Some(12),
+                vs: Some(0),
+                download: true,
+            }
+        );
+        assert_eq!(
+            ViewParams::parse(Some("vs=-1&x=y")).unwrap(),
+            ViewParams {
+                id: None,
+                vs: Some(-1),
+                download: false,
+            }
+        );
+        assert_eq!(ViewParams::parse(None).unwrap(), ViewParams::default());
+        assert!(ViewParams::parse(Some("id=1x")).is_err());
+        assert!(ViewParams::parse(Some("id[]=1")).is_err());
+    }
 }

@@ -147,6 +147,18 @@ compares these writes with PHP's on the dev stack, with the scenarios of
 rust/scripts/web-write-parity.py <phsid cookie of alice> rust/parity/web-writes/*.json
 ```
 
+One GET writes, as PHP's does: "Download Raw Diff" (`/DN?download=true`)
+stores the patch as a temporary file attached to the revision, then
+redirects to it (`crates/phab-web/src/raw_diff.rs`); nginx replaying it
+after a timeout stores a second file, which expires as well. The Ajax
+requests PHP's revision and diff pages make to `/differential/changeset/`
+(each changeset and its "show more" context) are answered from the parse
+cache PHP stored when it rendered the changeset, with PHP's JSON
+(`crates/phab-web/src/changeset_ajax.rs`); Rust never writes that cache
+or the viewer's view state, and leaves the rest to PHP. When PHP's
+changeset renderer changes, regenerate `crates/phab-web/tests/oracle/changeset.json`
+with `tests/oracle/changeset.php` (it needs Arcanist, see its header).
+
 ## Running task classes in Rust
 
 `phab-worker` runs the task queue classes ported to Rust

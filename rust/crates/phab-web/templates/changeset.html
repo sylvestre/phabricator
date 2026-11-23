@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="revision-header">
+  <h1>Changeset View</h1>
+  <nav class="bucket-switch" aria-label="Changeset">
+    {%- if let Some(revision) = revision_id %}<a href="/D{{ revision }}">D{{ revision }}</a>{% endif %}
+    <a href="/differential/diff/{{ diff_id }}/">Diff {{ diff_id }}</a>
+    <span>{{ path }}</span>
+  </nav>
+</header>
+<section class="diff-section">
+  {{ changeset|safe }}
+</section>
+{% endblock %}

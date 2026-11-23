@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 18 | 15 | 120 |
-| Web routes | 42 | – | 52 | 7 | 277 | 378 |
+| Web routes | 44 | – | 54 | 7 | 273 | 378 |
 
 Of the 15 methods not ported, 14 write; the read-only one left is `diffusion.findsymbols`.
 
@@ -402,13 +402,13 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/D{id}` | `DifferentialRevisionViewController` | Rust | revision page; `/DN/action` (Rust only) posts its forms |
-| `/D{id}/new/` | `DifferentialRevisionViewController` | not ported | the `new` filter (changes since the last visit) needs the viewer's visit history |
+| `/D{id}` | `DifferentialRevisionViewController` | Rust | revision page; `?id=` shows another of its diffs, `?download=true` its raw diff (Git and Mercurial repositories: the patch stored as a temporary file attached to the revision, as PHP does; unified diffs 421); comparisons (`?vs=`) 421; `/DN/action` (Rust only) posts its forms |
+| `/D{id}/new/` | `DifferentialRevisionViewController` | Rust | changes since the viewer's last action, read from the transactions: all changes with PHP's notice when there is no action, or no update since; the comparison with the diff of the last action is PHP's (421) |
 | `/differential/[query/{queryKey}/[{queryAction}/]]` | `DifferentialRevisionListController` | partial | `/differential/` only (the queue); saved and builtin queries go to PHP |
-| `/differential/diff/{id}/` | `DifferentialDiffViewController` | not ported | diff page (`/differential/diff/N/`): read-only, self-contained with the revision page's diff renderer |
-| `/differential/diff/{id}/changesets/[query/{queryKey}/[{queryAction}/]]` | `DifferentialChangesetListController` | not ported | changeset search engine page; read-only |
+| `/differential/diff/{id}/` | `DifferentialDiffViewController` | Rust | a diff without a revision, with the revision page's renderer (diffs of revisions redirect to `/DN?id=`); its "Attach To" form posts to PHP (421) |
+| `/differential/diff/{id}/changesets/[query/{queryKey}/[{queryAction}/]]` | `DifferentialChangesetListController` | partial | the builtin query (All Changesets); saved queries, filters and query actions 421 |
 | `/differential/diff/create/` | `DifferentialDiffCreateController` | not ported | write: paste or upload a diff |
-| `/differential/changeset/` | `DifferentialChangesetViewController` | not ported | standalone changeset (and its "show more" context, used by the PHP revision page) |
+| `/differential/changeset/` | `DifferentialChangesetViewController` | partial | the standalone changeset (a Rust page); the Ajax requests of PHP's revision and diff pages (each changeset, its "show more" context) answered with PHP's JSON from PHP's parse cache, side by side (`changeset_ajax.rs`, checked against `tests/oracle/changeset.php`); no cache yet, comparisons, view state changes, raw files (`?view=`), the unified renderer, inline comments, lint and coverage, document engines and property changes 421 |
 | `/differential/revision/edit/[{id}/][{editAction}/]` | `DifferentialRevisionEditController` | partial | POST `/differential/revision/edit/N/comment/` only (the comment form, `web_edit.rs`); 421 for workflows, drafts and unported actions |
 | `/differential/revision/attach/{diffID}/to/[{id}/][{editAction}/]` | `DifferentialRevisionEditController` | not ported | write (form or action) |
 | `/differential/revision/closedetails/{phid}/` | `DifferentialRevisionCloseDetailsController` | not ported | dialog; read-only |

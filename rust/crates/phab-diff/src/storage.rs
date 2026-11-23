@@ -193,6 +193,62 @@ pub async fn load_changesets(
     Ok(changesets)
 }
 
+/// The changesets with these IDs, with their hunks, in ID order
+/// (`DifferentialChangesetQuery::withIDs()`, `needHunks(true)`).
+pub async fn load_changesets_by_id(
+    database: &Database,
+    ids: &[i64],
+) -> Result<Vec<Changeset>, StorageError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!(
+        "SELECT id, phid, diffID, oldFile, filename, awayPaths, changeType, fileType, \
+           metadata, oldProperties, newProperties, addLines, delLines \
+         FROM {} WHERE id IN ({}) ORDER BY id",
+        database.table("differential", "differential_changeset"),
+        phab_db::placeholders(ids.len()),
+    );
+    let found = phab_db::bind_all(phab_db::sqlx::query(&sql), ids.iter().copied())
+        .fetch_all(database.pool())
+        .await?;
+    let mut changesets = found
+        .iter()
+        .map(changeset_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
+    for (changeset_id, hunk) in load_hunks(database, ids).await? {
+        if let Some(changeset) = changesets
+            .iter_mut()
+            .find(|changeset| changeset.id == changeset_id)
+        {
+            changeset.hunks.push(hunk);
+        }
+    }
+    Ok(changesets)
+}
+
+/// The changesets of a diff without their hunks, oldest first, as a
+/// list of the diff's files needs them.
+pub async fn load_changeset_list(
+    database: &Database,
+    diff_id: i64,
+) -> Result<Vec<Changeset>, StorageError> {
+    let sql = format!(
+        "SELECT id, phid, diffID, oldFile, filename, awayPaths, changeType, fileType, \
+           metadata, oldProperties, newProperties, addLines, delLines \
+         FROM {} WHERE diffID = ? ORDER BY id",
+        database.table("differential", "differential_changeset")
+    );
+    let found = phab_db::sqlx::query(&sql)
+        .bind(diff_id)
+        .fetch_all(database.pool())
+        .await?;
+    Ok(found
+        .iter()
+        .map(changeset_from_row)
+        .collect::<Result<Vec<_>, _>>()?)
+}
+
 /// The data format of a hunk (`DifferentialHunk::DATAFORMAT_*`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DataFormat {

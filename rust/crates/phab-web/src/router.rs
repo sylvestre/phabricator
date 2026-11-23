@@ -6,10 +6,10 @@ use axum::{Router, routing};
 
 use crate::state::WebState;
 use crate::{
-    actions, assets, dashboards, datasource, diffusion, favorites, feed, files, flags,
-    harbormaster, herald, login, notifications, opt_in, people, people_lists, preview,
-    project_edit, projects, queue, revision, settings, subscriptions, transactions, typeahead,
-    web_edit,
+    actions, assets, changeset_view, dashboards, datasource, diff_page, diffusion, favorites, feed,
+    files, flags, harbormaster, herald, login, notifications, opt_in, people, people_lists,
+    preview, project_edit, projects, queue, revision, settings, subscriptions, transactions,
+    typeahead, web_edit,
 };
 
 /// The login, registration and account linking pages (W7).
@@ -164,14 +164,38 @@ fn file_routes<S: WebState>() -> Router<Arc<S>> {
         .route("/file/download/{*rest}", routing::any(files::download::<S>))
 }
 
+/// Differential: the queue, revisions (whose path is the monogram route
+/// other objects share), diffs and changesets.
+fn differential<S: WebState>() -> Router<Arc<S>> {
+    Router::new()
+        .route("/differential/", routing::get(queue::show::<S>))
+        .route("/{monogram}", routing::get(revision::by_monogram::<S>))
+        .route("/{monogram}/action", routing::post(actions::submit::<S>))
+        .route("/{monogram}/new/", routing::get(revision::show_new::<S>))
+        .route(
+            "/differential/diff/{id}/",
+            routing::get(diff_page::show::<S>),
+        )
+        .route(
+            "/differential/diff/{id}/changesets/",
+            routing::get(diff_page::changesets::<S>),
+        )
+        .route(
+            "/differential/diff/{id}/changesets/query/{key}/",
+            routing::get(diff_page::changeset_query::<S>),
+        )
+        .route(
+            "/differential/changeset/",
+            routing::get(changeset_view::view::<S>).post(changeset_view::view::<S>),
+        )
+}
+
 /// The pages, the static files and the interface switch. nginx decides
 /// which of them reach the service (`rust/nginx/rust-web.conf`).
 pub fn router<S: WebState>() -> Router<Arc<S>> {
     Router::new()
         .merge(crate::system::routes::<S>())
-        .route("/differential/", routing::get(queue::show::<S>))
-        .route("/{monogram}", routing::get(revision::by_monogram::<S>))
-        .route("/{monogram}/action", routing::post(actions::submit::<S>))
+        .merge(differential::<S>())
         .merge(web_edit::routes::<S>())
         .merge(project_edit::routes::<S>())
         .merge(people_and_activity::<S>())

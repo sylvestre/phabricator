@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Differential Changesets</h1>
+  <nav class="bucket-switch" aria-label="Diff">
+    {%- if let Some(revision) = revision_id %}<a href="/D{{ revision }}">D{{ revision }}</a>{% endif %}
+    <a href="/differential/diff/{{ diff_id }}/">Diff {{ diff_id }}</a>
+    <a href="/differential/diff/{{ diff_id }}/changesets/query/all/" aria-current="page">All Changesets</a>
+  </nav>
+</header>
+{% include "diff_files.html" %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/differential/diff/{{ diff_id }}/changesets/query/all/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}
