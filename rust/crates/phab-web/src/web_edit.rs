@@ -365,20 +365,85 @@ async fn has_inline_drafts<S: WebState>(
         .is_some())
 }
 
-/// Whether revision forms are configured: their locks, defaults and
-/// policies would apply (`loadDefaultEditConfiguration()`).
+/// Whether the form PHP edits revisions with changes their fields: the
+/// first enabled edit form by `getEditSortKey()`
+/// (`loadDefaultEditConfiguration()`), stored or the builtin default,
+/// with field locks or a field order. Defaults only apply to new objects,
+/// and a preamble only adds instructions.
 async fn has_configured_forms<S: WebState>(state: &S) -> Result<bool, PageError> {
     let database = state.database();
     let sql = format!(
-        "SELECT 1 FROM {} WHERE engineKey = ? LIMIT 1",
+        "SELECT id, builtinKey, name, properties, isDisabled, isEdit, editOrder FROM {} \
+         WHERE engineKey = ?",
         database.table("search", "search_editengineconfiguration")
     );
-    Ok(phab_db::sqlx::query(&sql)
+    let rows = phab_db::sqlx::query(&sql)
         .bind(ENGINE_KEY)
-        .fetch_optional(database.pool())
+        .fetch_all(database.pool())
         .await
-        .map_err(phab_db::DbError::from)?
-        .is_some())
+        .map_err(phab_db::DbError::from)?;
+    let mut has_builtin = false;
+    // (sort key, properties) of the enabled edit forms.
+    let mut forms: Vec<(String, Value)> = Vec::new();
+    for row in &rows {
+        let builtin = phab_db::rows::opt_text(row, "builtinKey")?;
+        has_builtin |= builtin.as_deref() == Some("default");
+        let enabled = phab_db::rows::int(row, "isDisabled")? == 0;
+        if !enabled || phab_db::rows::int(row, "isEdit")? == 0 {
+            continue;
+        }
+        let properties = phab_db::rows::text(row, "properties")?;
+        let Ok(properties) = serde_json::from_str::<Value>(&properties) else {
+            return Ok(true);
+        };
+        let key = sort_key(
+            phab_db::rows::int(row, "editOrder")?,
+            &phab_db::rows::text(row, "name")?,
+            phab_db::rows::int(row, "id")?,
+        );
+        forms.push((key, properties));
+    }
+    if !has_builtin {
+        // The builtin "default" form also edits, with no properties; where
+        // it sorts among the stored ones depends on its name, so only an
+        // answer every candidate agrees on is trusted.
+        return Ok(forms
+            .iter()
+            .any(|(_, properties)| changes_fields(properties)));
+    }
+    Ok(first_form(&forms).is_some_and(|properties| changes_fields(&properties)))
+}
+
+/// `getSortKey()`: forms never reordered come last, then by name and ID.
+fn sort_key(order: i64, name: &str, id: i64) -> String {
+    let group = if order == 0 { 'B' } else { 'A' };
+    format!("{group}{order:012}{name}\0{id:012}")
+}
+
+fn first_form(forms: &[(String, Value)]) -> Option<Value> {
+    forms
+        .iter()
+        .min_by(|left, right| left.0.cmp(&right.0))
+        .map(|(_, properties)| properties.clone())
+}
+
+/// Whether a form's properties lock or reorder fields.
+fn changes_fields(properties: &Value) -> bool {
+    let properties = match properties {
+        Value::Object(properties) => properties,
+        // PHP decodes an empty map as `[]`.
+        Value::Array(list) if list.is_empty() => return false,
+        _ => return true,
+    };
+    properties.iter().any(|(key, value)| match key.as_str() {
+        "preamble" | "defaults" => false,
+        "locks" | "order" => match value {
+            Value::Array(list) => !list.is_empty(),
+            Value::Object(map) => !map.is_empty(),
+            _ => true,
+        },
+        _ => true,
+    })
 }
 
 /// What `buildCommentResponse()` does once the edit is saved:
@@ -593,6 +658,25 @@ pub(crate) fn routes<S: WebState>() -> Router<Arc<S>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_locks_and_orders_change_comment_forms() {
+        assert!(!changes_fields(&json!({"preamble": ""})));
+        assert!(!changes_fields(
+            &json!({"defaults": {"title": "x"}, "locks": []})
+        ));
+        assert!(!changes_fields(&json!([])));
+        assert!(changes_fields(&json!({"locks": {"title": "locked"}})));
+        assert!(changes_fields(&json!({"order": ["title"]})));
+        assert!(changes_fields(&json!({"unknown": 1})));
+    }
+
+    #[test]
+    fn sorts_forms_like_php() {
+        assert!(sort_key(2, "Z", 9) < sort_key(0, "A", 1));
+        assert!(sort_key(0, "A", 9) < sort_key(0, "B", 1));
+        assert!(sort_key(0, "A", 1) < sort_key(0, "A", 2));
+    }
 
     fn action(kind: &str, value: Value, initial: Value) -> FormAction {
         FormAction {
