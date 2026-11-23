@@ -181,6 +181,18 @@ def call(side, scenario, token):
     return json.loads(out)
 
 
+# A row whose first columns are its ID and its PHID.
+OWN_PHID = re.compile(r"^\(\d+,(?:_binary )?'(?=PHID-)")
+
+
+def row_order(change):
+    """Sorts rows by table, then by their numeric ID when they start with
+    one."""
+    table, values = change
+    match = re.match(r"\((\d+),", values)
+    return (table, int(match.group(1)) if match else -1, values)
+
+
 def normalize(changes, known, started, finished):
     """Replaces what a run makes up, in the order it appears."""
     names = {}
@@ -196,6 +208,13 @@ def normalize(changes, known, started, finished):
         value = int(match.group(0))
         return "<now>" if started - 5 <= value <= finished + 5 else match.group(0)
 
+    # Name the PHIDs of new rows first, by table and row ID, so a row's name
+    # doesn't depend on how its random PHID sorts among the rows that point
+    # at it (like a mail's recipient edges).
+    for table, values in sorted(changes, key=row_order):
+        own = OWN_PHID.match(values)
+        if own:
+            phid(PHID.match(values, own.end()))
     normalized = set()
     for table, values in sorted(changes):
         if table == "phabricator_project.project":
