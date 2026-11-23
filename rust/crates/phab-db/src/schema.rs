@@ -1342,6 +1342,17 @@ pub const CONTRACT: &[TableContract] = &[
         table: "dashboard_portaltransaction",
         columns: &TRANSACTION_COLUMNS,
     },
+    // diffusion.repository.edit.
+    TableContract {
+        database: "repository",
+        table: "repository",
+        columns: &["details", "localPath", "almanacServicePHID", "dateModified"],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_transaction",
+        columns: &TRANSACTION_COLUMNS,
+    },
 ];
 
 /// The columns `phab_db::editor::insert_transaction()` writes.

@@ -33,6 +33,7 @@ pub mod raw_diff_query;
 pub mod recent_commits_by_path;
 pub mod refs;
 pub mod refs_query;
+pub mod repository_edit;
 pub mod repository_search;
 pub mod resolve_refs;
 pub mod search_query;
@@ -68,6 +69,7 @@ pub fn register_with(registry: &mut Registry, mime: Option<MimeCommand>) {
     registry.register(legacy_query::LegacyQuery);
     registry.register(query_commits::QueryCommits);
     registry.register(repository_search::RepositorySearch);
+    registry.register(repository_edit::RepositoryEdit);
     registry.register(lint_messages::GetLintMessages);
     registry.register(look_soon::LookSoon);
     registry.register(recent_commits_by_path::GetRecentCommitsByPath);

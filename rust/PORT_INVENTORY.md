@@ -18,10 +18,10 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 17 | 70 | – | 13 | 20 | 120 |
+| Conduit methods | 17 | 70 | – | 18 | 15 | 120 |
 | Web routes | 42 | – | 52 | 7 | 277 | 378 |
 
-Of the 25 methods not ported, 22 write (or depend on a write); the read-only ones left are `auth.querypublickeys`, `conduit.query`, `diffusion.findsymbols`.
+Of the 15 methods not ported, 14 write; the read-only one left is `diffusion.findsymbols`.
 
 Web routes count each PHP route once; a Diffusion route stands for its three spellings (`/source/<name>/`, `/diffusion/<CALLSIGN>/`, `/diffusion/<id>/`), written `/{repo}`. Routes PHP registers twice (Celerity, `/status/`) count once.
 
@@ -38,7 +38,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Method | PHP status | Port | Note |
 |---|---|---|---|
 | `auth.logout` | stable | ported, not routed | write (terminates sessions); registered only with `PHAB_RUST_LOGIN=1`. |
-| `auth.querypublickeys` | stable | not ported | read-only; needs `PhabricatorAuthSSHKeyQuery` with the policies of the keys' objects (users, Almanac devices). Unused without SSH hosting. |
+| `auth.querypublickeys` | stable | ported, not routed | read-only; keys of users (whom anyone sees). Left to PHP: pages with keys of other objects (Almanac devices), empty lists. Registered without `PHAB_RUST_LOGIN` (`register_queries()`). |
 
 ### Conduit
 
@@ -54,8 +54,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Method | PHP status | Port | Note |
 |---|---|---|---|
-| `dashboard.panel.edit` | stable | not ported | write (EditEngine). |
-| `portal.edit` | stable | not ported | write (EditEngine). |
+| `dashboard.panel.edit` | stable | ported, not routed | write: `name` of existing panels. Left to PHP: creations, policies, the fields of panel types (`text`, query, tabs), edits without effect. |
+| `portal.edit` | stable | ported, not routed | write: `name` of existing portals. Left to PHP: creations, policies, projects, edits without effect. |
 | `portal.search` | stable | shadowed |  |
 
 ### Differential
@@ -92,7 +92,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.blame` | stable | shadowed |  |
 | `diffusion.branchquery` | stable | shadowed |  |
 | `diffusion.browsequery` | stable | shadowed |  |
-| `diffusion.commit.edit` | stable | not ported | write (EditEngine). |
+| `diffusion.commit.edit` | stable | not ported | write (EditEngine): auditors, audit actions, comments, projects and subscribers through `PhabricatorAuditEditor`, which sends mail, publishes feed stories and runs Herald on commits: not ported. |
 | `diffusion.commit.search` | stable | shadowed |  |
 | `diffusion.commitparentsquery` | stable | shadowed |  |
 | `diffusion.diffquery` | stable | ported, not routed | read-only for Git (the diff is read inline, not stored); with `ArcanistDiffParser`'s dictionaries. Left to PHP: diffs which are not UTF-8 or the Rust parser leaves to PHP. |
@@ -111,13 +111,13 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.querypaths` | stable | shadowed |  |
 | `diffusion.rawdiffquery` | stable | ported, not routed | write: stores the diff as a temporary file attached to the repository (Git). Left to PHP: as `diffusion.filecontentquery`. |
 | `diffusion.refsquery` | stable | shadowed |  |
-| `diffusion.repository.edit` | stable | not ported | write (EditEngine). |
+| `diffusion.repository.edit` | stable | ported, not routed | write: `name`, `callsign`, `shortName`, `description` (without mentions, references or files), `status` and `publish` of existing repositories; clears the `needs-update` message. Left to PHP: creations, the other types (policies, projects, refs, limits, symbols, encoding...), cluster repositories, empty names, edits without effect. |
 | `diffusion.repository.search` | stable | shadowed |  |
 | `diffusion.resolverefs` | stable | shadowed |  |
 | `diffusion.searchquery` | stable | shadowed |  |
 | `diffusion.tagsquery` | stable | shadowed |  |
 | `diffusion.updatecoverage` | unstable | not ported | write: stores coverage. |
-| `diffusion.uri.edit` | stable | not ported | write (EditEngine). |
+| `diffusion.uri.edit` | stable | not ported | write (EditEngine). Every edit ends with `applyFinalEffects()`, which saves the repository from its Observe URI and rebuilds `repository_uriindex` from the effective and normalized URIs of all its URIs (builtin ones from `diffusion.ssh-*` and the base URI): not ported. |
 | `internal.commit.search` | stable | shadowed |  |
 
 ### Feed
@@ -156,7 +156,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `harbormaster.build.search` | stable | shadowed |  |
 | `harbormaster.buildable.edit` | stable | not ported | write (EditEngine). |
 | `harbormaster.buildable.search` | stable | shadowed |  |
-| `harbormaster.buildplan.edit` | stable | not ported | write (EditEngine). |
+| `harbormaster.buildplan.edit` | stable | ported, not routed | write: `name` and `behavior.*` of existing plans the actor can edit (no mail, feed or Herald). Left to PHP: creations, policies, projects, subscribers, empty names, edits without effect. |
 | `harbormaster.buildplan.search` | stable | shadowed |  |
 | `harbormaster.createartifact` | stable | ported, not routed | write; waits for a CI or Lando contract run. |
 | `harbormaster.log.search` | stable | shadowed |  |
@@ -164,7 +164,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `harbormaster.querybuildables` | stable | shadowed |  |
 | `harbormaster.querybuilds` | deprecated | shadowed |  |
 | `harbormaster.sendmessage` | stable | ported, not routed | write; waits for a Lando or CI contract run. |
-| `harbormaster.step.edit` | stable | not ported | write (EditEngine). |
+| `harbormaster.step.edit` | stable | not ported | write (EditEngine). The engine has no fields of its own: its types are the custom fields of the step implementations (`core:customfield` into `details`, credentials), not ported. |
 | `harbormaster.step.search` | stable | shadowed |  |
 | `harbormaster.target.search` | stable | shadowed |  |
 
