@@ -11,14 +11,14 @@ use phab_core::php;
 
 const QUERY_CLASS: &str = "PhabricatorFeedIDQuery";
 const DEFAULT_LIMIT: usize = 100;
-const ERR_UNKNOWN_TYPE: &str = "ERR-UNKNOWN-TYPE";
+pub(crate) const ERR_UNKNOWN_TYPE: &str = "ERR-UNKNOWN-TYPE";
 
 /// `feed.query_id`.
 pub struct FeedQueryId;
 
 /// The `view` parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum View {
+pub(crate) enum View {
     Data,
     /// html, html-summary and text render stories.
     Rendered,
@@ -27,7 +27,7 @@ enum View {
 
 impl View {
     /// Falsy means `data`.
-    fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
+    pub(crate) fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
         match value.filter(|value| php::is_truthy(value)) {
             None => Ok(Self::Data),
             Some(Value::String(text)) => Ok(match text.as_str() {
@@ -45,7 +45,7 @@ impl View {
 
 /// `json_encode(json_decode($data, true))`: PHP has no empty objects, and
 /// objects keyed "0", "1"... become lists.
-fn php_array(value: &Value) -> Value {
+pub(crate) fn php_array(value: &Value) -> Value {
     match value {
         Value::Array(items) => items.iter().map(php_array).collect(),
         Value::Object(entries) => {

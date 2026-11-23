@@ -1,6 +1,6 @@
 [package]
 name = "phab-app-feed"
-description = "Feed methods (feed.query_id, feed.for_email.*)"
+description = "Feed methods (feed.query, feed.query_id, feed.for_email.*) and listings"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

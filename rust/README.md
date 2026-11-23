@@ -91,7 +91,7 @@ each ported component needs before it serves traffic.
 | `crates/apps/conduit` | `conduit.ping` |
 | `crates/apps/people` | `user.whoami`, `bugzilla.account.search`, `bmoexternalaccount.search` |
 | `crates/apps/differential` | Revisions, their details, transactions and comments, feed titles, review queue buckets |
-| `crates/apps/feed` | `feed.query_id`, and the feed stories with their titles and handles |
+| `crates/apps/feed` | `feed.query`, `feed.query_id`, `feed.for_email.*`, and the feed stories with their titles and handles |
 | `crates/apps/project` | Projects: loading by PHID or hashtag, and their policy |
 | `bins/phab-server` | The axum HTTP service |
 | `bins/phab-replay` | Replays scenario files against both stacks |

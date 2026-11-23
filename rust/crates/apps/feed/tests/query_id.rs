@@ -1,4 +1,4 @@
-//! `feed.query_id` against a test database.
+//! `feed.query_id` and `feed.query` against a test database.
 
 use phab_conduit::{Context, Envelope, HttpRequest, Mode, Registry, Response, call};
 use phab_core::Config;
@@ -24,6 +24,10 @@ fn chronological_key(id: u64) -> u64 {
 }
 
 async fn query(context: &Context, params: &str) -> Response {
+    call_method(context, "feed.query_id", params).await
+}
+
+async fn call_method(context: &Context, method: &str, params: &str) -> Response {
     let mut registry = Registry::default();
     phab_app_feed::register(&mut registry);
     let http = HttpRequest {
@@ -33,7 +37,7 @@ async fn query(context: &Context, params: &str) -> Response {
     call::dispatch(
         context,
         &registry,
-        "feed.query_id",
+        method,
         &http,
         Mode::Shadow,
         1_700_000_000,
@@ -415,6 +419,128 @@ async fn overheats_like_php() {
             json!({"limit": "9223372036854775807", "after": null, "before": null})
         )
     );
+
+    test_db.drop_databases().await;
+}
+
+async fn feed_query(context: &Context, params: &str) -> Envelope {
+    match call_method(context, "feed.query", params).await {
+        Response::Envelope(envelope) => envelope,
+        Response::Fallback(reason) => panic!("unexpected fallback for {params}: {reason}"),
+    }
+}
+
+/// The PHIDs of the stories `feed.query` answers, in order.
+async fn story_phids(context: &Context, params: &str) -> Vec<String> {
+    let envelope = feed_query(context, params).await;
+    assert_eq!(envelope.error_code, None, "{envelope:?}");
+    match envelope.result {
+        Value::Object(stories) => stories.keys().cloned().collect(),
+        Value::Array(items) if items.is_empty() => Vec::new(),
+        other => panic!("unexpected result {other}"),
+    }
+}
+
+#[tokio::test]
+async fn feed_query_pages_newest_first_by_chronological_key() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    add_stories(&test_db).await;
+
+    let envelope = feed_query(&context, "limit=1").await;
+    assert_eq!(
+        envelope.result,
+        json!({
+            "PHID-STRY-7": {
+                "class": STORY,
+                "epoch": EPOCH,
+                "authorPHID": "PHID-USER-alice",
+                "chronologicalKey": chronological_key(7).to_string(),
+                "data": {
+                    "objectPHID": "PHID-DREV-open",
+                    "transactionPHIDs": {"PHID-XACT-DREV-7": "PHID-XACT-DREV-7"},
+                    "extra": [],
+                },
+            },
+        })
+    );
+    assert_eq!(
+        story_phids(&context, "").await,
+        ["PHID-STRY-7", "PHID-STRY-5", "PHID-STRY-1"]
+    );
+    let seven = chronological_key(7);
+    assert_eq!(
+        story_phids(&context, &format!("after={seven}&limit=1")).await,
+        ["PHID-STRY-5"]
+    );
+    let one = chronological_key(1);
+    assert_eq!(
+        story_phids(&context, &format!("before={one}")).await,
+        ["PHID-STRY-7", "PHID-STRY-5"]
+    );
+    // The stories referencing the revision; nothing references bob.
+    assert_eq!(
+        story_phids(&context, "filterPHIDs[]=PHID-DREV-open&limit=2").await,
+        ["PHID-STRY-7", "PHID-STRY-5"]
+    );
+    assert_eq!(
+        story_phids(&context, "filterPHIDs[]=PHID-USER-bob").await,
+        Vec::<String>::new()
+    );
+    // A cursor is checked without the filter.
+    assert_eq!(
+        story_phids(
+            &context,
+            &format!("filterPHIDs[]=PHID-USER-bob&after={seven}")
+        )
+        .await,
+        Vec::<String>::new()
+    );
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn feed_query_rejects_cursors_and_views_like_php() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    add_stories(&test_db).await;
+
+    for cursor in [chronological_key(2), chronological_key(6), 7] {
+        assert_eq!(
+            feed_query(&context, &format!("after={cursor}")).await,
+            Envelope::error(
+                "ERR-CONDUIT-CORE",
+                format!(
+                    "Cursor \"{cursor}\" does not identify a valid object in query \
+                     \"PhabricatorFeedQuery\"."
+                )
+            )
+        );
+    }
+    assert_eq!(
+        feed_query(&context, "view=bogus").await,
+        Envelope::error(
+            "ERR-UNKNOWN-TYPE",
+            "Unsupported view type, possibles are: html, data, html-summary, text"
+        )
+    );
+    // The view is only checked for the stories returned.
+    assert_eq!(
+        feed_query(
+            &context,
+            &format!("after={}&view=bogus", chronological_key(1))
+        )
+        .await
+        .result,
+        json!([])
+    );
+    assert!(matches!(
+        call_method(&context, "feed.query", "view=html").await,
+        Response::Fallback(_)
+    ));
 
     test_db.drop_databases().await;
 }

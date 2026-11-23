@@ -12,6 +12,7 @@ pub mod git;
 pub mod history;
 pub mod history_query;
 pub mod import;
+pub mod internal_ancestors;
 pub mod internal_commit_search;
 pub mod internal_git_raw_diff_query;
 pub mod last_modified_query;
@@ -56,6 +57,7 @@ pub fn register(registry: &mut Registry) {
     registry.register(Query(commit_parents_query::CommitParentsQuery));
     registry.register(Query(exists_query::ExistsQuery));
     registry.register(Query(history_query::HistoryQuery));
+    registry.register(Query(internal_ancestors::InternalAncestors));
     registry.register(Query(internal_git_raw_diff_query::InternalGitRawDiffQuery));
     registry.register(Query(last_modified_query::LastModifiedQuery));
     registry.register(Query(merged_commits_query::MergedCommitsQuery));

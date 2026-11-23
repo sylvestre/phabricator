@@ -1,11 +1,13 @@
-//! `PhabricatorFeedApplication`: the `feed.query_id` method, Mozilla's
-//! `feed.for_email.*` methods, and the stories with their titles for the
-//! feed pages.
+//! `PhabricatorFeedApplication`: the `feed.query` and `feed.query_id`
+//! methods, Mozilla's `feed.for_email.*` methods, the stories with their
+//! titles for the feed pages, and the notifications of the notification
+//! page.
 
 pub mod email;
 pub mod handles;
 pub mod listing;
 pub mod push;
+pub mod query;
 pub mod query_id;
 pub mod story;
 
@@ -19,6 +21,7 @@ pub const APPLICATION: Application = Application {
 
 /// Registers the Feed methods.
 pub fn register(registry: &mut Registry) {
+    registry.register(query::FeedQuery);
     registry.register(query_id::FeedQueryId);
     registry.register(email::FeedForEmailQuery);
     registry.register(email::FeedForEmailQueryId);

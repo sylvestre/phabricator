@@ -7,5 +7,17 @@
   {"name": "feed with an invalid cursor", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": 0}},
   {"name": "feed with an unknown view", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"view": "bogus", "limit": 1}},
   {"name": "feed with an unknown parameter", "method": "feed.query_id", "token": "$PHAB_REPLAY_TOKEN", "params": {"order": "newest"}},
-  {"name": "feed without a token", "method": "feed.query_id"}
+  {"name": "feed without a token", "method": "feed.query_id"},
+  {"name": "feed.query first page", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": 20}},
+  {"name": "feed.query default page", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "feed.query with a string limit", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": "3"}},
+  {"name": "feed.query with a negative limit", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"limit": -4}},
+  {"name": "feed.query about alice", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"filterPHIDs": ["PHID-USER-alice"], "limit": 10}},
+  {"name": "feed.query about nobody", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"filterPHIDs": ["PHID-USER-nope"]}},
+  {"name": "feed.query with an empty filter", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"filterPHIDs": [], "limit": 2}},
+  {"name": "feed.query with an invalid cursor", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"after": 1}},
+  {"name": "feed.query with a zero cursor", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"before": 0, "limit": 2}},
+  {"name": "feed.query with an unknown view", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"view": "bogus", "limit": 1}},
+  {"name": "feed.query with the data view", "method": "feed.query", "token": "$PHAB_REPLAY_TOKEN", "params": {"view": "data", "limit": 5}},
+  {"name": "feed.query without a token", "method": "feed.query"}
 ]

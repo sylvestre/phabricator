@@ -104,6 +104,8 @@ impl Column {
 pub struct Page<'a> {
     /// `withIDs()`.
     pub ids: Option<&'a [u64]>,
+    /// `PhabricatorFeedQuery::withChronologicalKeys()`.
+    pub keys: Option<&'a [u64]>,
     /// Only rows past this value of `column`, in `order`.
     pub after: Option<u64>,
     /// The order of the rows and of `after`.
@@ -125,6 +127,12 @@ impl Page<'_> {
             conditions.push(format!(
                 "story.id IN ({})",
                 phab_db::placeholders(ids.len())
+            ));
+        }
+        if let Some(keys) = self.keys {
+            conditions.push(format!(
+                "ref.chronologicalKey IN ({})",
+                phab_db::placeholders(keys.len())
             ));
         }
         if let Some(references) = self.references {
@@ -166,7 +174,10 @@ impl Page<'_> {
 /// `PhabricatorFeedQuery::loadPage()`: stories without references are
 /// notifications and are not part of the feed.
 pub async fn load_page(database: &Database, page: Page<'_>) -> Result<Vec<StoryRow>, DbError> {
-    if page.ids.is_some_and(<[u64]>::is_empty) || page.references.is_some_and(<[Phid]>::is_empty) {
+    if page.ids.is_some_and(<[u64]>::is_empty)
+        || page.keys.is_some_and(<[u64]>::is_empty)
+        || page.references.is_some_and(<[Phid]>::is_empty)
+    {
         return Ok(Vec::new());
     }
     let sql = page.sql(database);
@@ -174,6 +185,7 @@ pub async fn load_page(database: &Database, page: Page<'_>) -> Result<Vec<StoryR
         phab_db::sqlx::query(&sql),
         page.ids.unwrap_or_default().iter().copied(),
     );
+    let query = phab_db::bind_all(query, page.keys.unwrap_or_default().iter().copied());
     let query = phab_db::bind_all(
         query,
         page.references.unwrap_or_default().iter().map(Phid::as_str),

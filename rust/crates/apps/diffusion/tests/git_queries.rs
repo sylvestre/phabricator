@@ -622,6 +622,54 @@ async fn searches(context: &Context) {
     );
 }
 
+async fn filters_ancestors(context: &Context) {
+    let ancestors = |reference: &str, commits: Value| {
+        answer(
+            context,
+            "diffusion.internal.ancestors",
+            json!({"ref": reference, "commits": commits}),
+        )
+    };
+    assert_eq!(
+        ancestors("feature", json!([C5, C3, C1, "nope", C3])).await,
+        json!([C3, C1, C3])
+    );
+    assert_eq!(
+        ancestors("master", json!([C4, C3, C2])).await,
+        json!([C4, C3, C2])
+    );
+    // Abbreviated hashes are not in the graph.
+    assert_eq!(ancestors("master", json!([&C2[..12]])).await, json!([]));
+    // A ref Git doesn't know fails the log, which is caught.
+    assert_eq!(ancestors("nope", json!([C1])).await, json!([]));
+    assert_eq!(ancestors("master", json!([])).await, json!([]));
+    assert_eq!(
+        error(
+            context,
+            "diffusion.internal.ancestors",
+            json!({"repository": "GIT", "ref": "--all", "commits": [C1]}),
+        )
+        .await,
+        (
+            "ERR-CONDUIT-CORE".to_owned(),
+            json!(
+                "Git ref selector \"--all\" is not a valid selector and can not be passed to \
+                 the Git CLI safely in the general case."
+            )
+        )
+    );
+    for params in [
+        json!({"repository": "GIT", "ref": "master"}),
+        json!({"repository": "GIT", "ref": "master", "commits": [1]}),
+        json!({"repository": "GIT", "commits": [C1]}),
+    ] {
+        assert!(
+            is_fallback(context, "diffusion.internal.ancestors", params.clone()).await,
+            "{params}"
+        );
+    }
+}
+
 async fn leaves_the_rest_to_php(context: &Context) {
     for repository in ["HG", "SEC", "GONE", "CLU"] {
         assert!(
@@ -710,6 +758,7 @@ async fn answers_from_the_working_copy() {
     finds_commits_of_paths(context).await;
     browses(context).await;
     searches(context).await;
+    filters_ancestors(context).await;
     leaves_the_rest_to_php(context).await;
     fixture.test_db.drop_databases().await;
 }
