@@ -296,34 +296,46 @@ impl ImportRepository {
         code: Option<&str>,
         parameters: &Value,
     ) -> Result<(), DbError> {
-        let table = database.table("repository", "repository_statusmessage");
-        let Some(code) = code else {
-            sqlx::query(&format!(
-                "DELETE FROM {table} WHERE repositoryID = ? AND statusType = ?"
-            ))
-            .bind(self.id)
-            .bind(status_type)
-            .execute(database.pool())
-            .await?;
-            return Ok(());
-        };
+        write_status_message(database, self.id, (status_type, code), parameters, now()).await
+    }
+}
+
+/// `PhabricatorRepository::writeStatusMessage()` of the repository with
+/// this ID, at `epoch`.
+pub async fn write_status_message(
+    database: &Database,
+    repository_id: i64,
+    (status_type, code): (&str, Option<&str>),
+    parameters: &Value,
+    epoch: i64,
+) -> Result<(), DbError> {
+    let table = database.table("repository", "repository_statusmessage");
+    let Some(code) = code else {
         sqlx::query(&format!(
-            "INSERT INTO {table} (repositoryID, statusType, statusCode, parameters, epoch, \
-             messageCount) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE messageCount = \
-             IF(statusCode = VALUES(statusCode), messageCount + VALUES(messageCount), \
-             VALUES(messageCount)), statusCode = VALUES(statusCode), parameters = \
-             VALUES(parameters), epoch = VALUES(epoch)"
+            "DELETE FROM {table} WHERE repositoryID = ? AND statusType = ?"
         ))
-        .bind(self.id)
+        .bind(repository_id)
         .bind(status_type)
-        .bind(code)
-        .bind(php::json_encode(parameters))
-        .bind(now())
-        .bind(1)
         .execute(database.pool())
         .await?;
-        Ok(())
-    }
+        return Ok(());
+    };
+    sqlx::query(&format!(
+        "INSERT INTO {table} (repositoryID, statusType, statusCode, parameters, epoch, \
+         messageCount) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE messageCount = \
+         IF(statusCode = VALUES(statusCode), messageCount + VALUES(messageCount), \
+         VALUES(messageCount)), statusCode = VALUES(statusCode), parameters = \
+         VALUES(parameters), epoch = VALUES(epoch)"
+    ))
+    .bind(repository_id)
+    .bind(status_type)
+    .bind(code)
+    .bind(php::json_encode(parameters))
+    .bind(epoch)
+    .bind(1)
+    .execute(database.pool())
+    .await?;
+    Ok(())
 }
 
 #[cfg(test)]

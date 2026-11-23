@@ -21,6 +21,7 @@ phab-auth.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true
+phab-diff.workspace = true
 phab-policy.workspace = true
 phab-remarkup.workspace = true
 serde_json.workspace = true

@@ -1672,6 +1672,7 @@ dependencies = [
  "phab-conduit",
  "phab-core",
  "phab-db",
+ "phab-policy",
  "serde_json",
  "tokio",
 ]
@@ -1748,6 +1749,7 @@ dependencies = [
  "phab-conduit",
  "phab-core",
  "phab-db",
+ "phab-diff",
  "phab-policy",
  "phab-remarkup",
  "serde_json",

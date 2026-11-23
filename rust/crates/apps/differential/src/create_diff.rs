@@ -106,6 +106,7 @@ fn hunk(value: &Value) -> Result<RawHunk, MethodError> {
         add_lines: line_count(key(dict, "addLines")?)?,
         del_lines: line_count(key(dict, "delLines")?)?,
         corpus: corpus.clone(),
+        ..RawHunk::default()
     })
 }
 

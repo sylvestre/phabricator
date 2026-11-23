@@ -571,6 +571,7 @@ mod tests {
                 add_lines: 1,
                 del_lines: 1,
                 corpus: "-a\n+b\n".to_owned(),
+                ..RawHunk::default()
             }],
             ..RawChange::default()
         };

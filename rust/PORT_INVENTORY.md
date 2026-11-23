@@ -18,7 +18,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 17 | 70 | – | 8 | 25 | 120 |
+| Conduit methods | 17 | 70 | – | 12 | 21 | 120 |
 | Web routes | 42 | – | 52 | 7 | 277 | 378 |
 
 Of the 25 methods not ported, 22 write (or depend on a write); the read-only ones left are `auth.querypublickeys`, `conduit.query`, `diffusion.findsymbols`.
@@ -95,9 +95,9 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.commit.edit` | stable | not ported | write (EditEngine). |
 | `diffusion.commit.search` | stable | shadowed |  |
 | `diffusion.commitparentsquery` | stable | shadowed |  |
-| `diffusion.diffquery` | stable | not ported | reads file contents through `diffusion.filecontentquery`, which stores them as a file (write). |
+| `diffusion.diffquery` | stable | ported, not routed | read-only for Git (the diff is read inline, not stored); with `ArcanistDiffParser`'s dictionaries. Left to PHP: diffs which are not UTF-8 or the Rust parser leaves to PHP. |
 | `diffusion.existsquery` | stable | shadowed |  |
-| `diffusion.filecontentquery` | stable | not ported | stores the content in a temporary `PhabricatorFile` (write); Git only once the file is written like PHP. |
+| `diffusion.filecontentquery` | stable | ported, not routed | write: stores the content as a temporary file attached to the repository (Git). Left to PHP: Git failures, timeouts (`tooSlow`), chunked output, the files `file.upload` leaves to PHP, shadow calls (they would write). |
 | `diffusion.findsymbols` | stable | not ported | read-only; `DiffusionSymbolQuery` over `repository_symbol`, which Mozilla doesn't fill (no symbol import). Easy to port. |
 | `diffusion.getlintmessages` | unstable | shadowed |  |
 | `diffusion.getrecentcommitsbypath` | deprecated | shadowed |  |
@@ -105,11 +105,11 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.internal.ancestors` | stable | ported, not routed | new: read-only, Git. |
 | `diffusion.internal.gitrawdiffquery` | stable | shadowed |  |
 | `diffusion.lastmodifiedquery` | stable | shadowed | with `PhabricatorRepositoryGraphCache` (read from `cache_general` or rebuilt, never written). |
-| `diffusion.looksoon` | unstable | not ported | write: schedules repository updates. |
+| `diffusion.looksoon` | unstable | ported, not routed | write: a `needs-update` status message per visible repository. Left to PHP: identifiers which are not lists of strings, shadow calls. |
 | `diffusion.mergedcommitsquery` | stable | shadowed |  |
 | `diffusion.querycommits` | frozen | shadowed |  |
 | `diffusion.querypaths` | stable | shadowed |  |
-| `diffusion.rawdiffquery` | stable | not ported | stores the diff in a temporary `PhabricatorFile` (write). |
+| `diffusion.rawdiffquery` | stable | ported, not routed | write: stores the diff as a temporary file attached to the repository (Git). Left to PHP: as `diffusion.filecontentquery`. |
 | `diffusion.refsquery` | stable | shadowed |  |
 | `diffusion.repository.edit` | stable | not ported | write (EditEngine). |
 | `diffusion.repository.search` | stable | shadowed |  |

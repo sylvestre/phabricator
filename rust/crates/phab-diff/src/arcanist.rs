@@ -43,7 +43,7 @@ pub const FILE_TEXT: i64 = 1;
 pub const FILE_BINARY: i64 = 3;
 
 /// An `ArcanistDiffHunk`, with the values `DifferentialDiff` reads.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RawHunk {
     /// `oldOffset`.
     pub old_offset: i64,
@@ -59,6 +59,50 @@ pub struct RawHunk {
     pub del_lines: i64,
     /// `corpus`.
     pub corpus: String,
+    /// `isMissingOldNewline`.
+    pub is_missing_old_newline: bool,
+    /// `isMissingNewNewline`.
+    pub is_missing_new_newline: bool,
+    /// Whether the header gave the old and the new lengths: the parser
+    /// keeps them as the strings it matched, and `1` (an integer) when
+    /// they are missing.
+    pub lengths_given: (bool, bool),
+}
+
+impl RawHunk {
+    /// `ArcanistDiffHunk::toDictionary()` of a parsed hunk, whose offsets
+    /// (and lengths, when the header has them) are the strings the parser
+    /// matched.
+    pub fn to_dictionary(&self) -> Value {
+        let length = |value: i64, given: bool| {
+            if given {
+                Value::String(value.to_string())
+            } else {
+                Value::from(value)
+            }
+        };
+        let mut dictionary = Map::new();
+        for (key, value) in [
+            ("oldOffset", Value::String(self.old_offset.to_string())),
+            ("newOffset", Value::String(self.new_offset.to_string())),
+            ("oldLength", length(self.old_length, self.lengths_given.0)),
+            ("newLength", length(self.new_length, self.lengths_given.1)),
+            ("addLines", Value::from(self.add_lines)),
+            ("delLines", Value::from(self.del_lines)),
+            (
+                "isMissingOldNewline",
+                Value::Bool(self.is_missing_old_newline),
+            ),
+            (
+                "isMissingNewNewline",
+                Value::Bool(self.is_missing_new_newline),
+            ),
+            ("corpus", Value::String(self.corpus.clone())),
+        ] {
+            dictionary.insert(key.to_owned(), value);
+        }
+        Value::Object(dictionary)
+    }
 }
 
 /// An `ArcanistDiffChange`. The array values keep PHP's arrays: maps, in
@@ -83,6 +127,40 @@ pub struct RawChange {
     pub file_type: i64,
     /// `hunks`.
     pub hunks: Vec<RawHunk>,
+}
+
+impl RawChange {
+    /// `ArcanistDiffChange::toDictionary()`, with PHP's arrays as
+    /// `json_encode()` writes them. Git diffs have no commit hash.
+    pub fn to_dictionary(&self) -> Value {
+        let metadata = self.metadata.clone().map_or(Value::Null, Value::Object);
+        let optional = |path: &Option<String>| path.clone().map_or(Value::Null, Value::String);
+        let mut dictionary = Map::new();
+        for (key, value) in [
+            ("metadata", phab_core::php::round_trip(&metadata)),
+            ("oldPath", optional(&self.old_path)),
+            ("currentPath", optional(&self.current_path)),
+            ("awayPaths", phab_core::php::round_trip(&self.away_paths)),
+            (
+                "oldProperties",
+                phab_core::php::round_trip(&self.old_properties),
+            ),
+            (
+                "newProperties",
+                phab_core::php::round_trip(&self.new_properties),
+            ),
+            ("type", Value::from(self.change_type)),
+            ("fileType", Value::from(self.file_type)),
+            ("commitHash", Value::Null),
+            (
+                "hunks",
+                Value::Array(self.hunks.iter().map(RawHunk::to_dictionary).collect()),
+            ),
+        ] {
+            dictionary.insert(key.to_owned(), value);
+        }
+        Value::Object(dictionary)
+    }
 }
 
 impl Default for RawChange {
@@ -588,14 +666,14 @@ impl Parser {
             let Some((old_offset, old_len, new_offset, new_len)) = header else {
                 return unsupported("diffs without hunk headers");
             };
+            let lengths_given = (old_len.is_some(), new_len.is_some());
             let mut hunk = RawHunk {
                 old_offset: header_number(&old_offset)?,
                 old_length: header_length(old_len)?,
                 new_offset: header_number(&new_offset)?,
                 new_length: header_length(new_len)?,
-                add_lines: 0,
-                del_lines: 0,
-                corpus: String::new(),
+                lengths_given,
+                ..RawHunk::default()
             };
             let mut old_len = hunk.old_length;
             let mut new_len = hunk.new_length;
@@ -614,8 +692,10 @@ impl Parser {
                         }
                         real.push_str(&line);
                         if new_len == 0 {
+                            hunk.is_missing_new_newline = true;
                             break;
                         }
+                        hunk.is_missing_old_newline = true;
                     }
                     b'+' => {
                         hunk.add_lines += 1;
@@ -676,6 +756,15 @@ fn set_mode(properties: &mut Value, mode: &str) {
 
 /// `ArcanistDiffParser::parseDiff()` without a repository, for Git diffs.
 pub fn parse_diff(diff: &str) -> Result<Vec<RawChange>, ParseError> {
+    Ok(parse_diff_keyed(diff)?
+        .into_iter()
+        .map(|(_, change)| change)
+        .collect())
+}
+
+/// [`parse_diff()`] with the key of each change in the array PHP returns:
+/// its path, or `None` for a change PHP appends without one.
+pub fn parse_diff_keyed(diff: &str) -> Result<Vec<(Option<String>, RawChange)>, ParseError> {
     if diff.trim_matches(WHITESPACE).is_empty() {
         return Err(ParseError::Empty);
     }
@@ -721,7 +810,7 @@ pub fn parse_diff(diff: &str) -> Result<Vec<RawChange>, ParseError> {
     }) {
         return Err(ParseError::Unsupported("paths which are integers"));
     }
-    Ok(parser.changes)
+    Ok(parser.keys.into_iter().zip(parser.changes).collect())
 }
 
 #[cfg(test)]
@@ -752,6 +841,8 @@ mod tests {
                 add_lines: 1,
                 del_lines: 1,
                 corpus: " context\n-old\n+new\n".to_owned(),
+                lengths_given: (true, true),
+                ..RawHunk::default()
             }]
         );
     }
@@ -796,6 +887,11 @@ mod tests {
             changes[0].hunks[0].corpus,
             "-a\n\\ No newline at end of file\n+b\n\\ No newline at end of file\n"
         );
+        let hunk = changes[0].hunks[0].to_dictionary();
+        assert_eq!(hunk["oldOffset"], json!("1"));
+        assert_eq!(hunk["oldLength"], json!(1));
+        assert_eq!(hunk["isMissingOldNewline"], json!(true));
+        assert_eq!(hunk["isMissingNewNewline"], json!(true));
     }
 
     #[test]

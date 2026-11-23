@@ -1,0 +1,23 @@
+[
+  {"name": "file content of a file", "method": "diffusion.filecontentquery", "params": {"repository": "R2", "path": "dir/a.txt", "commit": "85948bd7ad4beca2df6fabad0d7f08b90365eff5"}},
+  {"name": "file content of the README by branch", "method": "diffusion.filecontentquery", "params": {"repository": "R2", "path": "README", "commit": "master"}},
+  {"name": "file content of a symbolic link", "method": "diffusion.filecontentquery", "params": {"repository": "R2", "path": "link", "commit": "81bcc2f65c2b5d5a68333fc3df1f7dfe77482aa4"}},
+  {"name": "file content over the byte limit", "method": "diffusion.filecontentquery", "params": {"repository": "R2", "path": "README", "commit": "85948bd7ad4beca2df6fabad0d7f08b90365eff5", "byteLimit": 5}},
+  {"name": "file content under the byte limit", "method": "diffusion.filecontentquery", "params": {"repository": "R2", "path": "README", "commit": "85948bd7ad4beca2df6fabad0d7f08b90365eff5", "byteLimit": 100, "timeout": 30}},
+  {"name": "file content by callsign parameter", "method": "diffusion.filecontentquery", "params": {"callsign": "R2", "path": "README", "commit": "d61f24fe3e14bb3307532a9bc02968d7462cb336"}},
+  {"name": "file content of a missing path", "method": "diffusion.filecontentquery", "params": {"repository": "R2", "path": "nope", "commit": "85948bd7ad4beca2df6fabad0d7f08b90365eff5"}},
+  {"name": "file content of an unknown repository", "method": "diffusion.filecontentquery", "params": {"repository": "R999", "path": "README", "commit": "85948bd7ad4beca2df6fabad0d7f08b90365eff5"}},
+  {"name": "raw diff of a commit", "method": "diffusion.rawdiffquery", "params": {"repository": "R2", "commit": "85948bd7ad4beca2df6fabad0d7f08b90365eff5"}},
+  {"name": "raw diff of the first commit", "method": "diffusion.rawdiffquery", "params": {"repository": "R2", "commit": "d61f24fe3e14bb3307532a9bc02968d7462cb336"}},
+  {"name": "raw diff of a merge with context", "method": "diffusion.rawdiffquery", "params": {"repository": "R2", "commit": "81bcc2f65c2b5d5a68333fc3df1f7dfe77482aa4", "linesOfContext": 1}},
+  {"name": "raw diff at a path", "method": "diffusion.rawdiffquery", "params": {"repository": "R2", "commit": "85948bd7ad4beca2df6fabad0d7f08b90365eff5", "path": "dir/a.txt"}},
+  {"name": "raw diff against a commit", "method": "diffusion.rawdiffquery", "params": {"repository": "R2", "commit": "81bcc2f65c2b5d5a68333fc3df1f7dfe77482aa4", "againstCommit": "d61f24fe3e14bb3307532a9bc02968d7462cb336", "linesOfContext": "2"}},
+  {"name": "raw diff of a branch name", "method": "diffusion.rawdiffquery", "params": {"repository": "R2", "commit": "feature"}},
+  {"name": "raw diff over the byte limit", "method": "diffusion.rawdiffquery", "params": {"repository": "R2", "commit": "20fb56cd8ff000f2f791dc647906b4c5a9bef267", "byteLimit": 10}},
+  {"name": "look soon at a repository", "method": "diffusion.looksoon", "params": {"repositories": ["R2"]}},
+  {"name": "look soon at repositories by several names", "method": "diffusion.looksoon", "params": {"repositories": ["R2", "PHID-REPO-paritygit000000", "2", "R999"], "urgency": "high"}},
+  {"name": "look soon by callsign", "method": "diffusion.looksoon", "params": {"callsigns": ["R2"]}},
+  {"name": "look soon with empty repositories and callsigns", "method": "diffusion.looksoon", "params": {"repositories": [], "callsigns": ["R2"]}},
+  {"name": "look soon at nothing", "method": "diffusion.looksoon", "params": {}},
+  {"name": "look soon at a string", "method": "diffusion.looksoon", "params": {"repositories": "R2"}}
+]
