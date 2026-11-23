@@ -110,6 +110,7 @@ impl Handler for FeedPublisherWorker {
                     }),
                     priority: None,
                     object_phid: None,
+                    container_phid: None,
                 });
             }
             Ok(())

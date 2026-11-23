@@ -5,6 +5,7 @@ use crate::handler::Registry;
 pub mod feed_publisher;
 pub mod metamta;
 pub mod publish;
+pub mod repository;
 pub mod test_worker;
 
 /// Every ported class.
@@ -13,6 +14,9 @@ pub fn registry() -> Registry {
     registry.register(feed_publisher::FeedPublisherWorker);
     registry.register(metamta::MetaMTAWorker::default());
     registry.register(publish::PublishWorker);
+    registry.register(repository::MessageParserWorker);
+    registry.register(repository::ChangeParserWorker);
+    registry.register(repository::PublishWorker);
     registry.register(test_worker::TestWorker);
     registry
 }

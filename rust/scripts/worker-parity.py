@@ -3,7 +3,9 @@
 the development stack.
 
     rust/scripts/worker-parity.py [--sides php,rust] [--show] [--feed N]
-        [--metamta N] [--publish N] [--rust-worker CMD] [scenarios.json]...
+        [--metamta N] [--publish N] [--rust-worker CMD] [--repository ID
+        [--repository-path PATH] [--repository-origin PATH]
+        [--rust-repository CMD]] [scenarios.json]...
 
 A scenario queues one task: `{"name": ..., "class": "FeedPublisherWorker",
 "data": {"key": 7301...}, "priority": 2000, "objectPHID": null, "setup":
@@ -22,6 +24,30 @@ scenario for each of the N newest publish tasks of revisions in
 scenario may give instead of `data`), as configured and with
 `email.default` 0 (Phabricator's own mail, so notifications of mailed users
 are read).
+
+`--repository ID` (3 for R3, rFAB, on the dev stack) adds the import
+pipeline of that Git repository, whose working copy (`--repository-path`,
+`/var/repo/3/`) has the history of `scripts/seed-dev-git-repo.sh`, as a bare
+clone of R2's (`--repository-origin`, `/var/repo/2`, its remote). Each
+scenario first deletes the repository's commits, refs and status messages
+and sets its details: observed (`remote-uri` the origin) or hosted, both
+importing. Then:
+
+- `bin/repository update`, `discover` and `refs` (a scenario with a
+  `"command"`, run by `bin/repository` in the PHP container and by
+  `--rust-repository`, `phab-worker repository` in the Rust one; `"before"`
+  commands run with PHP on both sides first): an update from no commit and
+  one with nothing new, a discovery and a ref update of the hosted
+  repository (whose update installs hooks, so it is not run);
+- for each of the five commits, recorded as discovery leaves them (with
+  fixed PHIDs), the message parser, the change parser, and the publish
+  step, held (importing) and not (left to PHP); plus the message parser of
+  an unreachable commit, of one already parsed, and of a commit which does
+  not exist.
+
+The commands change the working copy (`git fetch`, `git config`), which the
+script doesn't restore: give it one which already has the origin's refs, as
+the dev stack's R3 has, so both sides start from the same one.
 
 For each scenario and side, from the same snapshot of every `phabricator_*`
 database, the script queues the task with the SQL of
@@ -64,6 +90,7 @@ SPEC.loader.exec_module(WP)
 
 RUST = "phabricator-phab-rust-1"
 RUST_WORKER = f"docker exec {RUST} phab-worker --once --id {{id}}"
+RUST_REPOSITORY = f"docker exec {RUST} phab-worker repository {{args}}"
 # `phab-worker --once`: the handler left the task to PHP.
 DECLINED = 3
 # Columns of the task's own row which depend on how it was leased.
@@ -206,14 +233,41 @@ def mask_keys(changes, started, finished):
             for table, values in sorted(changes)}
 
 
-def run_side(side, scenario, saved, before, known, names, rust_worker):
+def run_command(side, arguments, rust_repository):
+    """Runs a `bin/repository` workflow; `None` if Rust left it to PHP."""
+    if side == "php":
+        done = subprocess.run(
+            ["docker", "exec", WP.PHP, "/app/phabricator/bin/repository"]
+            + arguments, capture_output=True, text=True)
+        return done.returncode
+    if side == "rust":
+        done = subprocess.run(
+            rust_repository.format(args=" ".join(arguments)), shell=True,
+            capture_output=True, text=True)
+        if done.returncode == DECLINED:
+            return None
+        if done.returncode != 0:
+            sys.stderr.write(done.stdout + done.stderr)
+        return done.returncode
+    raise ValueError(side)
+
+
+def run_side(side, scenario, saved, before, known, names, rust_worker,
+             rust_repository):
     started = int(time.time())
     for statement in scenario.get("setup", []):
         query(statement)
-    task_id = enqueue(scenario)
+    for arguments in scenario.get("before", []):
+        # The same starting point on both sides: PHP runs these.
+        run_command("php", arguments, rust_repository)
+    command = scenario.get("command")
+    task_id = None if command else enqueue(scenario)
     queued = WP.rows(WP.dump())
     initial = WP.counters()
-    status = run(side, task_id, rust_worker)
+    if command:
+        status = run_command(side, command, rust_repository)
+    else:
+        status = run(side, task_id, rust_worker)
     finished = int(time.time())
     moved = {row[0] for row in WP.counters() ^ initial}
     after = WP.rows(WP.dump())
@@ -230,6 +284,126 @@ def run_side(side, scenario, saved, before, known, names, rust_worker):
                         started, finished)
     WP.restore(saved, changed)
     return (status, added, removed), set()
+
+
+# The commits `seed-dev-git-repo.sh` makes, in the order discovery records
+# them: what R3 (a bare clone of R2's history) has.
+SEED_COMMITS = [
+    ("d61f24fe3e14bb3307532a9bc02968d7462cb336", 1794600000),
+    ("85948bd7ad4beca2df6fabad0d7f08b90365eff5", 1794600100),
+    ("20fb56cd8ff000f2f791dc647906b4c5a9bef267", 1794600300),
+    ("59965686ade70d003a571d2352862b01b4c3c3b8", 1794600200),
+    ("81bcc2f65c2b5d5a68333fc3df1f7dfe77482aa4", 1794600400),
+]
+MESSAGE_PARSER = "PhabricatorRepositoryGitCommitMessageParserWorker"
+CHANGE_PARSER = "PhabricatorRepositoryGitCommitChangeParserWorker"
+PUBLISHER = "PhabricatorRepositoryCommitPublishWorker"
+
+
+def repository_scenarios(repository, path, origin):
+    """The import pipeline on `repository` (an ID): `bin/repository
+    update`, `discover` and `refs` from no imported commit, then each
+    parser step of each commit, and the publish step held and not."""
+    repository = int(repository)
+    phid = query("SELECT phid FROM phabricator_repository.repository "
+                 f"WHERE id = {repository}")[0][0]
+    callsign = query("SELECT IFNULL(callsign, '') FROM "
+                     "phabricator_repository.repository "
+                     f"WHERE id = {repository}")[0][0]
+    name = callsign or f"R{repository}"
+    db = "phabricator_repository"
+    reset = [
+        f"DELETE p FROM {db}.repository_refposition p JOIN "
+        f"{db}.repository_refcursor c ON p.cursorID = c.id "
+        f"WHERE c.repositoryPHID = {quote(phid)}",
+        f"DELETE FROM {db}.repository_refcursor WHERE repositoryPHID = "
+        f"{quote(phid)}",
+        f"DELETE FROM {db}.repository_oldref WHERE repositoryPHID = "
+        f"{quote(phid)}",
+        f"DELETE d FROM {db}.repository_commitdata d JOIN "
+        f"{db}.repository_commit c ON c.id = d.commitID "
+        f"WHERE c.repositoryID = {repository}",
+        f"DELETE p FROM {db}.repository_parents p JOIN "
+        f"{db}.repository_commit c ON c.id = p.childCommitID "
+        f"WHERE c.repositoryID = {repository}",
+        f"DELETE pc FROM {db}.repository_pathchange pc "
+        f"WHERE pc.repositoryID = {repository}",
+        f"DELETE FROM {db}.repository_commit WHERE repositoryID = {repository}",
+        f"DELETE FROM {db}.repository_summary WHERE repositoryID = {repository}",
+        f"DELETE FROM {db}.repository_statusmessage "
+        f"WHERE repositoryID = {repository}",
+    ]
+
+    def details(**values):
+        return (f"UPDATE {db}.repository SET localPath = {quote(path)}, "
+                f"details = {quote(php_json(values))} WHERE id = {repository}")
+
+    observed = details(**{"remote-uri": origin, "importing": True})
+    hosted = details(**{"hosting-enabled": True, "importing": True})
+    scenarios = [
+        {"name": f"update {name}, observed, from no commit",
+         "command": ["update", name], "setup": reset + [observed]},
+        {"name": f"update {name} twice (nothing new)",
+         "command": ["update", name], "setup": reset + [observed],
+         "before": [["update", name]]},
+        {"name": f"discover {name}, hosted, from no commit",
+         "command": ["discover", name], "setup": reset + [hosted]},
+        {"name": f"refs {name}, hosted, after PHP's discovery",
+         "command": ["refs", name], "setup": reset + [hosted],
+         "before": [["discover", name]]},
+    ]
+
+    # The commits as discovery leaves them, with fixed PHIDs.
+    def commits(status):
+        values = ", ".join(
+            f"({900 + index}, {repository}, 'PHID-CMIT-parityfab{index:05d}', "
+            f"'{identifier}', {epoch}, NULL, 'none', '', {status})"
+            for index, (identifier, epoch) in enumerate(SEED_COMMITS))
+        data = ", ".join(f"({900 + index}, '', '', '[]')"
+                         for index in range(len(SEED_COMMITS)))
+        parents = ", ".join(
+            f"({900 + child}, {900 + parent if parent is not None else 0})"
+            for child, parent in [(0, None), (1, 0), (2, 1), (3, 1), (4, 2),
+                                  (4, 3)])
+        return [
+            f"INSERT INTO {db}.repository_commit (id, repositoryID, phid, "
+            "commitIdentifier, epoch, authorPHID, auditStatus, summary, "
+            f"importStatus) VALUES {values}",
+            f"INSERT INTO {db}.repository_commitdata (commitID, authorName, "
+            f"commitMessage, commitDetails) VALUES {data}",
+            f"INSERT INTO {db}.repository_parents (childCommitID, "
+            f"parentCommitID) VALUES {parents}",
+        ]
+
+    for index, (identifier, _) in enumerate(SEED_COMMITS):
+        commit = f"PHID-CMIT-parityfab{index:05d}"
+        data = {"commitPHID": commit, "via": "discovery"}
+        for label, class_name, status, setup in (
+                ("message", MESSAGE_PARSER, 1024, observed),
+                ("changes", CHANGE_PARSER, 1025, observed),
+                ("publish, held (importing)", PUBLISHER, 1027, observed),
+                ("publish, not held (left to PHP)", PUBLISHER, 1027,
+                 details(**{"remote-uri": origin}))):
+            scenarios.append({
+                "name": f"{label} of {name} {identifier[:12]}",
+                "class": class_name, "data": data, "priority": 2000,
+                "objectPHID": commit,
+                "setup": reset + [setup] + commits(status)})
+    commit = "PHID-CMIT-parityfab00000"
+    scenarios.append({
+        "name": f"message of an unreachable {name} commit",
+        "class": MESSAGE_PARSER,
+        "data": {"commitPHID": commit, "via": "discovery"},
+        "objectPHID": commit, "setup": reset + [observed] + commits(3072)})
+    scenarios.append({
+        "name": f"message of {name} commit already parsed",
+        "class": MESSAGE_PARSER,
+        "data": {"commitPHID": commit, "via": "discovery"},
+        "objectPHID": commit, "setup": reset + [observed] + commits(1025)})
+    scenarios.append({
+        "name": "message of a commit which does not exist",
+        "class": MESSAGE_PARSER, "data": {"commitPHID": "PHID-CMIT-nope"}})
+    return scenarios
 
 
 def feed_scenarios(count):
@@ -320,6 +494,16 @@ def main():
                         "of revisions")
     parser.add_argument("--rust-worker", default=RUST_WORKER,
                         help="command running one task, {id} its ID")
+    parser.add_argument("--repository", default=None,
+                        help="add the import pipeline of this Git "
+                        "repository ID (3 on the dev stack)")
+    parser.add_argument("--repository-path", default="/var/repo/3/",
+                        help="its working copy")
+    parser.add_argument("--repository-origin", default="/var/repo/2",
+                        help="the repository it observes")
+    parser.add_argument("--rust-repository", default=RUST_REPOSITORY,
+                        help="command running a bin/repository workflow, "
+                        "{args} its arguments")
     parser.add_argument("files", nargs="*")
     args = parser.parse_args()
     sides = args.sides.split(",")
@@ -334,8 +518,12 @@ def main():
         scenarios.extend(metamta_scenarios(args.metamta))
     if args.publish:
         scenarios.extend(publish_scenarios(args.publish))
+    if args.repository:
+        scenarios.extend(repository_scenarios(
+            args.repository, args.repository_path, args.repository_origin))
     if not scenarios:
-        parser.error("no scenarios: give files, --feed, --metamta or --publish")
+        parser.error("no scenarios: give files, --feed, --metamta, --publish "
+                     "or --repository")
 
     names = {table: columns(table) for table in (
         "phabricator_worker.worker_activetask",
@@ -351,7 +539,8 @@ def main():
             results = []
             for side in sides:
                 result, wrote = run_side(side, scenario, saved, before, known,
-                                         names, args.rust_worker)
+                                         names, args.rust_worker,
+                                         args.rust_repository)
                 if wrote:
                     failures += 1
                     print(f"DIFFERENT: {scenario['name']}: {side} left the "

@@ -17,6 +17,9 @@ use crate::php::{self, Array, Key};
 pub const BRANCH: &str = "branch";
 /// `PhabricatorRepositoryRefCursor::TYPE_TAG`.
 pub const TAG: &str = "tag";
+/// `PhabricatorRepositoryRefCursor::TYPE_REF`: any other ref, named in
+/// full.
+pub const REF: &str = "ref";
 
 const BRANCH_PREFIX: &str = "refs/heads/";
 const TAG_PREFIX: &str = "refs/tags/";
@@ -64,8 +67,8 @@ impl GitRef {
     }
 }
 
-/// `DiffusionLowLevelGitRefQuery` with `withRefTypes()` of branches,
-/// tags or both.
+/// `DiffusionLowLevelGitRefQuery` with `withRefTypes()` of branches, tags
+/// and other refs ([`REF`], which refs under `refs/remotes/` are not).
 pub async fn git_refs(copy: &WorkingCopy, types: &[&str]) -> Result<Vec<GitRef>, MethodError> {
     let prefix = match types {
         [only] if *only == BRANCH => BRANCH_PREFIX,
@@ -111,9 +114,11 @@ pub async fn git_refs(copy: &WorkingCopy, types: &[&str]) -> Result<Vec<GitRef>,
             (short, BRANCH)
         } else if let Some(short) = refname.strip_prefix(TAG_PREFIX) {
             (short, TAG)
-        } else {
-            // Remotes, and other refs which none of the callers want.
+        } else if refname.starts_with("refs/remotes/") {
+            // The remotes of the remote a repository observes.
             continue;
+        } else {
+            (refname, REF)
         };
         if !types.contains(&ref_type) || short == "HEAD" {
             continue;

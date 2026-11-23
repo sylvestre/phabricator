@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+phab-app-diffusion.workspace = true
 phab-app-feed.workspace = true
 phab-app-metamta.workspace = true
 phab-app-transactions.workspace = true
@@ -27,6 +28,7 @@ hex.workspace = true
 jiff.workspace = true
 md-5.workspace = true
 phab-db = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "net"] }
 
 [lints]

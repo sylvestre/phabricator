@@ -582,6 +582,7 @@ impl Handler for ScriptedWorker {
                 data: json!({"documentPHID": "PHID-DREV-1"}),
                 priority: None,
                 object_phid: Some("PHID-DREV-1".to_owned()),
+                container_phid: None,
             });
             if work.data().get("fail").is_some() {
                 return Err(Failure::Temporary("no".to_owned()));

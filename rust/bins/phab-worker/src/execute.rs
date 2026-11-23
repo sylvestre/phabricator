@@ -1,7 +1,7 @@
 //! `PhabricatorWorkerActiveTask::executeTask()`.
 
 use phab_core::{Config, php};
-use phab_db::worker::{Task, schedule_task};
+use phab_db::worker::{Task, schedule_contained_task};
 use phab_db::{Database, DbError};
 use thiserror::Error;
 
@@ -132,7 +132,7 @@ async fn flush(
     for followup in queued {
         let data = php::json_encode(&followup.data);
         let mut connection = database.pool().acquire().await?;
-        schedule_task(
+        schedule_contained_task(
             &mut connection,
             database,
             Task {
@@ -141,6 +141,7 @@ async fn flush(
                 priority: followup.priority.unwrap_or(default_priority),
                 object_phid: followup.object_phid.as_deref(),
             },
+            followup.container_phid.as_deref(),
             time(),
         )
         .await?;

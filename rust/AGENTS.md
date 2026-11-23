@@ -171,12 +171,32 @@ recipients at once (`metamta.one-mail-per-recipient` off), custom
 `differential.fields`, recipients who use another language or have no
 settings cache, and subprojects among the recipients.
 
+The import of Git commits (`crates/apps/diffusion/src/import`) runs the
+three steps discovery queues for each commit:
+`PhabricatorRepositoryGitCommitMessageParserWorker` (author, committer,
+message, identities), `PhabricatorRepositoryGitCommitChangeParserWorker`
+(paths, then a `PhabricatorSearchWorker` task for PHP) and
+`PhabricatorRepositoryCommitPublishWorker` for commits the publisher holds
+(the repository is importing or doesn't publish, or the commit is on no
+permanent ref). Publishing a commit (Herald, audits, feed, mail, closing
+revisions), Mercurial and Subversion, repositories served by a cluster and
+working copies this host doesn't have are left to PHP.
+
+`phab-worker repository discover|refs|update <repository>` is
+`bin/repository`'s workflow for one Git repository (what
+`PhabricatorRepositoryPullLocalDaemon` runs): it takes PHP's repository
+locks and writes PHP's rows, or exits 3 before writing when something is
+not ported (hosted repositories' updates, as PHP installs their hooks;
+remotes which are not local paths; mirrors; fetch rules; branch filters
+with regular expressions). It doesn't replace the pull daemon: run it by
+hand; the locks keep it from working on a repository PHP is updating.
+
 `phab-worker --once [--id N]` leases and runs one task, prints the outcome
 as JSON and exits (3 when the task was left to PHP).
 `rust/scripts/worker-parity.py` compares its rows with PHP's
 `bin/worker execute --id` on the dev stack (`--feed N`, `--metamta N` and
 `--publish N` requeue the newest stories, mails and revision publish
-tasks).
+tasks; `--repository 3` runs the import pipeline of R3).
 
 ## Checking a deployment
 

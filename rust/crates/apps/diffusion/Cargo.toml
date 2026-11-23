@@ -9,7 +9,9 @@ publish.workspace = true
 
 [dependencies]
 flate2.workspace = true
+hex.workspace = true
 indexmap.workspace = true
+md-5.workspace = true
 pcre2.workspace = true
 phab-app-differential.workspace = true
 phab-conduit.workspace = true
@@ -18,7 +20,9 @@ phab-db.workspace = true
 phab-policy.workspace = true
 phab-remarkup.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "process"] }
 wait-timeout.workspace = true
 
 [dev-dependencies]

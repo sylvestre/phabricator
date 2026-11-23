@@ -88,6 +88,11 @@ impl WorkingCopy {
         Self { path: path.into() }
     }
 
+    /// The working copy's path.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     /// `assertLocalExists()`, then the command.
     fn command(&self, argv: &[String]) -> Result<Command, MethodError> {
         if !self.path.is_dir() {
@@ -151,6 +156,40 @@ impl WorkingCopy {
         Ok(output.stdout)
     }
 
+    /// `LinesOfALargeExecFuture` read on demand, as
+    /// `PhabricatorGitGraphStream` reads `git log`: the command runs until
+    /// the stream is dropped, without a time limit.
+    pub fn stream(&self, argv: &[String]) -> Result<LineStream, MethodError> {
+        let command = self.command(argv)?;
+        let mut command = tokio::process::Command::from(command);
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let mut child = command
+            .spawn()
+            .map_err(|_| MethodError::Unsupported("running Git, which is not installed"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| MethodError::internal("no stdout"))?;
+        let stderr = child.stderr.take();
+        let stderr = tokio::spawn(async move {
+            let mut data = Vec::new();
+            if let Some(mut pipe) = stderr {
+                let _ = tokio::io::AsyncReadExt::read_to_end(&mut pipe, &mut data).await;
+            }
+            data
+        });
+        Ok(LineStream {
+            child,
+            stdout: tokio::io::BufReader::new(stdout),
+            stderr: Some(stderr),
+            end: None,
+        })
+    }
+
     /// `LinesOfALargeExecFuture`: gives each `delimiter`-terminated piece
     /// of the output to `consumer` with `state`, until it returns `false`
     /// (the command is then killed). At the end of the output, the exit
@@ -175,6 +214,64 @@ impl WorkingCopy {
         })
         .await
         .map_err(MethodError::internal)?
+    }
+}
+
+/// The output of a command, line by line ([`WorkingCopy::stream()`]).
+pub struct LineStream {
+    child: tokio::process::Child,
+    stdout: tokio::io::BufReader<tokio::process::ChildStdout>,
+    stderr: Option<tokio::task::JoinHandle<Vec<u8>>>,
+    /// The exit code once the output ended (`Some(None)` after a signal).
+    end: Option<Ended>,
+}
+
+/// How a [`LineStream`] ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Ended(Option<i32>);
+
+impl LineStream {
+    /// The next `\n`-terminated line, without its delimiter, then the last
+    /// unterminated piece; `None` at the end of the output of a command
+    /// which succeeded. A command which failed is an error once its output
+    /// has been read: the `CommandException` PHP raises there.
+    pub async fn next_line(&mut self) -> Result<Option<Vec<u8>>, MethodError> {
+        if let Some(Ended(status)) = self.end {
+            return Self::ended(status);
+        }
+        let mut line = Vec::new();
+        tokio::io::AsyncBufReadExt::read_until(&mut self.stdout, b'\n', &mut line)
+            .await
+            .map_err(MethodError::internal)?;
+        if line.last() == Some(&b'\n') {
+            line.pop();
+            return Ok(Some(line));
+        }
+        let status = self.child.wait().await.map_err(MethodError::internal)?;
+        let stderr = match self.stderr.take() {
+            Some(handle) => handle.await.unwrap_or_default(),
+            None => Vec::new(),
+        };
+        if !status.success() && contains(&stderr, DUBIOUS_OWNERSHIP) {
+            return Err(MethodError::Unsupported(
+                "a working copy Git won't read as this user",
+            ));
+        }
+        self.end = Some(Ended(status.code()));
+        if status.success() && !line.is_empty() {
+            return Ok(Some(line));
+        }
+        Self::ended(status.code())
+    }
+
+    fn ended(status: Option<i32>) -> Result<Option<Vec<u8>>, MethodError> {
+        if status == Some(0) {
+            Ok(None)
+        } else {
+            Err(MethodError::Internal(format!(
+                "Git exited with status {status:?}"
+            )))
+        }
     }
 }
 

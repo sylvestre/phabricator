@@ -53,6 +53,8 @@ pub struct QueuedTask {
     pub priority: Option<i64>,
     /// `objectPHID`.
     pub object_phid: Option<String>,
+    /// `containerPHID`.
+    pub container_phid: Option<String>,
 }
 
 /// What a handler sees while it runs a task.

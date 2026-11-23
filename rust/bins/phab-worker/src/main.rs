@@ -12,7 +12,10 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
+mod repository_command;
+
 const USAGE: &str = "usage: phab-worker [--once [--id <task id>]...]
+       phab-worker repository <workflow> ... (see phab-worker repository --help)
 
 Without arguments, runs the ported task classes until SIGTERM. With --once,
 leases at most one task (among the --id ones if given), runs it, prints what
@@ -149,8 +152,44 @@ async fn connect(config_dir: &std::path::Path) -> Result<(Config, Database), Str
     Ok((config, database))
 }
 
+/// `phab-worker repository ...`, logging to stderr.
+async fn repository(arguments: impl Iterator<Item = String>) -> std::process::ExitCode {
+    let command = match repository_command::parse(arguments) {
+        Ok(command) => command,
+        Err(error) if error.is_empty() => {
+            println!("{}", repository_command::USAGE);
+            return std::process::ExitCode::SUCCESS;
+        }
+        Err(error) => {
+            eprintln!("{error}\n\n{}", repository_command::USAGE);
+            return std::process::ExitCode::from(EXIT_USAGE);
+        }
+    };
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")))
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .init();
+    let config_dir = std::env::var_os("PHAB_CONFIG_DIR").map_or_else(
+        || PathBuf::from("/app/phabricator/conf/local"),
+        PathBuf::from,
+    );
+    let (config, database) = match connect(&config_dir).await {
+        Ok(context) => context,
+        Err(error) => {
+            eprintln!("{error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    std::process::ExitCode::from(repository_command::run(&command, &database, &config).await)
+}
+
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
+    let mut arguments = std::env::args().skip(1).peekable();
+    if arguments.peek().map(String::as_str) == Some("repository") {
+        arguments.next();
+        return repository(arguments).await;
+    }
     let once = match parse_arguments(std::env::args().skip(1)) {
         Ok(once) => once,
         Err(error) if error.is_empty() => {

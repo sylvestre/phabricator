@@ -11,6 +11,7 @@ pub mod exists_query;
 pub mod git;
 pub mod history;
 pub mod history_query;
+pub mod import;
 pub mod internal_commit_search;
 pub mod internal_git_raw_diff_query;
 pub mod last_modified_query;

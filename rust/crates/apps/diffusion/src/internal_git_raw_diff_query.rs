@@ -55,7 +55,7 @@ fn raw_diff_argv(
 
 /// `getGitResult()`: the fast diff, then the better one for small
 /// changes when Git gives it in time.
-async fn raw_diff(copy: &WorkingCopy, commit: &str) -> Result<String, MethodError> {
+pub async fn raw_diff(copy: &WorkingCopy, commit: &str) -> Result<String, MethodError> {
     let parents = copy
         .execx(
             vec![
