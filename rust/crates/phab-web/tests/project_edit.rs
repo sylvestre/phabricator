@@ -513,7 +513,7 @@ async fn the_edit_form_writes_what_changed() {
     );
     let cookie = response.headers()[header::SET_COOKIE].to_str().unwrap();
     assert!(
-        cookie.starts_with("phabricator.submit=edit-engine%2Fprojects.project"),
+        cookie.starts_with("phfrm=edit-engine%2Fprojects.project"),
         "{cookie}"
     );
     assert_eq!(

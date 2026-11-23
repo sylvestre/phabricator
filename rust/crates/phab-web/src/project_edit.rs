@@ -47,7 +47,7 @@ use crate::web_edit;
 /// The description's custom field key, which is its input's name.
 const DESCRIPTION: &str = "std:project:internal:description";
 /// `PhabricatorCookies::COOKIE_SUBMIT`.
-const SUBMIT_COOKIE: &str = "phabricator.submit";
+const SUBMIT_COOKIE: &str = "phfrm";
 
 /// A confirmation dialog, as PHP renders `newDialog()` without a
 /// workflow: a page with the form.
