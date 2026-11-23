@@ -6,6 +6,7 @@ pub mod hash;
 pub mod phid;
 pub mod php;
 pub mod random;
+pub mod text;
 
 pub use config::Config;
 pub use phid::{Phid, PhidType};
