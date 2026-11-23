@@ -117,10 +117,22 @@ service times out or is down, which would apply a write twice.
 Pages go to Rust only for users with the `phab_ui=rust` cookie
 (`/rust-ui/on`, `/rust-ui/off`); everyone else gets PHP. Add a `location`
 with `include /app/nginx/rust/page.inc;` to `rust/nginx/rust-web.conf` and
-reload nginx. Writes from Rust pages go through PHP's Conduit API
-(`PHAB_PHP_URL`) and must answer failures with 503, which nginx doesn't
-replay. The settings pages write preferences themselves, as PHP's editor
-does: they answer 421 only before writing, so the replay writes once.
+reload nginx. Writes from Rust pages go through PHP (`PHAB_PHP_URL`) and
+must answer failures with 503, which nginx doesn't replay. The settings
+pages write preferences themselves, as PHP's editor does: they answer 421
+only before writing, so the replay writes once. So do PHP's comment form of
+revisions (`/differential/revision/edit/N/comment/`) and the subscribe
+action (`/subscriptions/add|delete/PHID-DREV-.../`), through the Rust
+editor with a web content source (`crates/phab-web/src/web_edit.rs`); the
+revision page's own form (`/DN/action`) is that comment form, which it
+posts to PHP as the user when Rust doesn't write it, and its inline
+comments go to PHP's Conduit API. `rust/scripts/web-write-parity.py`
+compares these writes with PHP's on the dev stack, with the scenarios of
+`parity/web-writes/`:
+
+```sh
+rust/scripts/web-write-parity.py <phsid cookie of alice> rust/parity/web-writes/*.json
+```
 
 ## Running task classes in Rust
 

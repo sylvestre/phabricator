@@ -59,15 +59,65 @@ pub enum ConduitError {
 pub struct PhpConduit {
     base_url: String,
     client: reqwest::Client,
+    /// For forms, whose redirects are PHP's answer.
+    forms: reqwest::Client,
+}
+
+/// PHP's answer to a form.
+#[derive(Debug)]
+pub struct FormAnswer {
+    /// The HTTP status.
+    pub status: u16,
+    /// The `Content-Type`, if any.
+    pub content_type: Option<String>,
+    /// The page, for answers other than redirects.
+    pub body: Vec<u8>,
 }
 
 impl PhpConduit {
     /// A client for PHP at `base_url`, like `http://phabricator.test`.
     pub fn new(base_url: impl Into<String>) -> Self {
+        let forms = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(2))
+            .timeout(TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("a client without custom TLS roots always builds");
         Self {
             base_url: base_url.into().trim_end_matches('/').to_owned(),
             client: client(),
+            forms,
         }
+    }
+
+    /// Posts `fields` to PHP's page at `path` as the user of `session`, as
+    /// a form of PHP's interface would.
+    pub async fn post_form_as_user(
+        &self,
+        path: &str,
+        fields: &[(&str, String)],
+        session: &SessionToken,
+    ) -> Result<FormAnswer, ConduitError> {
+        let response = self
+            .forms
+            .post(format!("{}{path}", self.base_url))
+            .header(SKIP_RUST_HEADER, "1")
+            .header(reqwest::header::COOKIE, format!("phsid={}", session.0))
+            .form(fields)
+            .send()
+            .await?;
+        let status = response.status().as_u16();
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let body = response.bytes().await?.to_vec();
+        Ok(FormAnswer {
+            status,
+            content_type,
+            body,
+        })
     }
 
     /// From `PHAB_PHP_URL`, if set.

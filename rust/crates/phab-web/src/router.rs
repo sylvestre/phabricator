@@ -7,7 +7,7 @@ use axum::{Router, routing};
 use crate::state::WebState;
 use crate::{
     actions, assets, dashboards, diffusion, feed, harbormaster, herald, login, opt_in, people,
-    preview, projects, queue, revision, settings, typeahead,
+    preview, projects, queue, revision, settings, typeahead, web_edit,
 };
 
 /// The pages, the static files and the interface switch. nginx decides
@@ -18,6 +18,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .route("/differential/", routing::get(queue::show::<S>))
         .route("/{monogram}", routing::get(revision::by_monogram::<S>))
         .route("/{monogram}/action", routing::post(actions::submit::<S>))
+        .merge(web_edit::routes::<S>())
         .route("/p/{username}/", routing::get(people::show::<S>))
         .route("/tag/{slug}/", routing::get(projects::by_slug::<S>))
         .route("/project/view/{id}/", routing::get(projects::by_id::<S>))

@@ -121,7 +121,7 @@ async fn plan(database: &Database, commit: &commit::Commit) -> Result<Linked, Me
 /// `PhabricatorAuditEditor`), with the parent editor's `mustEncrypt`.
 pub(super) fn worker_state(
     commit: &Linked,
-    actor: &str,
+    (actor, via): (&str, &str),
     must_encrypt: &[String],
     herald_header: &str,
 ) -> Value {
@@ -148,7 +148,7 @@ pub(super) fn worker_state(
         stamp("string", "phid", json!(commit.phid)),
         stamp("string", "object-type", json!("CMIT")),
         stamp("phid", "actor", json!(actor)),
-        stamp("string", "via", json!("conduit")),
+        stamp("string", "via", json!(via)),
         stamp("bool", "silent", Value::Null),
         stamp("bool", "encrypted", json!(must_encrypt)),
         stamp("bool", "new", json!(false)),

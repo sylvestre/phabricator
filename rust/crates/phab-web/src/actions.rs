@@ -1,15 +1,20 @@
 //! Review actions on a revision (W6): comment, accept, request changes and
-//! the others, add reviewers and subscribers, sent to PHP's
+//! the others, add or remove reviewers and subscribers. They are a post of
+//! PHP's comment form ([`web_edit`]), written by Rust when it can and sent
+//! to PHP as the user otherwise; with inline comments, a call to PHP's
 //! `differential.revision.edit` as the user.
 
 use std::sync::Arc;
 
 use axum::Form;
+use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use phab_app_differential::storage;
 use phab_app_project as project;
 use phab_core::Phid;
+use phab_db::edges;
 use phab_policy::application;
 use serde_json::{Value, json};
 
@@ -17,6 +22,7 @@ use crate::error::PageError;
 use crate::revision;
 use crate::state::WebState;
 use crate::viewer::WebUser;
+use crate::web_edit::{self, CommentForm, FormAction};
 
 /// The actions the form offers: the `ACTIONKEY`s of the
 /// `DifferentialRevisionActionTransaction` classes, and their labels.
@@ -30,6 +36,7 @@ pub(crate) const ACTIONS: &[(&str, &str)] = &[
     ("abandon", "Abandon Revision"),
     ("reclaim", "Reclaim Revision"),
     ("reopen", "Reopen Revision"),
+    ("close", "Close Revision"),
 ];
 
 /// The form of the revision page.
@@ -187,6 +194,9 @@ fn names(field: &str) -> Vec<Entered> {
         .collect()
 }
 
+/// Names typed in the form: their PHIDs, and whether they are blocking.
+type Resolved = [(Phid, bool)];
+
 /// The PHIDs of `names`, as `viewer` may see them: an unknown or hidden
 /// name is an error naming it, as PHP's datasource refuses it.
 async fn resolve<S: WebState>(
@@ -300,7 +310,173 @@ fn transactions(
     Some(transactions)
 }
 
-/// `POST /D{id}/action`: PHP checks the action is allowed and applies it.
+/// The PHID in a reviewer token, `PHID` or `blocking(PHID)`.
+fn token_phid(token: &str) -> &str {
+    token
+        .strip_prefix("blocking(")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .unwrap_or(token)
+}
+
+/// `list` with `added` (tokens replacing those of the same PHID) and
+/// without the tokens of `removed`, as the tokenizer of PHP's form leaves
+/// it.
+fn edited_list(list: &[String], added: &[String], removed: &str) -> Vec<String> {
+    let mut edited = list.to_vec();
+    for token in added {
+        let phid = token_phid(token);
+        match edited.iter_mut().find(|known| token_phid(known) == phid) {
+            Some(known) => known.clone_from(token),
+            None => edited.push(token.clone()),
+        }
+    }
+    edited.retain(|token| removed.is_empty() || token_phid(token) != removed);
+    edited
+}
+
+/// The action of PHP's form which changes the list of `key` from `list`,
+/// if it changes.
+fn list_action(key: &str, list: &[String], edited: &[String]) -> Option<FormAction> {
+    (edited != list).then(|| FormAction {
+        kind: key.to_owned(),
+        value: json!(edited),
+        initial: json!(list),
+    })
+}
+
+/// The post of PHP's comment form which does what `form` asks, `None` when
+/// it asks for nothing: the action, the reviewer and subscriber changes,
+/// then the comment.
+async fn comment_form<S: WebState>(
+    state: &S,
+    form: &ActionForm,
+    (reviewers, subscribers): (&Resolved, &Resolved),
+    id: i64,
+) -> Result<Option<CommentForm>, PageError> {
+    let database = state.database();
+    // PHP says what is wrong with a revision which doesn't exist.
+    let revision = storage::load_revisions_by_id(database, &[id]).await?.pop();
+    let mut actions = Vec::new();
+    if !form.action.is_empty() {
+        actions.push(FormAction {
+            kind: form.action.clone(),
+            value: json!(true),
+            initial: Value::Null,
+        });
+    }
+    // getReviewerPHIDsForEdit().
+    let current: Vec<String> = revision
+        .iter()
+        .flat_map(|revision| &revision.reviewers)
+        .map(|reviewer| {
+            if reviewer.status == "blocking" {
+                format!("blocking({})", reviewer.phid)
+            } else {
+                reviewer.phid.to_string()
+            }
+        })
+        .collect();
+    let added: Vec<String> = reviewers
+        .iter()
+        .map(|(phid, is_blocking)| {
+            if *is_blocking {
+                format!("blocking({phid})")
+            } else {
+                phid.to_string()
+            }
+        })
+        .collect();
+    let edited = edited_list(&current, &added, &form.remove_reviewer);
+    actions.extend(list_action("reviewers", &current, &edited));
+    let phids: Vec<Phid> = revision
+        .iter()
+        .map(|revision| revision.phid.clone())
+        .collect();
+    let current: Vec<String> =
+        edges::load_destination_phids(database, &phids, &[edges::OBJECT_HAS_SUBSCRIBER], None)
+            .await?
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+    let added: Vec<String> = subscribers
+        .iter()
+        .map(|(phid, _)| phid.to_string())
+        .collect();
+    let edited = edited_list(&current, &added, &form.remove_subscriber);
+    actions.extend(list_action("subscriberPHIDs", &current, &edited));
+    let comment = if form.comment.trim().is_empty() {
+        String::new()
+    } else {
+        form.comment.clone()
+    };
+    if actions.is_empty() && comment.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(CommentForm {
+        actions,
+        comment: Some(comment),
+        // The form's `{}`.
+        metadata: json!([]),
+    }))
+}
+
+/// A redirect to `back`.
+fn see_other(back: &str) -> Response {
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    if let Ok(location) = HeaderValue::from_str(back) {
+        response.headers_mut().insert(header::LOCATION, location);
+    }
+    response
+}
+
+/// Sends `form` to PHP's comment form as the viewer: PHP saves it, or
+/// shows why not, as its own page would.
+async fn post_to_php<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    id: i64,
+    form: &CommentForm,
+) -> Result<Response, PageError> {
+    let php = state
+        .php()
+        .ok_or(PageError::Fallback("PHP's Conduit API is not configured"))?;
+    let answer = php
+        .post_form_as_user(
+            &format!("/differential/revision/edit/{id}/comment/"),
+            &form.php_fields(&viewer.csrf_token),
+            viewer.session_token(),
+        )
+        .await
+        .map_err(PageError::Conduit)?;
+    if (300..400).contains(&answer.status) {
+        return Ok(see_other(&format!("/D{id}")));
+    }
+    // PHP's dialog. Not 502 or 504, which nginx would replay.
+    let status = match StatusCode::from_u16(answer.status) {
+        Ok(StatusCode::BAD_GATEWAY | StatusCode::GATEWAY_TIMEOUT) | Err(_) => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        Ok(status) => status,
+    };
+    let mut response = Response::new(Body::from(answer.body));
+    *response.status_mut() = status;
+    let content_type = answer
+        .content_type
+        .and_then(|value| HeaderValue::from_str(&value).ok())
+        .unwrap_or(HeaderValue::from_static("text/html; charset=UTF-8"));
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, content_type);
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(response)
+}
+
+/// `POST /D{id}/action`. Inline comments written on the page are sent to
+/// PHP's `differential.revision.edit` with the rest, as PHP's web
+/// interface has no form for them. The other changes are a post of PHP's
+/// comment form, which Rust writes when it can, and PHP otherwise.
 pub(crate) async fn submit<S: WebState>(
     State(state): State<Arc<S>>,
     viewer: WebUser,
@@ -319,33 +495,37 @@ pub(crate) async fn submit<S: WebState>(
     let reviewers = resolve(state.as_ref(), &viewer, &names(&form.reviewers)).await?;
     let subscribers = resolve(state.as_ref(), &viewer, &names(&form.subscribers)).await?;
     let inlines = inline_transactions(&form.inlines).map_err(PageError::BadRequest)?;
-    // phab.js forgets the inline comments it kept once they are published.
-    let back = if inlines.is_empty() {
-        format!("/D{id}")
-    } else {
-        format!("/D{id}#inlines-published")
-    };
+    let has_inlines = !inlines.is_empty();
     let transactions = transactions(&form, &reviewers, &subscribers, inlines)
         .ok_or(PageError::BadRequest("This change can't be made."))?;
-    if !transactions.is_empty() {
-        let php = state
-            .php()
-            .ok_or(PageError::Fallback("PHP's Conduit API is not configured"))?;
-        let params = json!({"objectIdentifier": format!("D{id}"), "transactions": transactions});
-        php.call_as_user(
-            "differential.revision.edit",
-            &params,
-            viewer.session_token(),
-            &viewer.csrf_token,
-        )
-        .await
-        .map_err(PageError::Conduit)?;
+    if !has_inlines {
+        let lists = (reviewers.as_slice(), subscribers.as_slice());
+        let Some(comment) = comment_form(state.as_ref(), &form, lists, id).await? else {
+            return Ok(see_other(&format!("/D{id}")));
+        };
+        return match web_edit::comment(state.as_ref(), &viewer, id, comment.clone()).await {
+            Ok(()) => Ok(see_other(&format!("/D{id}"))),
+            Err(PageError::Fallback(reason)) => {
+                tracing::info!(reason, "comment form left to PHP");
+                post_to_php(state.as_ref(), &viewer, id, &comment).await
+            }
+            Err(error) => Err(error),
+        };
     }
-    let mut response = StatusCode::SEE_OTHER.into_response();
-    if let Ok(location) = HeaderValue::from_str(&back) {
-        response.headers_mut().insert(header::LOCATION, location);
-    }
-    Ok(response)
+    let php = state
+        .php()
+        .ok_or(PageError::Fallback("PHP's Conduit API is not configured"))?;
+    let params = json!({"objectIdentifier": format!("D{id}"), "transactions": transactions});
+    php.call_as_user(
+        "differential.revision.edit",
+        &params,
+        viewer.session_token(),
+        &viewer.csrf_token,
+    )
+    .await
+    .map_err(PageError::Conduit)?;
+    // phab.js forgets the inline comments it kept once they are published.
+    Ok(see_other(&format!("/D{id}#inlines-published")))
 }
 
 #[cfg(test)]
@@ -443,6 +623,36 @@ mod tests {
                 json!({"type": "subscribers.add", "value": ["PHID-USER-c"]}),
                 json!({"type": "comment", "value": "Over to you"}),
             ])
+        );
+    }
+
+    #[test]
+    fn lists_are_edited_as_the_tokenizer_does() {
+        let list = |items: &[&str]| -> Vec<String> {
+            items.iter().map(|item| (*item).to_owned()).collect()
+        };
+        let current = list(&["PHID-USER-a", "blocking(PHID-USER-b)"]);
+        assert_eq!(
+            edited_list(&current, &list(&["PHID-USER-c", "PHID-USER-a"]), ""),
+            list(&["PHID-USER-a", "blocking(PHID-USER-b)", "PHID-USER-c"])
+        );
+        // Making a reviewer blocking replaces their token.
+        assert_eq!(
+            edited_list(&current, &list(&["blocking(PHID-USER-a)"]), ""),
+            list(&["blocking(PHID-USER-a)", "blocking(PHID-USER-b)"])
+        );
+        assert_eq!(
+            edited_list(&current, &[], "PHID-USER-b"),
+            list(&["PHID-USER-a"])
+        );
+        assert_eq!(list_action("reviewers", &current, &current), None);
+        assert_eq!(
+            list_action("subscriberPHIDs", &[], &list(&["PHID-USER-a"])),
+            Some(FormAction {
+                kind: "subscriberPHIDs".to_owned(),
+                value: json!(["PHID-USER-a"]),
+                initial: json!([]),
+            })
         );
     }
 

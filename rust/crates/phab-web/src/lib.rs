@@ -36,6 +36,7 @@ mod time;
 mod timeline;
 mod typeahead;
 mod viewer;
+mod web_edit;
 
 pub use error::{FALLBACK_HEADER, PageError, fallback_response};
 pub use response::html_response;

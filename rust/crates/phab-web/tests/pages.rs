@@ -145,32 +145,75 @@ type Received = Arc<std::sync::Mutex<Vec<(String, String, String, String)>>>;
 async fn fake_php(answer: &'static str) -> (phab_web::php::PhpConduit, Received) {
     let received: Received = Arc::default();
     let log = received.clone();
-    let app = axum::Router::new().route(
-        "/api/{method}",
-        axum::routing::post(
-            move |axum::extract::Path(method): axum::extract::Path<String>,
-                  headers: axum::http::HeaderMap,
-                  body: String| {
-                let log = log.clone();
-                async move {
-                    let header = |name: &str| {
-                        headers
-                            .get(name)
-                            .and_then(|value| value.to_str().ok())
-                            .unwrap_or("")
-                            .to_owned()
-                    };
-                    log.lock().unwrap().push((
-                        method,
-                        header("cookie"),
-                        header("x-phab-skip-rust"),
-                        body,
-                    ));
-                    ([(header::CONTENT_TYPE, "application/json")], answer)
-                }
-            },
-        ),
-    );
+    let form_log = received.clone();
+    // The comment form: saved (a redirect), or PHP's dialog with the error
+    // of `answer`.
+    let comment_form = move |axum::extract::Path(id): axum::extract::Path<String>,
+                             headers: axum::http::HeaderMap,
+                             body: String| {
+        let log = form_log.clone();
+        async move {
+            let header = |name: &str| {
+                headers
+                    .get(name)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or("")
+                    .to_owned()
+            };
+            log.lock().unwrap().push((
+                "comment form".to_owned(),
+                header("cookie"),
+                header("x-phab-skip-rust"),
+                body,
+            ));
+            let error = serde_json::from_str::<serde_json::Value>(answer)
+                .ok()
+                .and_then(|envelope| envelope["error_info"].as_str().map(str::to_owned));
+            match error {
+                Some(error) => (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "text/html; charset=UTF-8".to_owned())],
+                    format!("<div class=\"dialog\">{error}</div>"),
+                ),
+                None => (
+                    StatusCode::FOUND,
+                    [(header::LOCATION, format!("http://phabricator.test/D{id}"))],
+                    String::new(),
+                ),
+            }
+        }
+    };
+    let app = axum::Router::new()
+        .route(
+            "/differential/revision/edit/{id}/comment/",
+            axum::routing::post(comment_form),
+        )
+        .route(
+            "/api/{method}",
+            axum::routing::post(
+                move |axum::extract::Path(method): axum::extract::Path<String>,
+                      headers: axum::http::HeaderMap,
+                      body: String| {
+                    let log = log.clone();
+                    async move {
+                        let header = |name: &str| {
+                            headers
+                                .get(name)
+                                .and_then(|value| value.to_str().ok())
+                                .unwrap_or("")
+                                .to_owned()
+                        };
+                        log.lock().unwrap().push((
+                            method,
+                            header("cookie"),
+                            header("x-phab-skip-rust"),
+                            body,
+                        ));
+                        ([(header::CONTENT_TYPE, "application/json")], answer)
+                    }
+                },
+            ),
+        );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1071,23 +1114,25 @@ async fn actions_go_to_php_as_the_user() {
         Some(php),
     )
     .await;
+    // Rust doesn't write it (there is no D3): PHP's comment form gets it,
+    // as PHP's page would post it.
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     assert_eq!(response.headers()[header::LOCATION], "/D3");
     let calls = received.lock().unwrap().clone();
     assert_eq!(calls.len(), 1);
     let (method, cookie, skip, body) = &calls[0];
-    assert_eq!(method, "differential.revision.edit");
+    assert_eq!(method, "comment form");
     assert_eq!(cookie, "phsid=alice-token");
     assert_eq!(skip, "1");
     assert!(form_value(body, "__csrf__").starts_with("B@"));
-    assert_eq!(form_value(body, "__conduit__"), "1");
-    let params: serde_json::Value = serde_json::from_str(&form_value(body, "params")).unwrap();
+    assert_eq!(form_value(body, "__form__"), "1");
+    assert_eq!(form_value(body, "comment"), "LGTM");
+    assert_eq!(form_value(body, "comment_metadata"), "{}");
+    let actions: serde_json::Value =
+        serde_json::from_str(&form_value(body, "editengine.actions")).unwrap();
     assert_eq!(
-        params,
-        json!({"objectIdentifier": "D3", "transactions": [
-            {"type": "accept", "value": true},
-            {"type": "comment", "value": "LGTM"},
-        ]})
+        actions,
+        json!([{"type": "accept", "value": true, "initialValue": null}])
     );
 
     // A stale token is refused before PHP hears about it.
@@ -1100,14 +1145,14 @@ async fn actions_go_to_php_as_the_user() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert!(received.lock().unwrap().is_empty());
 
-    // PHP's validation errors are shown to the user.
+    // PHP's dialog is shown to the user.
     let (php, _) = fake_php(r#"{"result":null,"error_code":"ERR-CONDUIT-CORE","error_info":"You can not accept this revision."}"#).await;
     let response = post(
         encode(&[("__csrf__", &token), ("action", "accept")]),
         Some(php),
     )
     .await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::OK);
     assert!(
         text(response)
             .await
@@ -1152,11 +1197,32 @@ async fn post_edit(
     .await;
     let calls = received.lock().unwrap().clone();
     let transactions = calls.first().map_or(serde_json::Value::Null, |call| {
-        serde_json::from_str::<serde_json::Value>(&form_value(&call.3, "params")).unwrap()
-            ["transactions"]
-            .clone()
+        if call.0 == "comment form" {
+            serde_json::from_str(&form_value(&call.3, "editengine.actions")).unwrap()
+        } else {
+            serde_json::from_str::<serde_json::Value>(&form_value(&call.3, "params")).unwrap()
+                ["transactions"]
+                .clone()
+        }
     });
     (response, transactions)
+}
+
+/// D3, Alice's draft which MFA reviews: Rust leaves its comment form to
+/// PHP.
+async fn insert_draft(test_db: &TestDatabase) {
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, \
+               summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+               viewPolicy, editPolicy, properties, activeDiffPHID) VALUES \
+             (3, 'Draft', 'PHID-DREV-three', 'draft', '', '', 'PHID-USER-alice', 1, 1, '{}', \
+               'k', 'users', 'users', '{}', ''); \
+             INSERT INTO `{ns}_differential`.differential_reviewer (revisionPHID, reviewerPHID, \
+               reviewerStatus, dateCreated, dateModified, options) VALUES \
+             ('PHID-DREV-three', 'PHID-USER-mfa', 'added', 1, 1, '{}')",
+        )
+        .await;
 }
 
 #[tokio::test]
@@ -1185,22 +1251,22 @@ async fn reviewers_subscribers_and_inlines_go_to_php() {
             .finish()
     };
 
-    // Reviewers and subscribers by name, as PHIDs; `!` is blocking.
-    let (response, transactions) = post_edit(
-        &test_db,
-        &[
-            ("__csrf__", &token),
-            ("reviewers", "MFA!"),
-            ("subscribers", "@alice"),
-        ],
-    )
-    .await;
+    insert_draft(&test_db).await;
+
+    // Names as PHIDs, `!` is blocking, in the lists PHP's tokenizers make.
+    let pairs = [
+        ("__csrf__", token.as_str()),
+        ("reviewers", "MFA!"),
+        ("subscribers", "@alice"),
+    ];
+    let (response, transactions) = post_edit(&test_db, &pairs).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         transactions,
         json!([
-            {"type": "reviewers.add", "value": ["blocking(PHID-USER-mfa)"]},
-            {"type": "subscribers.add", "value": ["PHID-USER-alice"]},
+            {"type": "reviewers", "value": ["blocking(PHID-USER-mfa)"],
+                "initialValue": ["PHID-USER-mfa"]},
+            {"type": "subscriberPHIDs", "value": ["PHID-USER-alice"], "initialValue": []},
         ])
     );
 
@@ -1248,7 +1314,7 @@ async fn reviewers_subscribers_and_inlines_go_to_php() {
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         transactions,
-        json!([{"type": "reviewers.remove", "value": ["PHID-USER-mfa"]}])
+        json!([{"type": "reviewers", "value": [], "initialValue": ["PHID-USER-mfa"]}])
     );
 
     // Unknown and disabled users are refused, saying who.

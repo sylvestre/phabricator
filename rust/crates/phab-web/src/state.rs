@@ -18,6 +18,10 @@ pub trait WebState: Send + Sync + 'static {
     fn remarkup(&self) -> &phab_remarkup::Engine;
     /// PHP's Conduit API, which writes go to until the editor is ported.
     fn php(&self) -> Option<&crate::php::PhpConduit>;
+    /// `php_uname('n')`, which Herald's transcripts of the edits record.
+    fn hostname(&self) -> Option<&str> {
+        None
+    }
     /// The Searchfox trees of repositories, from `PHAB_SEARCHFOX_TREES`.
     fn searchfox_trees(&self) -> &crate::searchfox::Trees {
         crate::searchfox::Trees::from_env()

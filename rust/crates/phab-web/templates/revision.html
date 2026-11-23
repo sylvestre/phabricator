@@ -45,6 +45,9 @@
       {%- endfor %}
     </ul>
     {%- endif %}
+    {%- if let Some((uri, label)) = subscription %}
+    <form class="subscription" method="post" action="{{ uri }}"><input type="hidden" name="__form__" value="1">{% if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}<button type="submit">{{ label }}</button></form>
+    {%- endif %}
   </dd>
   {%- if let Some(lint) = checks.lint %}
   <dt>Lint</dt>

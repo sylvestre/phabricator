@@ -96,6 +96,9 @@ pub(crate) struct RevisionPage {
     reviewers: Vec<ReviewerItem>,
     /// The subscribers, with their PHIDs to remove them.
     subscribers: Vec<(String, Link)>,
+    /// The "Subscribe" or "Unsubscribe" action: where it posts and its
+    /// label. The author and the reviewers are subscribed automatically.
+    subscription: Option<(String, &'static str)>,
     bug: Option<(i64, String)>,
     merge_conflict: Option<MergeConflictView>,
     parents: Vec<Link>,
@@ -636,6 +639,34 @@ async fn people<S: WebState>(
     Ok((author, reviewers, subscribers))
 }
 
+/// The "Subscribe" or "Unsubscribe" action of the viewer
+/// (`PhabricatorSubscriptionsUIEventListener`), none for the author and
+/// the reviewers who didn't resign (`isAutomaticallySubscribed()`).
+fn subscription(
+    viewer: &WebUser,
+    revision: &Revision,
+    subscribers: &[(String, Link)],
+) -> Option<(String, &'static str)> {
+    let phid = &viewer.user.phid;
+    let is_automatic = revision.author_phid.as_ref() == Some(phid)
+        || revision
+            .reviewers
+            .iter()
+            .any(|reviewer| reviewer.phid == *phid && reviewer.status != "resigned");
+    if is_automatic {
+        return None;
+    }
+    let revision_phid = &revision.phid;
+    if subscribers.iter().any(|(known, _)| known == phid.as_str()) {
+        Some((
+            format!("/subscriptions/delete/{revision_phid}/"),
+            "Unsubscribe",
+        ))
+    } else {
+        Some((format!("/subscriptions/add/{revision_phid}/"), "Subscribe"))
+    }
+}
+
 /// `GET /{monogram}`: path parameters can't share a segment with text, so
 /// revisions (`D123`), buildables (`B123`), Herald rules (`H123`) and
 /// commits (`rXYZabc`, `R12:abc`) share the route.
@@ -725,6 +756,7 @@ pub(crate) async fn show<S: WebState>(
         None => (None, Vec::new()),
     };
 
+    let subscription = subscription(&viewer, &revision, &subscribers);
     let monogram = format!("D{}", revision.id);
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
     let warnings = warnings(state.as_ref(), &as_viewer, &revision).await?;
@@ -752,6 +784,7 @@ pub(crate) async fn show<S: WebState>(
         modified: time::format_utc(details.date_modified),
         reviewers,
         subscribers,
+        subscription,
         bug,
         merge_conflict,
         parents: revision_links(state.as_ref(), &as_viewer, &parent_phids).await?,

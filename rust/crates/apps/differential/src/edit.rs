@@ -59,6 +59,52 @@ use crate::storage::Revision;
 /// The content source of a Conduit call (`PhabricatorConduitContentSource`).
 const CONDUIT_SOURCE: &str = r#"{"source":"conduit","params":[]}"#;
 
+/// The content source of a web request (`PhabricatorWebContentSource`).
+const WEB_SOURCE: &str = r#"{"source":"web","params":[]}"#;
+
+/// Where an edit comes from (`PhabricatorContentSource`): its transactions
+/// and comments say so, Herald's "Content source" field and the `via` mail
+/// stamp read it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum Source {
+    /// `differential.revision.edit` (`PhabricatorConduitContentSource`).
+    #[default]
+    Conduit,
+    /// A form of the web interface (`PhabricatorWebContentSource`).
+    Web {
+        /// The `remarkup.control` metadata the comment form gives its
+        /// comment (`buildCommentResponse()`): the decoded
+        /// `comment_metadata`, `null` without one.
+        remarkup_control: Value,
+    },
+}
+
+impl Source {
+    /// The serialized content source of the rows.
+    fn serialized(&self) -> &'static str {
+        match self {
+            Self::Conduit => CONDUIT_SOURCE,
+            Self::Web { .. } => WEB_SOURCE,
+        }
+    }
+
+    /// `getSourceTypeConstant()`.
+    fn constant(&self) -> &'static str {
+        match self {
+            Self::Conduit => "conduit",
+            Self::Web { .. } => "web",
+        }
+    }
+
+    /// The metadata the comment transaction starts with.
+    fn comment_metadata(&self) -> Value {
+        match self {
+            Self::Conduit => json!({}),
+            Self::Web { remarkup_control } => json!({"remarkup.control": remarkup_control}),
+        }
+    }
+}
+
 /// `PhabricatorProjectObjectHasWatcherEdgeType`.
 const PROJECT_HAS_WATCHER: i64 = 47;
 
@@ -1201,6 +1247,8 @@ enum MergeCheck {
 
 /// The planned edit.
 struct Plan {
+    /// Where the edit comes from.
+    source: Source,
     /// The revision as the edit leaves it; a new one has no ID until
     /// it is saved.
     revision: Revision,
@@ -1385,7 +1433,7 @@ fn add_old_recipients(
 fn worker_state(
     revision: &Revision,
     facts: &Facts,
-    (actor, is_new): (&str, bool),
+    (actor, is_new, via): (&str, bool, &str),
     must_encrypt: &[String],
     herald_header: &str,
 ) -> Value {
@@ -1439,7 +1487,7 @@ fn worker_state(
         stamp("string", "phid", json!(revision.phid.as_str())),
         stamp("string", "object-type", json!("DREV")),
         stamp("phid", "actor", json!(actor)),
-        stamp("string", "via", json!("conduit")),
+        stamp("string", "via", json!(via)),
         stamp("bool", "silent", Value::Null),
         stamp("bool", "encrypted", json!(must_encrypt)),
         stamp("bool", "new", json!(is_new)),
@@ -1907,7 +1955,7 @@ struct Publication {
 /// the revision, the summary or test plan set, and whether the edit
 /// unsubscribes anyone.
 fn herald_input<'a>(
-    (actor, is_new): (&'a str, bool),
+    (actor, is_new, source): (&'a str, bool, &Source),
     actions: &'a Actions,
     subscription: Option<&Subscription>,
 ) -> herald_fields::Input<'a> {
@@ -1926,6 +1974,7 @@ fn herald_input<'a>(
             .unwrap_or_default(),
         actor,
         is_new,
+        source: source.constant(),
         texts: actions
             .texts
             .iter()
@@ -1970,7 +2019,7 @@ async fn publication(
     let mut state = worker_state(
         revision,
         facts,
-        (input.actor, input.is_new),
+        (input.actor, input.is_new, input.source),
         &outcome.must_encrypt,
         &herald_header,
     );
@@ -2012,7 +2061,7 @@ async fn publication(
 async fn link_task(
     database: &Database,
     target: &Target,
-    actor: &str,
+    (actor, via): (&str, &str),
     must_encrypt: &[String],
 ) -> Result<String, MethodError> {
     // Sub-editors run no Herald: they load the saved header, null when the
@@ -2021,9 +2070,9 @@ async fn link_task(
     let header = saved.as_deref().unwrap_or_default();
     let mut state = match &target.object {
         Linked::Revision { revision, facts } => {
-            worker_state(revision, facts, (actor, false), must_encrypt, header)
+            worker_state(revision, facts, (actor, false, via), must_encrypt, header)
         }
-        Linked::Commit(commit) => commits::worker_state(commit, actor, must_encrypt, header),
+        Linked::Commit(commit) => commits::worker_state(commit, (actor, via), must_encrypt, header),
     };
     state["heraldHeader"] = json!(saved);
     Ok(php::json_encode(&json!({
@@ -2038,14 +2087,14 @@ async fn link_task(
 async fn link_tasks(
     database: &Database,
     links: Vec<Link>,
-    actor: &str,
+    (actor, via): (&str, &str),
     must_encrypt: &[String],
 ) -> Result<Vec<(Link, Vec<String>)>, MethodError> {
     let mut tasks = Vec::new();
     for link in links {
         let mut data = Vec::new();
         for target in &link.targets {
-            data.push(link_task(database, target, actor, must_encrypt).await?);
+            data.push(link_task(database, target, (actor, via), must_encrypt).await?);
         }
         tasks.push((link, data));
     }
@@ -2333,7 +2382,11 @@ async fn load_target(
     Ok((revision, facts, old_texts))
 }
 
-async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Plan, MethodError> {
+async fn plan(
+    request: &ApiRequest<'_>,
+    finder: Option<FileFinder>,
+    source: Source,
+) -> Result<Plan, MethodError> {
     let is_new = is_creation(request)?;
     let wanted = wanted(request, is_new)?;
     let actor = actor_phid(request)?;
@@ -2405,10 +2458,12 @@ async fn plan(request: &ApiRequest<'_>, finder: Option<FileFinder>) -> Result<Pl
         ),
     );
     let merge_checks = plan_merge_checks(request, &revision, &actions, &links).await?;
-    let input = herald_input((&actor, is_new), &actions, subscription.as_ref());
+    let input = herald_input((&actor, is_new, &source), &actions, subscription.as_ref());
     let published = publication(request, &mut revision, &mut facts, &input, &applied_phids).await?;
-    let tasks = link_tasks(database, links, &actor, &published.must_encrypt).await?;
+    let via = (actor.as_str(), source.constant());
+    let tasks = link_tasks(database, links, via, &published.must_encrypt).await?;
     Ok(Plan {
+        source,
         actor,
         create,
         group_id: random::random_characters(32),
@@ -2467,7 +2522,7 @@ async fn insert_transaction_on(
     .bind(kind)
     .bind(old)
     .bind(new)
-    .bind(CONDUIT_SOURCE)
+    .bind(plan.source.serialized())
     .bind(metadata)
     .bind(request.now)
     .bind(request.now)
@@ -2591,6 +2646,7 @@ async fn write(request: &ApiRequest<'_>, plan: &mut Plan) -> Result<(), MethodEr
         files::write(request, plan, edit, connection).await?;
     }
     if let Some((text, phid, comment_phid)) = &plan.comment {
+        let metadata = group_metadata(plan, plan.source.comment_metadata());
         write_comment(
             request,
             plan,
@@ -3020,7 +3076,7 @@ async fn write_comment(
     .bind(revision.phid.as_str())
     .bind(&plan.actor)
     .bind(comment_phid)
-    .bind(CONDUIT_SOURCE)
+    .bind(plan.source.serialized())
     .bind(metadata)
     .bind(now)
     .bind(now)
@@ -3039,7 +3095,7 @@ async fn write_comment(
     .bind(&plan.actor)
     .bind(&plan.actor)
     .bind(text)
-    .bind(CONDUIT_SOURCE)
+    .bind(plan.source.serialized())
     .bind(now)
     .bind(now)
     .execute(&mut *connection)
@@ -3229,6 +3285,30 @@ async fn write_herald(
 
 pub use files::{FileFinder, FilesFuture};
 
+/// Plans and writes the edit the `objectIdentifier` and `transactions` of
+/// `request` ask for, as made from `source`: `differential.revision.edit`
+/// for [`Source::Conduit`], the forms of the web interface (the comment
+/// form, the subscribe action) for [`Source::Web`], once they made their
+/// transactions Conduit ones. Without `files`, references to files are
+/// left to PHP. [`MethodError::Unsupported`] comes before anything is
+/// written. Returns the method's result.
+pub async fn apply(
+    request: &ApiRequest<'_>,
+    files: Option<FileFinder>,
+    source: Source,
+) -> Result<Value, MethodError> {
+    let mut plan = plan(request, files, source).await?;
+    write(request, &mut plan).await?;
+    Ok(json!({
+        "object": {"id": plan.revision.id, "phid": plan.revision.phid.as_str()},
+        "transactions": plan
+            .applied_phids
+            .iter()
+            .map(|phid| json!({"phid": phid}))
+            .collect::<Vec<_>>(),
+    }))
+}
+
 /// `differential.revision.edit`. Without a [`FileFinder`], references to
 /// files are left to PHP.
 #[derive(Default)]
@@ -3257,18 +3337,7 @@ impl Method for RevisionEdit {
     }
 
     fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
-        Box::pin(async move {
-            let mut plan = plan(request, self.files).await?;
-            write(request, &mut plan).await?;
-            Ok(json!({
-                "object": {"id": plan.revision.id, "phid": plan.revision.phid.as_str()},
-                "transactions": plan
-                    .applied_phids
-                    .iter()
-                    .map(|phid| json!({"phid": phid}))
-                    .collect::<Vec<_>>(),
-            }))
-        })
+        Box::pin(async move { apply(request, self.files, Source::Conduit).await })
     }
 }
 

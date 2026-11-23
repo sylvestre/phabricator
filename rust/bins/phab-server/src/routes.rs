@@ -66,6 +66,10 @@ impl phab_web::WebState for AppState {
         self.php.as_ref()
     }
 
+    fn hostname(&self) -> Option<&str> {
+        Some(&self.context.hostname)
+    }
+
     fn login(&self) -> Option<&phab_web::login::LoginSettings> {
         self.login.as_ref()
     }

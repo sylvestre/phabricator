@@ -44,6 +44,8 @@ pub(super) struct Input<'a> {
     pub(super) actor: &'a str,
     /// Whether the edit creates the revision.
     pub(super) is_new: bool,
+    /// The content source's type (`getSourceTypeConstant()`).
+    pub(super) source: &'a str,
     /// The summary and test plan the edit sets.
     pub(super) texts: Vec<(TextField, &'a str)>,
     /// Whether the edit unsubscribes anyone.
@@ -85,7 +87,7 @@ pub(super) async fn values(
             "new-object" => Php::Bool(input.is_new),
             "rule" => Php::Null,
             "always" => Php::Bool(true),
-            "contentsource" => Php::str("conduit"),
+            "contentsource" => Php::str(input.source),
             "herald.acting-user" => Php::str(input.actor),
             "projects" => phid_list(&facts.projects),
             "cc" => phid_list(&facts.subscribers),

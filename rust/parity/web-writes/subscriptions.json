@@ -1,0 +1,10 @@
+[
+  {"name": "web: subscribe to D7", "path": "/subscriptions/add/{D7}/", "fields": {}},
+  {"name": "web: subscribe to D5", "path": "/subscriptions/add/{D5}/", "fields": {}},
+  {"name": "web: subscribe to D7 again (no effect)", "path": "/subscriptions/add/{D7}/", "sql": ["INSERT INTO phabricator_differential.edge (src, type, dst, dateCreated, seq) SELECT '{D7}', 21, phid, 1, 0 FROM phabricator_user.user WHERE userName = 'alice'", "INSERT INTO phabricator_user.edge (src, type, dst, dateCreated, seq) SELECT phid, 22, '{D7}', 1, 0 FROM phabricator_user.user WHERE userName = 'alice'"], "fields": {}},
+  {"name": "web: unsubscribe from D7", "path": "/subscriptions/delete/{D7}/", "sql": ["INSERT INTO phabricator_differential.edge (src, type, dst, dateCreated, seq) SELECT '{D7}', 21, phid, 1, 0 FROM phabricator_user.user WHERE userName = 'alice'", "INSERT INTO phabricator_user.edge (src, type, dst, dateCreated, seq) SELECT phid, 22, '{D7}', 1, 0 FROM phabricator_user.user WHERE userName = 'alice'"], "fields": {}},
+  {"name": "web: unsubscribe from D7 (not subscribed)", "path": "/subscriptions/delete/{D7}/", "fields": {}},
+  {"name": "web: subscribe to D1 (own revision)", "path": "/subscriptions/add/{D1}/", "fields": {}},
+  {"name": "web: subscribe to D3 (reviewer)", "path": "/subscriptions/add/{D3}/", "fields": {}},
+  {"name": "web: subscribe to D7 from a workflow", "path": "/subscriptions/add/{D7}/", "fields": {"__ajax__": "true", "__wflow__": "true"}}
+]
