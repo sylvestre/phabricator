@@ -10,15 +10,16 @@
 //! target; a step from its build plan, which has policies of its own. The
 //! `*.edit` methods stay in PHP: `harbormaster.build.edit` and
 //! `harbormaster.buildable.edit` have no field but `mfa` (their commands
-//! are messages, sent by `sendmessage`). The build workers stay in PHP
-//! too: the write methods queue their tasks. [`web`] is what the web pages
-//! read.
+//! are messages, sent by `sendmessage`). The write methods queue the
+//! build workers' tasks, which [`engine`] runs. [`web`] is what the web
+//! pages read.
 
 pub mod artifact;
 pub mod autotargets;
 pub mod build;
 pub mod buildable;
 mod constraints;
+pub mod engine;
 pub mod message;
 pub mod plan;
 mod query;

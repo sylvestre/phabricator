@@ -3,7 +3,7 @@
 //! (`HarbormasterBuildLintMessage`, `HarbormasterBuildUnitMessage`), and
 //! commands sent to a build or to every build of a buildable. Either way
 //! the call stores `harbormaster_buildmessage` rows and queues the
-//! `HarbormasterBuildWorker` task which processes them, which stays PHP's.
+//! `HarbormasterBuildWorker` task which processes them ([`crate::engine`]).
 //!
 //! Ported: receivers named by their PHID, every message type, lint and
 //! unit results, the deprecated `buildTargetPHID`. Left to PHP: receivers

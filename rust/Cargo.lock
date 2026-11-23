@@ -1802,6 +1802,7 @@ dependencies = [
 name = "phab-app-harbormaster"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "flate2",
  "form_urlencoded",
  "phab-app-differential",
@@ -2184,6 +2185,7 @@ dependencies = [
  "phab-app-diffusion",
  "phab-app-feed",
  "phab-app-files",
+ "phab-app-harbormaster",
  "phab-app-metamta",
  "phab-app-search",
  "phab-app-transactions",

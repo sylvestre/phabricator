@@ -3,6 +3,7 @@
 use crate::handler::Registry;
 
 pub mod feed_publisher;
+pub mod harbormaster;
 pub mod metamta;
 pub mod publish;
 pub mod repository;
@@ -13,6 +14,8 @@ pub mod test_worker;
 pub fn registry() -> Registry {
     let mut registry = Registry::default();
     registry.register(feed_publisher::FeedPublisherWorker);
+    registry.register(harbormaster::BuildWorker);
+    registry.register(harbormaster::TargetWorker::default());
     registry.register(metamta::MetaMTAWorker::default());
     registry.register(publish::PublishWorker);
     registry.register(repository::MessageParserWorker);

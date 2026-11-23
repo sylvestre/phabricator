@@ -11,6 +11,7 @@ publish.workspace = true
 phab-app-diffusion.workspace = true
 phab-app-feed.workspace = true
 phab-app-files.workspace = true
+phab-app-harbormaster.workspace = true
 phab-app-metamta.workspace = true
 phab-app-search.workspace = true
 phab-app-transactions.workspace = true

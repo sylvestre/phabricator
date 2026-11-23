@@ -1,6 +1,6 @@
 [package]
 name = "phab-app-harbormaster"
-description = "Harbormaster: the search and query Conduit methods, sendmessage and createartifact, and what the web pages read"
+description = "Harbormaster: the search and query Conduit methods, sendmessage and createartifact, what the web pages read, and the build engine its workers run"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64.workspace = true
 flate2.workspace = true
 phab-app-differential.workspace = true
 phab-app-files.workspace = true
@@ -19,6 +20,7 @@ phab-policy.workspace = true
 phab-remarkup.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["net"] }
 
 [dev-dependencies]
 form_urlencoded.workspace = true

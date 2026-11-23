@@ -202,6 +202,25 @@ folding by `mb_convert_case()` Rust doesn't reproduce) or not in UTF-8.
 The Porter stemmer, term corpora and ngrams are checked against PHP's own
 code by `crates/apps/search/tests/oracle/ferret.php`.
 
+`HarbormasterBuildWorker` and `HarbormasterTargetWorker` run the build
+engine (`crates/apps/harbormaster/src/engine`) for builds of diffs'
+buildables: build commands (restart, abort, pause, resume) as
+`message/*` transactions with their publish task, target messages
+(`pass`, `fail`), build and buildable status changes, new targets with
+their tasks, artifact releases and buildable messages; and the targets of
+"Make HTTP Request" steps and Arcanist autotargets. They take PHP's
+`harbormaster.build:<id>` and `harbormaster.buildable:<id>` locks. An HTTP
+step whose URI PHP wouldn't fetch (`phabricator.silent`, a domain which
+doesn't resolve or is blacklisted) logs and fails as PHP's does; one which
+would send a request is left to PHP (the handler sends requests only
+through an `HttpClient` it is given, `TargetWorker::with_client()`, and
+none is configured). Also left to PHP: buildables of commits, a buildable
+status change Differential would publish to its revision (a
+`harbormaster:buildable` transaction through the revision editor and
+Herald), targets of revisions with a repository (clone URI variables),
+restarts of plans restartable only if failed, the other step
+implementations, credentials, and lock logs (`daemon.lock-log`).
+
 The import of Git commits (`crates/apps/diffusion/src/import`) runs the
 three steps discovery queues for each commit:
 `PhabricatorRepositoryGitCommitMessageParserWorker` (author, committer,
@@ -239,8 +258,9 @@ as JSON and exits (3 when the task was left to PHP).
 `bin/worker execute --id` on the dev stack (`--feed N`, `--metamta N` and
 `--publish N` requeue the newest stories, mails and revision publish
 tasks; `--search N` indexes the newest revisions, users and projects, as
-queued, forced and from scratch; `--repository 3` runs the import
-pipeline of R3).
+queued, forced and from scratch; `--harbormaster` sends messages to builds
+1 and 2 and buildables B1 and B2 and runs their build and target workers;
+`--repository 3` runs the import pipeline of R3).
 
 ## Checking a deployment
 
