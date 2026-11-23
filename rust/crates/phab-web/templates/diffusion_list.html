@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Repositories: {{ title }}</h1>
+  <nav class="bucket-switch" aria-label="Diffusion">
+    <a href="/diffusion/query/active/"{% if query == "active" %} aria-current="page"{% endif %}>Active Repositories</a>
+    <a href="/diffusion/query/all/"{% if query == "all" %} aria-current="page"{% endif %}>All Repositories</a>
+    <a href="/diffusion/commit/">Browse Commits</a>
+    <a href="/diffusion/identity/">Browse Identities</a>
+    <a href="/diffusion/edit/"><span class="fa fa-plus-square" aria-hidden="true"></span> Create Repository</a>
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No repositories found for this query.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li{% if item.disabled %} class="hm-disabled"{% endif %}>
+    <p class="hm-item"><span class="muted">{{ item.monogram }}</span> <a href="{{ item.href }}">{{ item.name }}</a>
+      {%- if item.disabled %} <span class="tag"><span class="fa fa-ban" aria-hidden="true"></span> Inactive</span>
+      {%- else if item.importing %} <span class="tag"><span class="fa fa-clock-o" aria-hidden="true"></span> Importing...</span>{% endif %}
+      {%- if let Some((_, _, date)) = item.commit %} <span class="muted hm-right">{{ date }}</span>{% endif %}</p>
+    {%- if let Some((href, text, _)) = item.commit %}
+    <p class="hm-attribute"><a href="{{ href }}">{{ text }}</a></p>
+    {%- endif %}
+    <p class="hm-attribute muted">{{ item.vcs }} · {% if let Some((href, label)) = item.size %}<a href="{{ href }}">{{ label }}</a>{% else %}No Commits{% endif %}
+      {%- for project in item.projects_html %} {{ project|safe }}{% endfor %}</p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/diffusion/query/{{ query }}/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

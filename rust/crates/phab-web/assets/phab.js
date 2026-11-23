@@ -326,3 +326,238 @@ for (const element of document.querySelectorAll("[data-php-fragment]")) {
     })
     .catch(() => {});
 }
+
+// The commit graph next to Diffusion histories (PHP's
+// diffusion-commit-graph behavior): each row's data-graph says which
+// columns pass by, where the commit is, and which columns it joins and
+// splits to.
+for (const list of document.querySelectorAll("[data-graph-count]")) {
+  const count = Number(list.dataset.graphCount);
+  const colors = ["#cc0000", "#cc0099", "#6600cc", "#0033cc", "#00cccc", "#00cc33", "#66cc00", "#cc9900"];
+  const color = (column) => colors[column % colors.length];
+  const cell = count >= 8 ? 6 : 12;
+  const xpos = (column) => column * cell + cell / 2;
+  for (const node of list.querySelectorAll("[data-graph]")) {
+    const data = JSON.parse(node.dataset.graph);
+    const h = node.parentNode.getBoundingClientRect().height;
+    const canvas = document.createElement("canvas");
+    canvas.width = cell * count;
+    canvas.height = h;
+    const context = canvas.getContext("2d");
+    context.translate(0.5, 0.5);
+    const line = (column) => {
+      context.lineWidth = 3;
+      context.strokeStyle = "#ffffff";
+      context.stroke();
+      context.lineWidth = 1;
+      context.strokeStyle = color(column);
+      context.stroke();
+    };
+    const dot = (column) => {
+      context.lineWidth = 1;
+      context.fillStyle = color(column);
+      context.strokeStyle = "#ffffff";
+      context.fill();
+      context.stroke();
+    };
+    let origin = null;
+    for (let index = 0; index < data.line.length; index++) {
+      if ("ox^".includes(data.line[index])) {
+        origin = xpos(index);
+      }
+    }
+    for (const join of data.join) {
+      const x = xpos(join);
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.bezierCurveTo(x, h / 4, origin, h / 4, origin, h / 2);
+      line(join);
+    }
+    for (const split of data.split) {
+      const x = xpos(split);
+      context.beginPath();
+      context.moveTo(origin, h / 2);
+      context.bezierCurveTo(origin, (3 * h) / 4, x, (3 * h) / 4, x, h);
+      line(split);
+    }
+    for (let index = 0; index < data.line.length; index++) {
+      const c = data.line[index];
+      if (!"o^|xX".includes(c)) {
+        continue;
+      }
+      if (c !== "X") {
+        context.beginPath();
+        context.moveTo(xpos(index), c === "^" ? h / 2 : 0);
+        context.lineTo(xpos(index), c === "x" ? h / 2 : h);
+        line(index);
+      }
+      if (c !== "|") {
+        context.beginPath();
+        context.arc(xpos(index), h / 2, 3, 0, 2 * Math.PI, true);
+        dot(index);
+      }
+    }
+    node.replaceChildren(canvas);
+  }
+}
+
+// The blame of a Diffusion file (PHP's document engine behavior): the
+// table's data-blame-uri answers the commit of each line, which fills the
+// "skip" and "info" cells of the first line of each run, colored by age.
+function blameColor(h, s, v) {
+  const i = Math.floor(h * 6);
+  const f = h * 6 - i;
+  const p = v * (1 - s);
+  const q = v * (1 - f * s);
+  const t = v * (1 - (1 - f) * s);
+  const [r, g, b] = [
+    [v, t, p],
+    [q, v, p],
+    [p, v, t],
+    [p, q, v],
+    [t, p, v],
+    [v, p, q],
+  ][i % 6];
+  return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+}
+
+for (const table of document.querySelectorAll("table[data-blame-uri]")) {
+  const uri = new URL(table.dataset.blameUri, window.location.href);
+  uri.searchParams.set("__ajax__", "1");
+  phpPayload(uri)
+    .then((blame) => {
+      if (!blame) {
+        return;
+      }
+      const range = blame.epoch.max - blame.epoch.min;
+      let last = null;
+      for (const row of table.querySelectorAll("tr")) {
+        const skip = row.querySelector('[data-blame="skip"]');
+        const info = row.querySelector('[data-blame="info"]');
+        if (!info) {
+          continue;
+        }
+        const commit = blame.blame[Number(info.dataset.blameLines) - 1];
+        const spec = blame.map[commit];
+        if (spec && commit !== last) {
+          // The service and PHP escape these: they are HTML of the page.
+          skip.innerHTML = spec.skip;
+          info.innerHTML = spec.info;
+        }
+        last = commit;
+        const value = !range || !spec ? 1 : (spec.epoch - blame.epoch.min) / range;
+        info.style.background = blameColor(0.04 + 0.4 * value, 0.25, 0.92 + 0.08 * value);
+      }
+    })
+    .catch(() => {});
+}
+
+// "Locate File" on Diffusion repository pages (PHP's diffusion-locate-file
+// behavior): the paths of the repository come from data-pathtree once, and
+// the best matches of what is typed link to their pages.
+for (const input of document.querySelectorAll("input[data-pathtree]")) {
+  const results = document.createElement("ul");
+  results.className = "diffusion-locate-results";
+  input.after(results);
+  let paths = null;
+  // DiffusionLocateFileSource.scoreMatch(): the longest prefix of the
+  // query found contiguously at `start`, if all of it is found in order.
+  const score = (lower, start, search) => {
+    let ii = start;
+    let pos = 0;
+    for (; ii < lower.length; ii++) {
+      if (lower[ii] === search[pos]) {
+        pos++;
+        if (pos === search.length) {
+          return pos;
+        }
+      } else {
+        ii++;
+        break;
+      }
+    }
+    let rem = pos;
+    for (; ii < lower.length; ii++) {
+      if (lower[ii] === search[rem]) {
+        rem++;
+        if (rem === search.length) {
+          return pos;
+        }
+      }
+    }
+    return -1;
+  };
+  const show = () => {
+    const search = input.value.toLowerCase().replace(" ", "");
+    results.replaceChildren();
+    if (!search || !paths) {
+      return;
+    }
+    const found = [];
+    for (const path of paths) {
+      const lower = path.toLowerCase();
+      // matchTree(): the query is found in order in the path.
+      let matched = 0;
+      for (let jj = 0; jj < lower.length && matched < search.length; jj++) {
+        if (lower[jj] === search[matched]) {
+          matched++;
+        }
+      }
+      if (matched < search.length) {
+        continue;
+      }
+      let best = 0;
+      let pos = 0;
+      for (let jj = 0; jj < lower.length; jj++) {
+        if (lower[jj] !== search[0]) {
+          continue;
+        }
+        const value = score(lower, jj, search);
+        if (value === -1) {
+          break;
+        }
+        if (value > best) {
+          best = value;
+          pos = jj;
+          if (best === search.length) {
+            break;
+          }
+        }
+      }
+      found.push({ path, score: best, pos });
+    }
+    found.sort((u, v) => v.score - u.score || u.pos - v.pos || (u.path > v.path ? 1 : -1));
+    for (const match of found.slice(0, 20)) {
+      const link = document.createElement("a");
+      link.href = input.dataset.browse + match.path;
+      const strong = document.createElement("strong");
+      strong.textContent = match.path.substr(match.pos, match.score);
+      link.append(match.path.substr(0, match.pos), strong, match.path.substr(match.pos + match.score));
+      const item = document.createElement("li");
+      item.append(link);
+      results.append(item);
+    }
+  };
+  const load = async () => {
+    if (paths !== null) {
+      return;
+    }
+    paths = [];
+    const uri = new URL(input.dataset.pathtree, window.location.href);
+    uri.searchParams.set("__ajax__", "1");
+    const payload = await phpPayload(uri).catch(() => null);
+    const flatten = (tree, prefix) => {
+      for (const [part, child] of Object.entries(tree || {})) {
+        if (child === 1) {
+          paths.push(prefix + part);
+        } else {
+          flatten(child, prefix + part);
+        }
+      }
+    };
+    flatten(payload && payload.tree, "");
+    show();
+  };
+  input.addEventListener("focus", load);
+  input.addEventListener("input", show);
+}

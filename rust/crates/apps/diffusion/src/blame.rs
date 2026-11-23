@@ -10,19 +10,15 @@
 //! `timeout` (whether Git beats it is up to the host) and values of
 //! unusual types.
 
-use std::io::Read as _;
-
 use phab_conduit::{ApiRequest, MethodError, MethodFuture};
 use phab_core::php as core_php;
-use phab_db::rows;
-use phab_db::sqlx::Row as _;
 use serde_json::{Value, json};
 
 use crate::drequest::DiffusionRequest;
-use crate::git;
 use crate::last_modified_query::last_modified;
 use crate::php::{self, Array, Key};
 use crate::query::QueryMethod;
+use crate::{cache, git};
 
 /// `phutil_split_lines()`, keeping line endings.
 fn split_lines(text: &str) -> Vec<&str> {
@@ -50,66 +46,11 @@ async fn read_cache(
     request: &ApiRequest<'_>,
     keys: &[(Key, String)],
 ) -> Result<Vec<(Key, Vec<String>)>, MethodError> {
-    if keys.is_empty() {
-        return Ok(Vec::new());
-    }
-    let config = &request.context.config;
-    // PhabricatorCaches::getNamespace(), "phabricator" by default.
-    let namespace = match config.value("phabricator.cache-namespace") {
-        None => "phabricator:".to_owned(),
-        Some(Value::Null) => String::new(),
-        Some(Value::String(namespace)) if namespace.is_empty() => String::new(),
-        Some(Value::String(namespace)) => format!("{namespace}:"),
-        Some(_) => return Err(MethodError::Unsupported("an unusual cache namespace")),
-    };
-    let database = &request.context.database;
-    let sql = format!(
-        "SELECT cacheKey, cacheFormat, cacheData, cacheExpires FROM {} WHERE cacheKeyHash IN ({})",
-        database.table("cache", "cache_general"),
-        phab_db::placeholders(keys.len())
-    );
-    let full_keys: Vec<String> = keys
-        .iter()
-        .map(|(_, key)| format!("{namespace}{key}"))
-        .collect();
-    let found = phab_db::bind_all(
-        phab_db::sqlx::query(&sql),
-        full_keys
-            .iter()
-            .map(|key| phab_core::hash::digest_for_index(key.as_bytes())),
-    )
-    .fetch_all(database.pool())
-    .await?;
+    let names: Vec<String> = keys.iter().map(|(_, key)| key.clone()).collect();
     let mut cached = Vec::new();
-    for ((path, _), full_key) in keys.iter().zip(&full_keys) {
-        let Some(row) = found
-            .iter()
-            .rev()
-            .find(|row| rows::text(row, "cacheKey").is_ok_and(|key| key == *full_key))
-        else {
+    for ((path, _), data) in keys.iter().zip(cache::read(request, &names).await?) {
+        let Some(data) = data else {
             continue;
-        };
-        let expires = rows::opt_int(row, "cacheExpires")?.unwrap_or(0);
-        if expires != 0 && expires < request.now {
-            continue;
-        }
-        let data: Vec<u8> = row
-            .try_get::<Vec<u8>, _>("cacheData")
-            .map_err(MethodError::internal)?;
-        let data = match rows::text(row, "cacheFormat")?.as_str() {
-            "raw" => data,
-            "deflate" => {
-                let mut inflated = Vec::new();
-                if flate2::read::DeflateDecoder::new(data.as_slice())
-                    .read_to_end(&mut inflated)
-                    .is_err()
-                {
-                    // PHP treats this as a cache miss.
-                    continue;
-                }
-                inflated
-            }
-            _ => continue,
         };
         let data = php::text(data)?;
         let Some((head, body)) = data.split_once('\n') else {

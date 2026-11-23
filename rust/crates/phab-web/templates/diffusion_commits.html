@@ -1,9 +1,13 @@
-<ul class="hm-list diffusion-history">
+<ul class="hm-list diffusion-history" data-graph-count="{{ graph_count }}">
   {%- for item in items %}
-  {%- if let Some(date) = item.date %}
-  <li class="diffusion-date"><h3>{{ date }}</h3></li>
-  {%- endif %}
-  <li{% if item.disabled %} class="hm-disabled"{% endif %}>
+  <li class="{% if item.disabled %}hm-disabled{% endif %}{% if item.graph.is_some() %} diffusion-graph-row{% endif %}">
+    {%- if let Some(graph) = item.graph %}
+    <div class="diffusion-graph" data-graph="{{ graph }}"></div>
+    {%- endif %}
+    <div class="diffusion-graph-content">
+    {%- if let Some(date) = item.date %}
+    <h3 class="diffusion-date">{{ date }}</h3>
+    {%- endif %}
     <p class="hm-item"><a href="{{ item.href }}"><span class="muted">{{ item.name }}</span> {{ item.description_html|safe }}</a></p>
     <p class="hm-attribute">
       {%- if let Some(author) = item.author_html %}Author: {{ author|safe }}{% endif %}
@@ -14,6 +18,7 @@
       · {% if let Some(href) = item.build.1 %}<a href="{{ href }}">{{ item.build.0.html()|safe }}</a>{% else %}<span class="muted">{{ item.build.0.html()|safe }}</span>{% endif %}
       · {% if let Some((name, icon, color)) = item.audit %}<a href="{{ item.href }}"><span class="fa {{ icon }} remarkup-icon-{{ color }}" aria-hidden="true"></span> {{ name }}</a>{% else %}<span class="muted"><span class="fa fa-check" aria-hidden="true"></span> No Audits</span>{% endif %}
     </p>
+    </div>
   </li>
   {%- endfor %}
 </ul>

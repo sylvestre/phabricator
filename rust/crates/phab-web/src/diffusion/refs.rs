@@ -208,13 +208,7 @@ pub(crate) async fn branches<S: WebState>(
 
 /// The `compare` URI with a `head`.
 fn compare_uri(context: &Context, head: &str) -> String {
-    let mut query = form_urlencoded::Serializer::new(String::new());
-    query.append_pair("head", head);
-    format!(
-        "{}?{}",
-        context.uri("compare", Link::default()),
-        query.finish()
-    )
+    context.compare_uri(Some(head), None)
 }
 
 /// `GET /source/<x>/tags/<blob>`.

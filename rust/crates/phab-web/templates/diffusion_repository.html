@@ -28,6 +28,9 @@
     <li><a href="{{ clone_uri }}"><span class="fa fa-download" aria-hidden="true"></span> Clone</a></li>
   </ul>
 </nav>
+<form class="diffusion-locate" role="search" action="{{ locate.1 }}" method="get">
+  <input type="text" data-pathtree="{{ locate.0 }}" data-browse="{{ locate.1 }}" placeholder="Locate File" aria-label="Locate File" autocomplete="off">
+</form>
 {%- if let Some(description) = description %}
 <section class="diffusion-box"><div class="remarkup">{{ description|safe }}</div></section>
 {%- endif %}

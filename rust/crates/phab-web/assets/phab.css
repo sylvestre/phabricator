@@ -399,3 +399,25 @@ li.hm-disabled a { color: var(--muted); }
   .settings { flex-direction: column; }
   .settings-nav { flex: none; }
 }
+/* Diffusion: the commit graph, blame, "Locate File" and the management panels. */
+.diffusion-graph-row { display: flex; }
+.diffusion-graph { flex: none; }
+.diffusion-graph canvas { display: block; }
+.diffusion-graph-content { flex: 1; min-width: 0; }
+h3.diffusion-date { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.phabricator-source-blame-skip, .phabricator-source-blame-info { padding: 0 6px; font-weight: normal; white-space: nowrap; vertical-align: top; text-align: left; }
+.phabricator-source-blame-skip a { color: var(--muted); }
+.phabricator-source-blame-info a { color: #333; }
+.diffusion-locate { position: relative; margin: 8px 0; }
+.diffusion-locate input { font: inherit; padding: 2px 6px; width: 20em; }
+.diffusion-locate-results { position: absolute; z-index: 1; margin: 0; padding: 0; list-style: none; background: var(--surface); border: 1px solid var(--border); }
+.diffusion-locate-results:empty { display: none; }
+.diffusion-locate-results a { display: block; padding: 2px 8px; }
+.diffusion-manage { display: flex; gap: 24px; align-items: flex-start; }
+.diffusion-manage-nav { flex: 0 0 200px; }
+.diffusion-manage-nav ul { margin: 0; padding: 0; list-style: none; }
+.diffusion-manage-nav a { display: block; padding: 3px 6px; border-radius: 3px; text-decoration: none; }
+.diffusion-manage-nav a[aria-current="page"] { background: var(--surface); border-left: 3px solid var(--accent); font-weight: 600; }
+.diffusion-manage-group { margin: 16px 0 4px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
+.diffusion-manage-panel { flex: 1; min-width: 0; }
+.diffusion-buttons li.divider { border-left: 1px solid var(--border); padding-left: 16px; }

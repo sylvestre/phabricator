@@ -38,7 +38,7 @@ const CHANGES_LIMIT: usize = 100;
 /// `getMergeDisplayLimit()`.
 const MERGE_LIMIT: usize = 50;
 /// `ArcanistGitAPI::GIT_MAGIC_ROOT_COMMIT`: the empty tree.
-const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+pub(crate) const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /// `DiffusionCommitRevertsCommitEdgeType`.
 const COMMIT_REVERTS_COMMIT: i64 = 55;
 /// `DiffusionCommitRevertedByCommitEdgeType`.
@@ -337,18 +337,16 @@ fn to_changeset(path_id: i64, new: phab_diff::build::NewChangeset) -> Changeset 
 }
 
 /// `diffusion.diffquery` for one path: the changeset of `git diff` with
-/// full context against the commit's first parent.
-async fn changeset(
+/// full context against `against` (the commit's first parent), with the
+/// path's ID.
+pub(crate) async fn changeset(
     context: &Context,
     commit: &str,
     against: &str,
-    change: &PathChange,
+    path: &str,
+    path_id: i64,
 ) -> Result<Option<Changeset>, PageError> {
-    let path = if change.path.is_empty() {
-        "."
-    } else {
-        change.path.as_str()
-    };
+    let path = if path.is_empty() { "." } else { path };
     let raw = context
         .drequest
         .copy
@@ -390,34 +388,15 @@ async fn changeset(
     Ok(changesets
         .into_iter()
         .next()
-        .map(|new| to_changeset(change.path_id, new)))
+        .map(|new| to_changeset(path_id, new)))
 }
 
-/// The rendered changesets of the commit's changes.
-async fn changesets<S: WebState>(
+/// The changesets as the revision page renders them.
+pub(crate) async fn render_changesets<S: WebState>(
     state: &S,
     context: &Context,
-    commit: &Commit,
-    parents: &[String],
-    changes: &[PathChange],
+    built: Vec<Changeset>,
 ) -> Result<Vec<String>, PageError> {
-    let against = match parents.first() {
-        Some(_) => format!("{}^", commit.identifier),
-        None => EMPTY_TREE.to_owned(),
-    };
-    let mut built = Vec::new();
-    for change in changes {
-        // Git has no directory changes.
-        if change.file_type == 4 {
-            continue;
-        }
-        if let Some(changeset) = changeset(context, &commit.identifier, &against, change).await? {
-            if matches!(changeset.file_type, FileType::Binary | FileType::Image) {
-                return Err(PageError::Fallback("a commit with binary or image changes"));
-            }
-            built.push(changeset);
-        }
-    }
     let searchfox = state.searchfox_trees().tree_for(&context.repository);
     let options = phab_diff::view::ViewOptions {
         diff_command: crate::revision::diff_command(),
@@ -439,6 +418,42 @@ async fn changesets<S: WebState>(
     })
     .await
     .map_err(harbormaster::internal)
+}
+
+/// The rendered changesets of the commit's changes.
+async fn changesets<S: WebState>(
+    state: &S,
+    context: &Context,
+    commit: &Commit,
+    parents: &[String],
+    changes: &[PathChange],
+) -> Result<Vec<String>, PageError> {
+    let against = match parents.first() {
+        Some(_) => format!("{}^", commit.identifier),
+        None => EMPTY_TREE.to_owned(),
+    };
+    let mut built = Vec::new();
+    for change in changes {
+        // Git has no directory changes.
+        if change.file_type == 4 {
+            continue;
+        }
+        if let Some(changeset) = changeset(
+            context,
+            &commit.identifier,
+            &against,
+            &change.path,
+            change.path_id,
+        )
+        .await?
+        {
+            if matches!(changeset.file_type, FileType::Binary | FileType::Image) {
+                return Err(PageError::Fallback("a commit with binary or image changes"));
+            }
+            built.push(changeset);
+        }
+    }
+    render_changesets(state, context, built).await
 }
 
 /// A call whose failure PHP reports on the page (`loadCommitState()`):

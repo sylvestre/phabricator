@@ -142,7 +142,7 @@ impl Commit {
     }
 
     /// `getAuthorDisplayPHID()`.
-    fn author_display_phid(&self) -> Option<Phid> {
+    pub(crate) fn author_display_phid(&self) -> Option<Phid> {
         Self::display_phid(self.author_identity.as_ref()).or_else(|| {
             self.detail("authorPHID")
                 .and_then(Value::as_str)

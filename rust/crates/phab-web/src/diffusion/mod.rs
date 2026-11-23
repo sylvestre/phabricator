@@ -1,27 +1,36 @@
 //! Diffusion pages of Git repositories (W13), read-only: the repository
-//! home (`/source/<short name>/`, `/diffusion/<callsign or ID>/`), browse
-//! (directories and files), history, branches, tags and commits
-//! (`/rXYZ<hash>`, `/R<id>:<hash>`).
+//! list (`/diffusion/`), the repository home (`/source/<short name>/`,
+//! `/diffusion/<callsign or ID>/`), browse (directories and files, with
+//! blame), history, branches, tags, the change of a path, comparisons,
+//! the management panels, commits (`/rXYZ<hash>`, `/R<id>:<hash>`) and the
+//! endpoints these pages' scripts load (`ajax`).
 //!
 //! The pages call the `diffusion.*` query methods as the viewer, as PHP's
 //! controllers do through `callConduitWithDiffusionRequest()`, and fall
 //! back to PHP for what they don't render (`421`): Mercurial and
 //! Subversion repositories, hosted and cluster repositories, a working
-//! copy this host doesn't have, blame and other views, very large, binary
-//! and image files, commits with audits or inline comments, searches,
+//! copy this host doesn't have, other views, very large, binary and image
+//! files, commits with audits or inline comments, searches, form posts
 //! and query strings other than the pager's.
 
+mod ajax;
 mod browse;
+mod change;
 mod commit;
 mod commits;
+mod compare;
+mod graph;
 mod history;
 mod home;
+mod list;
+mod manage;
 mod refs;
 mod uri;
 
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
@@ -32,6 +41,7 @@ use phab_conduit::Method;
 use serde_json::{Map, Value, json};
 
 pub(crate) use commit::{parse_monogram as parse_commit_monogram, show as commit};
+pub(crate) use list::{list, list_query};
 
 use crate::error::PageError;
 use crate::harbormaster::{Scope, method_error};
@@ -285,6 +295,34 @@ impl Context {
         )
     }
 
+    /// `generateURI()` of the `compare` action: `head`, or else the page's
+    /// symbolic commit (as `commit`) or branch (as `head`), and `against`.
+    fn compare_uri(&self, head: Option<&str>, against: Option<&str>) -> String {
+        let mut query = form_urlencoded::Serializer::new(String::new());
+        match (head, self.commit.as_deref()) {
+            (Some(head), _) if !head.is_empty() => {
+                query.append_pair("head", head);
+            }
+            (_, Some(commit)) if !commit.is_empty() => {
+                query.append_pair("commit", commit);
+            }
+            _ if !self.branch.is_empty() => {
+                query.append_pair("head", &self.branch);
+            }
+            _ => {}
+        }
+        if let Some(against) = against.filter(|against| !against.is_empty()) {
+            query.append_pair("against", against);
+        }
+        let query = query.finish();
+        let base = self.uri("compare", Link::default());
+        if query.is_empty() {
+            base
+        } else {
+            format!("{base}?{query}")
+        }
+    }
+
     /// The default branch (`getDefaultBranch()`).
     fn default_branch(&self) -> String {
         self.repository.default_branch().unwrap_or_default()
@@ -443,7 +481,8 @@ impl Pager {
             if offset == 0 {
                 base.to_owned()
             } else {
-                format!("{base}?offset={offset}")
+                let separator = if base.contains('?') { '&' } else { '?' };
+                format!("{base}{separator}offset={offset}")
             }
         };
         Self {
@@ -516,34 +555,94 @@ fn offset(query: Option<&str>) -> Result<i64, PageError> {
     Ok(offset)
 }
 
+/// The parameters of an endpoint loaded by scripts: `JX.Request` and
+/// Rust's pages add `__ajax__` (and PHP's `__metablock__`), which change
+/// nothing of the answer.
+fn ajax_params(query: Option<&str>) -> Vec<(String, String)> {
+    let mut params = Vec::new();
+    for (key, value) in form_urlencoded::parse(query.unwrap_or_default().as_bytes()) {
+        match key.as_ref() {
+            "__ajax__" | "__metablock__" | "__wflow__" => {}
+            _ => params.push((key.into_owned(), value.into_owned())),
+        }
+    }
+    params
+}
+
+/// A request to a repository URI.
+struct RepositoryRequest {
+    uri: Uri,
+    headers: HeaderMap,
+    query: Option<String>,
+    /// The body of a `POST`.
+    body: Option<Bytes>,
+}
+
+/// The `paths` and CSRF token of a `lastmodified/` request, from its
+/// query string and body.
+fn lastmodified_params(request: &RepositoryRequest) -> (Option<String>, Option<String>) {
+    let mut paths = None;
+    let mut token = None;
+    let body = request.body.as_deref().unwrap_or_default();
+    for pairs in [
+        form_urlencoded::parse(request.query.as_deref().unwrap_or_default().as_bytes()),
+        form_urlencoded::parse(body),
+    ] {
+        for (key, value) in pairs {
+            match key.as_ref() {
+                "paths" => paths = Some(value.into_owned()),
+                "__csrf__" => token = Some(value.into_owned()),
+                _ => {}
+            }
+        }
+    }
+    (paths, token)
+}
+
 /// The page of a repository URI: its action, and the blob after it.
+#[allow(clippy::too_many_lines)]
 async fn dispatch<S: WebState>(
     state: Arc<S>,
     viewer: WebUser,
     prefix: Prefix,
     identifier: &str,
     rest: &str,
-    request: (Uri, HeaderMap, Option<String>),
+    request: RepositoryRequest,
 ) -> Result<Response, PageError> {
-    let (uri, headers, query) = request;
-    if is_vcs_request(&headers) {
+    if is_vcs_request(&request.headers) {
         return Err(PageError::Fallback(
             "a request from a version control client",
         ));
     }
+    let uri = &request.uri;
+    let query = request.query.as_deref();
     // PHP's routes end each action with a slash.
     let Some((action, blob)) = rest.split_once('/').or(rest.is_empty().then_some(("", ""))) else {
         return Err(PageError::Fallback("a Diffusion page not ported"));
     };
     let action = match action {
         "" | "repository" if rest.is_empty() || action == "repository" => "repository",
-        "browse" | "history" | "branches" | "tags" | "commit" => action,
+        "browse" | "history" | "branches" | "tags" | "commit" | "blame" | "lastmodified"
+        | "change" | "compare" | "pathtree" | "manage" => action,
         _ => return Err(PageError::Fallback("a Diffusion page not ported")),
     };
+    if request.body.is_some() && action != "lastmodified" {
+        return Err(PageError::Fallback("a form post"));
+    }
+    let load = |blob: Option<Blob>| {
+        let state = Arc::clone(&state);
+        let viewer = viewer.clone();
+        let uri = uri.clone();
+        async move { Context::load(&*state, &viewer, prefix, identifier, blob, &uri).await }
+    };
     if action == "commit" {
-        // `commit/<hash>/branches/` and `/tags/` are fragments for PHP's
-        // scripts; `commit/<hash>` is the commit page.
-        let hash = blob.trim_end_matches('/');
+        // `commit/<hash>/` is the commit page, `commit/<hash>/branches/`
+        // and `/tags/` fragments of it.
+        let (hash, fragment) = match blob.trim_end_matches('/').split_once('/') {
+            Some((hash, fragment)) if blob.ends_with('/') => (hash, Some(fragment)),
+            Some(_) => return Err(PageError::Fallback("a Diffusion page not ported")),
+            None => (blob.trim_end_matches('/'), None),
+        };
         if hash.is_empty()
             || !hash
                 .bytes()
@@ -551,8 +650,29 @@ async fn dispatch<S: WebState>(
         {
             return Err(PageError::Fallback("a Diffusion page not ported"));
         }
-        offset(query.as_deref())?;
-        let context = match Context::load(&*state, &viewer, prefix, identifier, None, &uri).await {
+        if let Some(fragment) = fragment {
+            if !matches!(fragment, "branches" | "tags") {
+                return Err(PageError::Fallback("a Diffusion page not ported"));
+            }
+            if !ajax_params(query).is_empty() {
+                return Err(PageError::Fallback("a query string the pages don't read"));
+            }
+            let blob = Blob {
+                commit: Some(hash.to_owned()),
+                ..Blob::default()
+            };
+            let context = match load(Some(blob)).await {
+                Ok(context) => context,
+                Err(response) => return Ok(*response),
+            };
+            return if fragment == "branches" {
+                ajax::commit_branches(&context).await
+            } else {
+                ajax::commit_tags(&context).await
+            };
+        }
+        offset(query)?;
+        let context = match load(None).await {
             Ok(context) => context,
             Err(response) => return Ok(*response),
         };
@@ -561,21 +681,82 @@ async fn dispatch<S: WebState>(
         }
         return commit::page(&*state, &viewer, context, hash.to_owned()).await;
     }
+    if action == "manage" {
+        let panel = match blob.split_once('/') {
+            None if blob.is_empty() => None,
+            Some((panel, "")) if !panel.is_empty() => Some(panel.to_owned()),
+            _ => return Err(PageError::Fallback("a Diffusion page not ported")),
+        };
+        if query.is_some_and(|query| !query.is_empty()) {
+            return Err(PageError::Fallback("a query string the pages don't read"));
+        }
+        let context = match load(None).await {
+            Ok(context) => context,
+            Err(response) => return Ok(*response),
+        };
+        return manage::page(&*state, &viewer, context, panel.as_deref()).await;
+    }
     let blob = if blob.is_empty() {
         None
     } else {
         Some(uri::parse_blob(blob).ok_or(PageError::Fallback("a path PHP refuses"))?)
     };
-    let offset = offset(query.as_deref())?;
-    let context = match Context::load(&*state, &viewer, prefix, identifier, blob, &uri).await {
+    match action {
+        "lastmodified" => {
+            let (paths, token) = lastmodified_params(&request);
+            if request.body.is_some()
+                && !viewer.is_valid_csrf_token(token.as_deref().unwrap_or_default(), state.now())?
+            {
+                return Err(PageError::Fallback("a request with an invalid CSRF token"));
+            }
+            let paths = ajax::parse_paths(paths.as_deref())?;
+            let context = match load(blob).await {
+                Ok(context) => context,
+                Err(response) => return Ok(*response),
+            };
+            return ajax::last_modified(&*state, &context, &paths).await;
+        }
+        "blame" | "pathtree" => {
+            if !ajax_params(query).is_empty() {
+                return Err(PageError::Fallback("a query string the pages don't read"));
+            }
+            let context = match load(blob).await {
+                Ok(context) => context,
+                Err(response) => return Ok(*response),
+            };
+            return if action == "blame" {
+                ajax::blame(&*state, &viewer, &context).await
+            } else {
+                ajax::path_tree(&context).await
+            };
+        }
+        "compare" => {
+            let context = match load(blob).await {
+                Ok(context) => context,
+                Err(response) => return Ok(*response),
+            };
+            return compare::page(&*state, &viewer, context, query).await;
+        }
+        "browse" => {
+            let (offset, blame) = browse::params(query)?;
+            let context = match load(blob).await {
+                Ok(context) => context,
+                Err(response) => return Ok(*response),
+            };
+            return browse::page(&*state, &viewer, context, offset, blame).await;
+        }
+        _ => {}
+    }
+    let offset = offset(query)?;
+    let context = match load(blob).await {
         Ok(context) => context,
         Err(response) => return Ok(*response),
     };
     match action {
         "repository" => home::page(&*state, &viewer, context, offset).await,
-        "browse" => browse::page(&*state, &viewer, context, offset).await,
         "history" => history::page(&*state, &viewer, context, offset).await,
         "branches" => refs::branches(&*state, &viewer, context, offset).await,
+        "change" => change::page(&*state, &viewer, context, offset).await,
         _ => refs::tags(&*state, &viewer, context, offset).await,
     }
 }
@@ -595,7 +776,12 @@ pub(crate) async fn source_root<S: WebState>(
         Prefix::Source,
         &short,
         "",
-        (uri, headers, query),
+        RepositoryRequest {
+            uri,
+            headers,
+            query,
+            body: None,
+        },
     )
     .await
 }
@@ -615,7 +801,12 @@ pub(crate) async fn source<S: WebState>(
         Prefix::Source,
         &short,
         &rest,
-        (uri, headers, query),
+        RepositoryRequest {
+            uri,
+            headers,
+            query,
+            body: None,
+        },
     )
     .await
 }
@@ -635,7 +826,12 @@ pub(crate) async fn diffusion_root<S: WebState>(
         Prefix::Diffusion,
         &identifier,
         "",
-        (uri, headers, query),
+        RepositoryRequest {
+            uri,
+            headers,
+            query,
+            body: None,
+        },
     )
     .await
 }
@@ -655,7 +851,65 @@ pub(crate) async fn diffusion<S: WebState>(
         Prefix::Diffusion,
         &identifier,
         &rest,
-        (uri, headers, query),
+        RepositoryRequest {
+            uri,
+            headers,
+            query,
+            body: None,
+        },
+    )
+    .await
+}
+
+/// `POST /source/{short}/{rest}`: only `lastmodified/` reads posts.
+pub(crate) async fn source_post<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path((short, rest)): Path<(String, String)>,
+    uri: Uri,
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+    body: Bytes,
+) -> Result<Response, PageError> {
+    dispatch(
+        state,
+        viewer,
+        Prefix::Source,
+        &short,
+        &rest,
+        RepositoryRequest {
+            uri,
+            headers,
+            query,
+            body: Some(body),
+        },
+    )
+    .await
+}
+
+/// `POST /diffusion/{identifier}/{rest}`: only `lastmodified/` reads
+/// posts.
+pub(crate) async fn diffusion_post<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path((identifier, rest)): Path<(String, String)>,
+    uri: Uri,
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+    body: Bytes,
+) -> Result<Response, PageError> {
+    dispatch(
+        state,
+        viewer,
+        Prefix::Diffusion,
+        &identifier,
+        &rest,
+        RepositoryRequest {
+            uri,
+            headers,
+            query,
+            body: Some(body),
+        },
     )
     .await
 }

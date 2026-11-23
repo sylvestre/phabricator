@@ -294,6 +294,27 @@ pub async fn load_by_ids(database: &Database, ids: &[i64]) -> Result<Vec<Reposit
         .collect()
 }
 
+/// Whether `viewer` can edit `repository` (`CAN_EDIT`).
+pub async fn can_edit(
+    database: &Database,
+    config: &Config,
+    viewer: &Viewer,
+    repository: &Repository,
+    now: i64,
+) -> Result<bool, VisibilityError> {
+    let subject = repository.subject();
+    let facts = phab_policy::loader::load_facts(
+        database,
+        config,
+        viewer,
+        &[subject],
+        &Repositories { database },
+        now,
+    )
+    .await?;
+    Ok(phab_policy::filter(viewer, &[subject], &[Capability::EDIT], &facts)?[0])
+}
+
 /// The repositories `viewer` can see (`PhabricatorRepositoryQuery`).
 pub async fn visible(
     database: &Database,

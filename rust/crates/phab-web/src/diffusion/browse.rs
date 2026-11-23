@@ -1,10 +1,11 @@
 //! `/source/<x>/browse/<branch>/<path>` (`DiffusionBrowseController`): a
 //! directory, with its README and the open revisions touching it, or a
-//! file, highlighted when a grammar covers it.
+//! file, highlighted when a grammar covers it, with its blame (which the
+//! page's script loads from `blame/`, as PHP's does) unless `?blame=off`.
 //!
 //! Left to PHP: searches (`?grep=`), the other views of a file (raw,
-//! blame, `?before=`, document engines), binary, image, notebook and
-//! very large files, Git LFS, and directories of a branch with lint.
+//! `?before=`, document engines), binary, image, notebook and very large
+//! files, Git LFS, and directories of a branch with lint.
 
 use std::fmt::Write as _;
 
@@ -140,8 +141,26 @@ pub(crate) struct FilePage {
     header: Header,
     buttons: Vec<Button>,
     name: String,
+    /// Where the script loads the blame from, unless it is off.
+    blame_uri: Option<String>,
     lines: Vec<Line>,
     open_revisions: Vec<OpenRevision>,
+}
+
+/// The parameters of a browse page: the pager offset, and whether blame
+/// is on (`blame` other than `off`).
+pub(crate) fn params(query: Option<&str>) -> Result<(i64, bool), PageError> {
+    let mut rest = form_urlencoded::Serializer::new(String::new());
+    let mut blame = true;
+    for (key, value) in form_urlencoded::parse(query.unwrap_or_default().as_bytes()) {
+        if key == "blame" {
+            blame = value != "off";
+        } else {
+            rest.append_pair(&key, &value);
+        }
+    }
+    let rest = rest.finish();
+    Ok((super::offset(Some(&rest))?, blame))
 }
 
 /// `getIconForFileType()`.
@@ -411,7 +430,7 @@ pub(crate) async fn open_revisions<S: WebState>(
 
 /// Whether the page's branch has lint messages, which PHP's table shows
 /// in a column of its own.
-async fn has_lint<S: WebState>(state: &S, context: &Context) -> Result<bool, PageError> {
+pub(crate) async fn has_lint<S: WebState>(state: &S, context: &Context) -> Result<bool, PageError> {
     let database = state.database();
     let sql = format!(
         "SELECT lintCommit FROM {} WHERE repositoryID = ? AND name = ?",
@@ -458,7 +477,7 @@ fn action_buttons(context: &Context, is_directory: bool) -> Vec<Button> {
         buttons.push(Button {
             text: "Compare",
             icon: "fa-code-fork",
-            href: context.uri("compare", Link::default()),
+            href: context.compare_uri(None, None),
         });
     }
     if context
@@ -595,6 +614,7 @@ pub(crate) async fn page<S: WebState>(
     viewer: &WebUser,
     context: Context,
     offset: i64,
+    blame: bool,
 ) -> Result<Response, PageError> {
     let stable = context.stable().await?;
     let result = context
@@ -613,7 +633,7 @@ pub(crate) async fn page<S: WebState>(
         .and_then(Value::as_str)
         == Some("is-file")
     {
-        return Ok(file(state, viewer, &context, &stable)
+        return Ok(file(state, viewer, &context, &stable, blame)
             .await?
             .into_response());
     }
@@ -675,6 +695,7 @@ async fn file<S: WebState>(
     viewer: &WebUser,
     context: &Context,
     stable: &Stable,
+    blame: bool,
 ) -> Result<Page<FilePage>, PageError> {
     if is_document(&context.path) {
         return Err(PageError::Fallback("an image, notebook or PDF file"));
@@ -740,11 +761,31 @@ async fn file<S: WebState>(
         icon: "fa-file-text",
         href: raw,
     });
+    // The "Show Blame" and "Hide Blame" options of PHP's view menu.
+    let mut toggle = context.uri("browse", Link::default());
+    if blame {
+        toggle.push_str("?blame=off");
+    }
+    buttons.push(Button {
+        text: if blame { "Hide Blame" } else { "Show Blame" },
+        icon: "fa-backward",
+        href: toggle,
+    });
+    let blame_uri = blame.then(|| {
+        context.uri(
+            "blame",
+            Link {
+                commit: Some(&stable.hash),
+                ..Link::default()
+            },
+        )
+    });
     Ok(Page(FilePage {
         shell: context.shell(state, viewer, &context.title(&name)),
         header: header(context, stable, "fa-file-code-o"),
         buttons,
         name,
+        blame_uri,
         lines,
         open_revisions: open_revisions(state, viewer, context).await?,
     }))

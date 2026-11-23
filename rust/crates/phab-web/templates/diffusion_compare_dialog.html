@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="diffusion-box dialog">
+  <h2>Compare Against</h2>
+  <form method="post" action="{{ action }}">
+    <input type="hidden" name="__csrf__" value="{{ csrf_token }}">
+    <input type="hidden" name="__form__" value="1">
+    <dl class="properties">
+      <dt><label for="compare-head">Head</label></dt>
+      <dd><input type="text" id="compare-head" name="head" value="{{ head }}"></dd>
+      <dt><label for="compare-against">Against</label></dt>
+      <dd><input type="text" id="compare-against" name="against" value="{{ against }}"></dd>
+    </dl>
+    <p><button type="submit">Compare</button> <a href="{{ cancel_href }}">Cancel</a></p>
+  </form>
+</section>
+{% endblock %}

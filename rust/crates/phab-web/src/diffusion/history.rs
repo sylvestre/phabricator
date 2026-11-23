@@ -1,7 +1,6 @@
 //! `/source/<x>/history/<branch>/<path>` (`DiffusionHistoryController`):
-//! the commits of a path, as `DiffusionCommitGraphView` lists them.
-//!
-//! The graph PHP draws next to the list of a whole branch is not drawn.
+//! the commits of a path, as `DiffusionCommitGraphView` lists them, with
+//! the graph of the commits next to the history of a whole branch.
 
 use std::collections::HashMap;
 
@@ -38,6 +37,8 @@ pub(crate) struct Item {
     pub(crate) audit: Option<(&'static str, &'static str, &'static str)>,
     pub(crate) author_html: Option<String>,
     pub(crate) revisions_html: Vec<String>,
+    /// The row of the commit graph, as JSON for the script.
+    pub(crate) graph: Option<String>,
 }
 
 #[derive(Template)]
@@ -46,7 +47,31 @@ pub(crate) struct HistoryPage {
     shell: crate::Shell,
     header: Header,
     items: Vec<Item>,
+    /// The width of the graph, in columns.
+    graph_count: usize,
     pager: Pager,
+}
+
+/// `DiffusionCommitGraphView::render()`: the rows of the graph next to
+/// the items; the parents of the commit after the page draw the last row.
+pub(crate) fn attach_graph(
+    items: &mut [Item],
+    mut parents: Vec<(String, Vec<String>)>,
+    filter: bool,
+    pager: &Pager,
+) -> usize {
+    if parents.is_empty() {
+        return 0;
+    }
+    if filter {
+        super::graph::filter_parents(&mut parents);
+    }
+    let (rows, count) =
+        super::graph::render(&parents, pager.previous.is_none(), pager.next.is_none());
+    for (item, row) in items.iter_mut().zip(rows) {
+        item.graph = Some(row.json());
+    }
+    count
 }
 
 /// The buildables of `commits`, by commit: the last of each, as
@@ -171,6 +196,7 @@ pub(crate) async fn items<S: WebState>(
                     .map(|person| commit.person_html(&person, &handles))
             }),
             revisions_html,
+            graph: None,
         });
     }
     Ok(items)
@@ -214,7 +240,13 @@ pub(crate) async fn page<S: WebState>(
         .unwrap_or_default();
     let base = context.uri("history", Link::default());
     let pager = Pager::slice(offset, &base, &mut history);
-    let items = items(state, viewer, &context, &history).await?;
+    let mut items = items(state, viewer, &context, &history).await?;
+    // Commits of a path skip others, which would make the graph wrong.
+    let graph_count = if context.path.is_empty() {
+        attach_graph(&mut items, super::graph::parents_of(&result), false, &pager)
+    } else {
+        0
+    };
 
     let title_html = if context.path.is_empty() {
         "History".to_owned()
@@ -230,6 +262,7 @@ pub(crate) async fn page<S: WebState>(
         shell: context.shell(state, viewer, &context.title("History")),
         header,
         items,
+        graph_count,
         pager,
     })
     .into_response())

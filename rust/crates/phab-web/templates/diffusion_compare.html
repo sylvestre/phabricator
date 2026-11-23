@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="diffusion-header">
+  <h1>Changes on <em>{{ head }}</em> but not <em>{{ against }}</em></h1>
+</header>
+<nav class="hm-actions diffusion-buttons" aria-label="Actions">
+  <ul>
+    <li><a href="{{ reverse_href }}"><span class="fa fa-refresh" aria-hidden="true"></span> Reverse Comparison</a></li>
+    <li><a href="{{ compare_href }}"><span class="fa fa-code-fork" aria-hidden="true"></span> Compare Against...</a></li>
+  </ul>
+</nav>
+{%- if items.is_empty() %}
+<div class="notice"><strong>Up To Date</strong><p>There are no commits on <strong>{{ head }}</strong> that are not already on <strong>{{ against }}</strong>.</p></div>
+{%- else %}
+{% include "diffusion_commits.html" %}
+{%- endif %}
+{% include "diffusion_pager.html" %}
+{% endblock %}

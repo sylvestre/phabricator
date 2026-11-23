@@ -20,6 +20,7 @@ use phab_core::{Config, hash};
 use phab_db::Database;
 use phab_db::testing::TestDatabase;
 use phab_web::{FALLBACK_HEADER, WebState};
+use serde_json::json;
 use tower::ServiceExt;
 
 const NOW: i64 = 1_794_700_000;
@@ -137,6 +138,9 @@ async fn setup() -> Option<Fixture> {
         "file",
         "harbormaster",
         "audit",
+        "cache",
+        "search",
+        "daemon",
     ])
     .await?;
     let directory = tempfile::tempdir().expect("a temporary directory");
@@ -233,7 +237,17 @@ async fn setup() -> Option<Fixture> {
              (2, 'Edit the README', 'PHID-DREV-2', 'needs-review', '', '', 'PHID-USER-alice', 1, \
                {NOW}, '{{}}', 'k', 'users', 'users', '{{}}', 'PHID-REPO-git', 'PHID-DIFF-2'); \
              INSERT INTO `{{ns}}_differential`.differential_affectedpath (repositoryID, pathID, \
-               revisionID) VALUES (1, 1, 2)",
+               revisionID) VALUES (1, 1, 2); \
+             INSERT INTO `{{ns}}_repository`.repository_parents (childCommitID, parentCommitID) \
+               VALUES (11, 12), (12, 10), (10, 13); \
+             INSERT INTO `{{ns}}_repository`.repository_summary (repositoryID, size, lastCommitID, \
+               epoch) VALUES (1, 4, 11, 1794600400); \
+             INSERT INTO `{{ns}}_repository`.repository_statusmessage (repositoryID, statusType, \
+               statusCode, parameters, epoch, messageCount) VALUES \
+             (1, 'init', 'okay', '{{}}', {NOW}, 0), (1, 'fetch', 'okay', '{{}}', {NOW}, 0); \
+             INSERT INTO `{{ns}}_daemon`.daemon_log (daemon, host, pid, argv, explicitArgv, \
+               dateCreated, dateModified, status, daemonID) VALUES \
+             ('PhabricatorRepositoryPullLocalDaemon', 'h', 1, '[]', '[]', 1, {NOW}, 'run', 'd1')",
             alice = session_key("alice-token"),
             root = session_key("root-token"),
             expires = NOW + 29 * 86_400,
@@ -271,6 +285,36 @@ async fn get_with(
 
 async fn get(fixture: &Fixture, path: &str, cookie: &str) -> Response {
     get_with(fixture, path, cookie, None).await
+}
+
+async fn post(fixture: &Fixture, path: &str, body: &str) -> Response {
+    let config = Config::default();
+    let state = Arc::new(State {
+        database: fixture.test_db.database().clone(),
+        remarkup: phab_web::remarkup::new_engine(&config),
+        config,
+    });
+    let request = Request::post(path)
+        .header(header::COOKIE, ALICE)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(body.to_owned()))
+        .unwrap();
+    phab_web::router::<State>()
+        .with_state(state)
+        .oneshot(request)
+        .await
+        .unwrap()
+}
+
+/// The payload of an `AphrontAjaxResponse`.
+async fn payload(fixture: &Fixture, path: &str) -> serde_json::Value {
+    let text = page(fixture, path, ALICE).await;
+    let Some(json) = text.strip_prefix("for (;;);") else {
+        fail(format!("{path}: no JSON shield: {text}"));
+        return serde_json::Value::Null;
+    };
+    let envelope: serde_json::Value = serde_json::from_str(json).unwrap();
+    envelope["payload"].clone()
 }
 
 async fn page(fixture: &Fixture, path: &str, cookie: &str) -> String {
@@ -384,8 +428,7 @@ async fn home_and_policies(fixture: &Fixture) {
     );
     let response = get_with(fixture, "/diffusion/GIT/info/refs", ALICE, Some("git/2.43")).await;
     check_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
-    fallback(fixture, "/diffusion/GIT/manage/").await;
-    fallback(fixture, "/diffusion/GIT/blame/master/README").await;
+    fallback(fixture, "/diffusion/GIT/manage/uris/").await;
     fallback(fixture, "/diffusion/GIT/browse/master/?grep=Hello").await;
     fallback(fixture, "/diffusion/GIT/browse/master/README?view=raw").await;
 }
@@ -419,7 +462,9 @@ async fn browse(fixture: &Fixture) {
     );
     check!(
         page.contains(&format!(
-            "<tr class=\"diffusion-selected\"><th class=\"n\"><a \
+            "<tr class=\"diffusion-selected\"><th class=\"phabricator-source-blame-skip\" \
+             data-blame=\"skip\"></th><th class=\"phabricator-source-blame-info\" \
+             data-blame=\"info\" data-blame-lines=\"2\"></th><th class=\"n\"><a \
              href=\"/diffusion/GIT/browse/master/README;{C5}$2\">2</a></th><td \
              class=\"code\">World</td></tr>"
         )),
@@ -550,6 +595,231 @@ async fn commits(fixture: &Fixture) {
     );
 }
 
+async fn scripts(fixture: &Fixture) {
+    // The last change of directory entries; the graph cache answers for
+    // dir/a.txt from the imported changes, where Git would name C4.
+    let modified = payload(
+        fixture,
+        "/diffusion/GIT/lastmodified/master/?paths=%5B%22README%22%2C%22dir%2Fa.txt%22%5D&__ajax__=1",
+    )
+    .await;
+    let commit = format!("<a href=\"/rGIT{C2}\">rGIT{}</a>", &C2[..12]);
+    check_eq!(modified["README"]["commit"], json!(commit));
+    check_eq!(modified["dir/a.txt"]["commit"], json!(commit));
+    check!(
+        modified["README"]["details"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Add a.txt and a link</a></span>\u{a0}</div>")
+    );
+    let response = post(
+        fixture,
+        "/diffusion/GIT/lastmodified/master/",
+        "__csrf__=nope&paths=%5B%22README%22%5D",
+    )
+    .await;
+    check_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
+
+    // The branches and tags of a commit.
+    let branches = payload(fixture, &format!("/diffusion/GIT/commit/{C2}/branches/")).await;
+    let branches = branches.as_str().unwrap_or_default();
+    check!(
+        branches.contains(&format!(
+            "href=\"/diffusion/GIT/browse/feature/;{C2}\">feature</a>"
+        )),
+        branches
+    );
+    check!(branches.contains(">master</a>"), branches);
+    let tags = payload(
+        fixture,
+        &format!("/diffusion/GIT/commit/{C2}/tags/?__ajax__=1"),
+    )
+    .await;
+    check_eq!(
+        tags,
+        json!("<a href=\"/diffusion/GIT/browse/master/;v2\">v2</a>")
+    );
+    check_eq!(
+        payload(fixture, &format!("/diffusion/GIT/commit/{C5}/tags/")).await,
+        json!("None")
+    );
+
+    // Blame, with the revision of C2.
+    let blame = payload(fixture, "/diffusion/GIT/blame/master/README").await;
+    check_eq!(blame["blame"], json!([C1, C2]));
+    let info = blame["map"][C2]["info"].as_str().unwrap_or_default();
+    check!(info.contains(&format!("href=\"/rGIT{C2}\"")), info);
+    check!(info.contains("<a href=\"/D1\""), info);
+    check!(info.contains("href=\"/p/alice/\""), info);
+    check!(
+        blame["map"][C1]["skip"]
+            .as_str()
+            .unwrap_or_default()
+            .contains(&format!("?before={C1}")),
+        blame
+    );
+    check_eq!(
+        blame["epoch"],
+        json!({"min": 1_794_600_000, "max": 1_794_600_100})
+    );
+
+    // The paths of "Locate File".
+    check_eq!(
+        payload(fixture, "/diffusion/GIT/pathtree/master/").await,
+        json!({"tree": {"README": 1, "dir/": {"b.txt": 1}, "link": 1}})
+    );
+    let home = page(fixture, "/diffusion/GIT/", ALICE).await;
+    check!(
+        home.contains("data-pathtree=\"/diffusion/GIT/pathtree/master/\""),
+        home
+    );
+
+    // The file page loads its blame, unless it's off.
+    let file = page(fixture, "/diffusion/GIT/browse/master/README", ALICE).await;
+    check!(
+        file.contains("data-blame-uri=\"/diffusion/GIT/blame/master/README;"),
+        file
+    );
+    check!(file.contains("data-blame-lines=\"2\""), file);
+    check!(file.contains("Hide Blame"), file);
+    let file = page(
+        fixture,
+        "/diffusion/GIT/browse/master/README?blame=off",
+        ALICE,
+    )
+    .await;
+    check!(!file.contains("data-blame-uri"), file);
+    check!(file.contains("Show Blame"), file);
+
+    // The graph of the history of a branch, but not of a path.
+    let history = page(fixture, "/diffusion/GIT/history/master/", ALICE).await;
+    check!(history.contains("data-graph-count=\"2\""), history);
+    check!(
+        history.contains("data-graph=\"{&#34;line&#34;:&#34;^&#34;,&#34;split&#34;:[1]"),
+        history
+    );
+    let history = page(fixture, "/diffusion/GIT/history/master/README", ALICE).await;
+    check!(!history.contains("data-graph=\""), history);
+}
+
+async fn change_and_compare(fixture: &Fixture) {
+    let page = page(fixture, "/diffusion/GIT/change/master/README", ALICE).await;
+    check!(
+        page.contains("<title>README · rGIT · Phabricator</title>"),
+        page
+    );
+    check!(
+        page.contains(&format!("href=\"/rGIT{C2}\">{}</a>", &C2[..12])),
+        page
+    );
+    check!(page.contains("World"), page);
+    check!(
+        page.contains(&format!(
+            "href=\"/diffusion/GIT/history/master/README;{C2}\""
+        )),
+        page
+    );
+
+    let page = self::page(
+        fixture,
+        "/diffusion/GIT/compare/?head=master&against=feature",
+        ALICE,
+    )
+    .await;
+    check!(
+        page.contains("Changes on <em>master</em> but not <em>feature</em>"),
+        page
+    );
+    check!(page.contains(&format!("href=\"/rGIT{C5}\"")), page);
+    check!(page.contains(&format!("href=\"/rGIT{C4}\"")), page);
+    check!(!page.contains(&format!("href=\"/rGIT{C3}\"")), page);
+    check!(page.contains("data-graph="), page);
+    check!(
+        page.contains("href=\"/diffusion/GIT/compare/?head=feature&#38;against=master\""),
+        page
+    );
+    let page = self::page(
+        fixture,
+        "/diffusion/GIT/compare/?head=feature&against=master",
+        ALICE,
+    )
+    .await;
+    check!(page.contains("Up To Date"), page);
+    // A default the viewer must confirm, as PHP's dialog.
+    let page = self::page(fixture, "/diffusion/GIT/compare/?head=feature", ALICE).await;
+    check!(page.contains("Compare Against"), page);
+    check!(page.contains("name=\"against\" value=\"master\""), page);
+    let page = self::page(fixture, "/diffusion/GIT/browse/master/dir/", ALICE).await;
+    check!(
+        page.contains("href=\"/diffusion/GIT/compare/?head=master\""),
+        page
+    );
+}
+
+async fn list_and_manage(fixture: &Fixture) {
+    let page = page(fixture, "/diffusion/", ALICE).await;
+    check!(page.contains("<a href=\"/diffusion/GIT/\">Git</a>"), page);
+    check!(page.contains("4 Commits"), page);
+    check!(
+        page.contains(&format!("{}: Merge branch &#39;feature&#39;", &C5[..12]))
+            || page.contains(&format!("{}: Merge branch &#x27;feature&#x27;", &C5[..12])),
+        page
+    );
+    // Inactive repositories are in "All", and Secret only for admins.
+    check!(!page.contains("Slugged"), page);
+    let page = self::page(fixture, "/diffusion/query/all/", ALICE).await;
+    check!(
+        page.contains("<a href=\"/source/slugged/\">Slugged</a>"),
+        page
+    );
+    check!(page.contains("No Commits"), page);
+    check!(!page.contains("Secret"), page);
+    let page = self::page(fixture, "/diffusion/query/all/", ROOT).await;
+    check!(page.contains("Secret"), page);
+    fallback(fixture, "/diffusion/query/abcdef/").await;
+    fallback(fixture, "/diffusion/?status=open").await;
+
+    let page = self::page(fixture, "/diffusion/GIT/manage/", ALICE).await;
+    check!(
+        page.contains("<title>Basics · rGIT · Phabricator</title>"),
+        page
+    );
+    check!(page.contains("Repository Active"), page);
+    check!(page.contains("<dt>Callsign</dt><dd>GIT</dd>"), page);
+    check!(page.contains("Found Binary <tt>git</tt>"), page);
+    check!(page.contains("Pull Daemon Running"), page);
+    check!(page.contains("Task Daemon Not Running"), page);
+    check!(page.contains("Working Copy OK"), page);
+    check!(page.contains("Updates OK"), page);
+    check!(page.contains("Fully Imported"), page);
+    check!(page.contains("The <strong>test</strong> repository"), page);
+    // Alice can't edit the repository.
+    check!(
+        page.contains("<span class=\"muted\"><span class=\"fa fa-pencil\""),
+        page
+    );
+    let page = self::page(fixture, "/diffusion/GIT/manage/policies/", ALICE).await;
+    check!(page.contains("All Users</a>"), page);
+    check!(page.contains("Administrators</a>"), page);
+    check!(page.contains("Not a Hosted Repository"), page);
+    let page = self::page(fixture, "/diffusion/GIT/manage/branches/", ALICE).await;
+    check!(
+        page.contains("<dt>Default Branch</dt><dd><em>master</em></dd>"),
+        page
+    );
+    check!(page.contains("<em>All Branches</em>"), page);
+    let page = self::page(fixture, "/diffusion/GIT/manage/limits/", ALICE).await;
+    check!(page.contains("<em>Default (900 Seconds)</em>"), page);
+    fallback(fixture, "/diffusion/GIT/manage/uris/").await;
+    fallback(fixture, "/diffusion/GIT/manage/history/").await;
+    check_eq!(
+        get(fixture, "/diffusion/GIT/manage/nope/", ALICE)
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+}
+
 #[tokio::test]
 async fn diffusion_pages() {
     let Some(fixture) = setup().await else {
@@ -559,6 +829,9 @@ async fn diffusion_pages() {
     browse(&fixture).await;
     history_and_refs(&fixture).await;
     commits(&fixture).await;
+    scripts(&fixture).await;
+    change_and_compare(&fixture).await;
+    list_and_manage(&fixture).await;
     let Fixture {
         test_db,
         _directory: directory,

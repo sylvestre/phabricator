@@ -1,9 +1,9 @@
 //! `/source/<x>/` and `/diffusion/<x>/` (`DiffusionRepositoryController`):
 //! the repository, its description, the top directory of the branch with
-//! its README, and the branches to switch to.
+//! its README, the branches to switch to, and the "Locate File" typeahead,
+//! whose paths the page's script loads from `pathtree/`.
 //!
-//! Left to PHP: repositories still importing, and the "Locate File"
-//! typeahead, which PHP's path tree endpoint serves.
+//! Left to PHP: repositories still importing.
 
 use askama::Template;
 use axum::response::{IntoResponse, Response};
@@ -35,6 +35,9 @@ pub(crate) struct RepositoryPage {
     branches: Option<BranchMenu>,
     actions: Vec<(&'static str, &'static str, String)>,
     clone_uri: String,
+    /// The "Locate File" typeahead: where its paths come from, and the
+    /// base of the pages it links to.
+    locate: (String, String),
     /// The warning when there is nothing to show (`PHUIInfoView`).
     empty: Option<(&'static str, String)>,
     /// The listing's title, linked to the directory.
@@ -275,6 +278,10 @@ pub(crate) async fn page<S: WebState>(
         branches,
         actions,
         clone_uri: context.uri("clone", Link::default()),
+        locate: (
+            context.uri("pathtree", Link::default()),
+            context.uri("browse", Link::default()),
+        ),
         empty,
         listing,
         table,

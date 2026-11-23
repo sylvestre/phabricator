@@ -219,15 +219,20 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         )
         .route(
             "/source/{short}/{*rest}",
-            routing::get(diffusion::source::<S>),
+            routing::get(diffusion::source::<S>).post(diffusion::source_post::<S>),
         )
         .route(
             "/diffusion/{identifier}/",
             routing::get(diffusion::diffusion_root::<S>),
         )
+        .route("/diffusion/", routing::get(diffusion::list::<S>))
+        .route(
+            "/diffusion/query/{key}/",
+            routing::get(diffusion::list_query::<S>),
+        )
         .route(
             "/diffusion/{identifier}/{*rest}",
-            routing::get(diffusion::diffusion::<S>),
+            routing::get(diffusion::diffusion::<S>).post(diffusion::diffusion_post::<S>),
         )
         .merge(settings::routes::<S>())
         .merge(login_routes::<S>())

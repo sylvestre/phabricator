@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 8 | 25 | 120 |
-| Web routes | 27 | – | 35 | 7 | 309 | 378 |
+| Web routes | 34 | – | 37 | 7 | 300 | 378 |
 
 Of the 25 methods not ported, 22 write (or depend on a write); the read-only ones left are `auth.querypublickeys`, `conduit.query`, `diffusion.findsymbols`.
 
@@ -104,7 +104,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.historyquery` | stable | shadowed |  |
 | `diffusion.internal.ancestors` | stable | ported, not routed | new: read-only, Git. |
 | `diffusion.internal.gitrawdiffquery` | stable | shadowed |  |
-| `diffusion.lastmodifiedquery` | stable | shadowed |  |
+| `diffusion.lastmodifiedquery` | stable | shadowed | with `PhabricatorRepositoryGraphCache` (read from `cache_general` or rebuilt, never written). |
 | `diffusion.looksoon` | unstable | not ported | write: schedules repository updates. |
 | `diffusion.mergedcommitsquery` | stable | shadowed |  |
 | `diffusion.querycommits` | frozen | shadowed |  |
@@ -423,25 +423,25 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Route | Controller | Port | Note |
 |---|---|---|---|
 | `/r{repositoryCallsign}\|R{repositoryID}:{commit}` | `DiffusionCommitController` | Rust | commit page (Git) |
-| `/{repo}/` | `DiffusionRepositoryController` | Rust | repository home (Git; Mercurial and Subversion 421) |
+| `/{repo}/` | `DiffusionRepositoryController` | Rust | repository home with "Locate File" (Git; Mercurial and Subversion 421) |
 | `/{repo}/repository/{dblob...}` | `DiffusionRepositoryController` | Rust | Git only; Mercurial, Subversion and unported views 421 |
-| `/{repo}/change/{dblob...}` | `DiffusionChangeController` | not ported | Git change view of a path; read-only |
+| `/{repo}/change/{dblob...}` | `DiffusionChangeController` | Rust | Git; binary and image changes 421 |
 | `/{repo}/clone/` | `DiffusionCloneController` | not ported | clone dialog; read-only, small |
-| `/{repo}/history/{dblob...}` | `DiffusionHistoryController` | Rust | Git only; Mercurial, Subversion and unported views 421 |
-| `/{repo}/browse/{dblob...}` | `DiffusionBrowseController` | Rust | Git only; Mercurial, Subversion and unported views 421 |
+| `/{repo}/history/{dblob...}` | `DiffusionHistoryController` | Rust | Git only, with the commit graph; Mercurial, Subversion and unported views 421 |
+| `/{repo}/browse/{dblob...}` | `DiffusionBrowseController` | Rust | Git only, with blame (`?blame=off`); Mercurial, Subversion and unported views 421 |
 | `/{repo}/document/{dblob...}` | `DiffusionDocumentController` | not ported | document rendering of a file; read-only |
-| `/{repo}/blame/{dblob...}` | `DiffusionBlameController` | not ported | blame of the PHP browse page (`diffusion.blame` is ported) |
-| `/{repo}/lastmodified/{dblob...}` | `DiffusionLastModifiedController` | not ported | JSON of the PHP browse page (`diffusion.lastmodifiedquery` is ported) |
+| `/{repo}/blame/{dblob...}` | `DiffusionBlameController` | Rust | JSON of the browse pages; tooltips are `title`s, no profile pictures |
+| `/{repo}/lastmodified/{dblob...}` | `DiffusionLastModifiedController` | Rust | JSON of the browse pages; branches with lint and invalid CSRF tokens 421 |
 | `/{repo}/diff/` | `DiffusionDiffController` | not ported | inline diff of the PHP commit page |
 | `/{repo}/tags/{dblob...}` | `DiffusionTagListController` | Rust | Git only; Mercurial, Subversion and unported views 421 |
 | `/{repo}/branches/{dblob...}` | `DiffusionBranchTableController` | Rust | Git only; Mercurial, Subversion and unported views 421 |
 | `/{repo}/refs/{dblob...}` | `DiffusionRefTableController` | not ported | refs table; read-only |
 | `/{repo}/lint/{dblob...}` | `DiffusionLintController` | not ported | lint messages; read-only (`repository_lintmessage`) |
 | `/{repo}/commit/{commit}/` | `DiffusionCommitController` | Rust | commit page (Git) |
-| `/{repo}/commit/{commit}/branches/` | `DiffusionCommitBranchesController` | not ported | branches of a commit (JSON of PHP pages) |
-| `/{repo}/commit/{commit}/tags/` | `DiffusionCommitTagsController` | not ported | tags of a commit (JSON of PHP pages) |
-| `/{repo}/compare/` | `DiffusionCompareController` | not ported | compare two refs; read-only |
-| `/{repo}/manage/[{panel}/]` | `DiffusionRepositoryManagePanelsController` | not ported | admin: repository management |
+| `/{repo}/commit/{commit}/branches/` | `DiffusionCommitBranchesController` | Rust | JSON of the commit pages |
+| `/{repo}/commit/{commit}/tags/` | `DiffusionCommitTagsController` | Rust | JSON of the commit pages |
+| `/{repo}/compare/` | `DiffusionCompareController` | Rust | Git, with the commit graph and the "Compare Against" dialog, whose post goes to PHP (421) |
+| `/{repo}/manage/[{panel}/]` | `DiffusionRepositoryManagePanelsController` | partial | read-only: Basics, Policies, Storage, Limits, Branches, Staging Area, Symbols; URIs, History, cluster repositories and Spaces 421 |
 | `/{repo}/uri/view/{id}/` | `DiffusionRepositoryURIViewController` | not ported | admin: repository URI |
 | `/{repo}/uri/disable/{id}/` | `DiffusionRepositoryURIDisableController` | not ported | write (form or action) |
 | `/{repo}/uri/edit/[{id}/][{editAction}/]` | `DiffusionRepositoryURIEditController` | not ported | write (form or action) |
@@ -452,9 +452,9 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/{repo}/edit/delete/` | `DiffusionRepositoryEditDeleteController` | not ported | write (form or action) |
 | `/{repo}/edit/update/` | `DiffusionRepositoryEditUpdateController` | not ported | write (form or action) |
 | `/{repo}/edit/publish/` | `DiffusionRepositoryEditPublishingController` | not ported | write (form or action) |
-| `/{repo}/pathtree/{dblob...}` | `DiffusionPathTreeController` | not ported | path tree of PHP pages |
+| `/{repo}/pathtree/{dblob...}` | `DiffusionPathTreeController` | Rust | JSON of "Locate File" (repository pages) |
 | `/{repo}[/*]` | `DiffusionRepositoryDefaultController` | not ported | catch-all of repository URIs (redirects); Git clients never send the opt-in cookie |
-| `/diffusion/[query/{queryKey}/[{queryAction}/]]` | `DiffusionRepositoryListController` | not ported | repository search engine page; read-only |
+| `/diffusion/[query/{queryKey}/[{queryAction}/]]` | `DiffusionRepositoryListController` | partial | builtin queries (Active, All); saved queries, filters and query actions 421 |
 | `/diffusion/edit/[{id}/][{editAction}/]` | `DiffusionRepositoryEditController` | not ported | write (form or action) |
 | `/diffusion/pushlog/[query/{queryKey}/[{queryAction}/]]` | `DiffusionPushLogListController` | not ported | push logs (hosting only) |
 | `/diffusion/pushlog/view/{id}/` | `DiffusionPushEventViewController` | not ported | push event (hosting only) |

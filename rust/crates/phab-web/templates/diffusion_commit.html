@@ -43,6 +43,7 @@
   <div class="notice">This commit merges a very large number of changes. Only the first 50 are shown.</div>
   {%- endif %}
   {% let items = merges %}
+  {% let graph_count = 0 %}
   {% include "diffusion_commits.html" %}
 </section>
 {%- endif %}
