@@ -12,6 +12,38 @@ use crate::{
     web_edit,
 };
 
+/// The login, registration and account linking pages (W7).
+fn login_routes<S: WebState>() -> Router<Arc<S>> {
+    Router::new()
+        .route("/auth/start/", routing::any(login::start::<S>))
+        .route("/login/", routing::any(login::start::<S>))
+        .route("/auth/loggedout/", routing::any(login::logged_out::<S>))
+        .route(
+            "/auth/login/{pkey}/",
+            routing::any(login::provider_login::<S>),
+        )
+        .route(
+            "/auth/login/{pkey}/{extra}/",
+            routing::any(|| async { crate::fallback_response("a login URI with extra data") }),
+        )
+        .route("/auth/validate/", routing::any(login::validate::<S>))
+        .route("/auth/finish/", routing::any(login::finish::<S>))
+        .route("/auth/link/{id}/", routing::any(login::link::<S>))
+        .route("/auth/refresh/{id}/", routing::any(login::refresh::<S>))
+        .route("/auth/register/{akey}/", routing::any(login::register::<S>))
+        .route(
+            "/auth/register/",
+            routing::any(|| async {
+                crate::fallback_response("a registration without an account key")
+            }),
+        )
+        .route(
+            "/auth/confirmlink/{akey}/",
+            routing::any(login::confirm_link::<S>),
+        )
+        .route("/logout/", routing::any(login::logout::<S>))
+}
+
 /// Profiles, projects, the feed and notifications.
 fn people_and_activity<S: WebState>() -> Router<Arc<S>> {
     Router::new()
@@ -198,20 +230,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
             routing::get(diffusion::diffusion::<S>),
         )
         .merge(settings::routes::<S>())
-        .route("/auth/start/", routing::any(login::start::<S>))
-        .route("/login/", routing::any(login::start::<S>))
-        .route("/auth/loggedout/", routing::any(login::logged_out::<S>))
-        .route(
-            "/auth/login/{pkey}/",
-            routing::any(login::provider_login::<S>),
-        )
-        .route(
-            "/auth/login/{pkey}/{extra}/",
-            routing::any(|| async { crate::fallback_response("a login URI with extra data") }),
-        )
-        .route("/auth/validate/", routing::any(login::validate::<S>))
-        .route("/auth/finish/", routing::any(login::finish::<S>))
-        .route("/logout/", routing::any(login::logout::<S>))
+        .merge(login_routes::<S>())
         .route("/rust-ui/on", routing::get(opt_in::on))
         .route("/rust-ui/off", routing::get(opt_in::off))
         .route("/rust-ui/preview", routing::post(preview::render::<S>))

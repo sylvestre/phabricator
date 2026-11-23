@@ -103,6 +103,8 @@ impl fmt::Debug for ClientSecret {
 /// A row of `auth_providerconfig` with an installed provider class.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderConfig {
+    /// The row ID, which link URIs carry.
+    pub id: i64,
     /// The configuration PHID; external accounts point to it.
     pub phid: Phid,
     /// The provider class.
@@ -117,6 +119,8 @@ pub struct ProviderConfig {
     pub allow_link: bool,
     /// `shouldAutoLogin`.
     pub auto_login: bool,
+    /// `shouldTrustEmails()`: addresses the provider gives are verified.
+    pub trust_emails: bool,
     /// `oauth:app:id` (`PhabricatorOAuth2AuthProvider::PROPERTY_APP_ID`).
     pub oauth_client_id: Option<String>,
     /// `oauth:app:secret`.
@@ -145,8 +149,8 @@ pub async fn load_providers(
     database: &Database,
 ) -> Result<Outcome<Vec<ProviderConfig>>, AuthError> {
     let sql = format!(
-        "SELECT phid, providerClass, isEnabled, shouldAllowLogin, shouldAllowRegistration, \
-           shouldAllowLink, shouldAutoLogin, properties FROM {} ORDER BY id DESC",
+        "SELECT id, phid, providerClass, isEnabled, shouldAllowLogin, shouldAllowRegistration, \
+           shouldAllowLink, shouldAutoLogin, shouldTrustEmails, properties FROM {} ORDER BY id DESC",
         database.table("auth", "auth_providerconfig")
     );
     let found = phab_db::sqlx::query(&sql)
@@ -165,6 +169,7 @@ pub async fn load_providers(
             _ => Map::new(),
         };
         providers.push(ProviderConfig {
+            id: rows::int(row, "id")?,
             phid: Phid::new(rows::text(row, "phid")?),
             kind,
             is_enabled: rows::flag(row, "isEnabled")?,
@@ -172,11 +177,19 @@ pub async fn load_providers(
             allow_registration: rows::flag(row, "shouldAllowRegistration")?,
             allow_link: rows::flag(row, "shouldAllowLink")?,
             auto_login: rows::flag(row, "shouldAutoLogin")?,
+            // Both installed providers let the configuration decide
+            // (`shouldAllowEmailTrustConfiguration()`); passwords say no.
+            trust_emails: kind == ProviderKind::Bmo && rows::flag(row, "shouldTrustEmails")?,
             oauth_client_id: property(&properties, "oauth:app:id"),
             oauth_client_secret: property(&properties, "oauth:app:secret").map(ClientSecret),
         });
     }
     Ok(Outcome::Done(providers))
+}
+
+/// The provider with this configuration PHID, enabled or not.
+pub fn by_phid<'a>(providers: &'a [ProviderConfig], phid: &Phid) -> Option<&'a ProviderConfig> {
+    providers.iter().find(|provider| provider.phid == *phid)
 }
 
 /// `getEnabledProviderByKey()`.

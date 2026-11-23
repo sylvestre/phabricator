@@ -98,6 +98,27 @@ impl User {
     }
 }
 
+/// Text PHP and Rust lowercase and split alike: printable ASCII.
+pub fn is_plain(text: &str) -> bool {
+    text.bytes().all(|byte| (b' '..=b'~').contains(&byte))
+}
+
+/// `PhabricatorTypeaheadDatasource::tokenizeString()` of plain text (see
+/// [`is_plain()`]): the `user_nametoken` rows of a user.
+pub fn name_tokens(text: &str) -> Vec<String> {
+    let lowered = text.to_ascii_lowercase();
+    let mut tokens: Vec<String> = Vec::new();
+    for token in lowered
+        .trim_matches([' ', '\t', '\n', '\r', '\0', '\x0b'])
+        .split(|character: char| character.is_ascii_whitespace() || "[]()-\x0b".contains(character))
+    {
+        if !token.is_empty() && !tokens.iter().any(|known| known == token) {
+            tokens.push(token.to_owned());
+        }
+    }
+    tokens
+}
+
 /// [`USER_COLUMNS`] prefixed with `alias.`, for a `SELECT` list.
 pub fn select_columns(alias: &str) -> String {
     USER_COLUMNS

@@ -25,6 +25,7 @@
 //! users whose names are not printable ASCII (PHP lowercases name tokens
 //! with `mbstring`).
 
+use phab_auth::user::{is_plain, name_tokens as tokenize};
 use phab_conduit::{ApiRequest, MethodError, pager};
 use phab_core::{Phid, PhidType, php, random};
 use phab_db::editor::{self as db_editor, CONDUIT_SOURCE, TransactionRow};
@@ -158,26 +159,6 @@ impl Plan {
 
 fn unsupported(what: &'static str) -> MethodError {
     MethodError::Unsupported(what)
-}
-
-/// Text PHP and Rust lowercase and split alike: printable ASCII.
-fn is_plain(text: &str) -> bool {
-    text.bytes().all(|byte| (b' '..=b'~').contains(&byte))
-}
-
-/// `PhabricatorTypeaheadDatasource::tokenizeString()` of plain text.
-fn tokenize(text: &str) -> Vec<String> {
-    let lowered = text.to_ascii_lowercase();
-    let mut tokens: Vec<String> = Vec::new();
-    for token in lowered
-        .trim_matches([' ', '\t', '\n', '\r', '\0', '\x0b'])
-        .split(|character: char| character.is_ascii_whitespace() || "[]()-\x0b".contains(character))
-    {
-        if !token.is_empty() && !tokens.iter().any(|known| known == token) {
-            tokens.push(token.to_owned());
-        }
-    }
-    tokens
 }
 
 /// What changes what the edit engine and the editor do in ways not

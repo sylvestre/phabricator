@@ -24,6 +24,13 @@ pub const TRY_PASSWORD: SystemAction = SystemAction {
     threshold: 100.0 / WINDOW,
 };
 
+/// `PhabricatorAuthTryFactorAction`: 10 failed multi-factor answers an
+/// hour, for each user.
+pub const TRY_FACTOR: SystemAction = SystemAction {
+    constant: "auth.factor",
+    threshold: 10.0 / WINDOW,
+};
+
 /// `loadBlockedActors()` for one actor, without writing: whether `actor`
 /// is over the limit of `action`, so `willTakeAction()` would throw.
 pub async fn is_blocked(

@@ -109,10 +109,17 @@ fn default_values() -> Map<String, Value> {
         "diffusion.allow-http-auth": false,
         "email.default": "0",
     });
-    match defaults {
+    let mut defaults = match defaults {
         Value::Object(map) => map,
         _ => Map::new(),
-    }
+    };
+    // Past the recursion limit of `json!`.
+    defaults.extend([
+        ("auth.require-approval".to_owned(), Value::Bool(true)),
+        ("user.require-real-name".to_owned(), Value::Bool(true)),
+        ("events.listeners".to_owned(), Value::Array(Vec::new())),
+    ]);
+    defaults
 }
 
 impl Default for Config {

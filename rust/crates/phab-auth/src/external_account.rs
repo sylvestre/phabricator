@@ -6,12 +6,13 @@
 use std::fmt;
 
 use phab_core::{Phid, PhidType, hash, php, random};
+use phab_db::sqlx::MySqlConnection;
 use phab_db::sqlx::mysql::MySqlRow;
 use phab_db::{Database, rows};
 use serde_json::{Map, Value};
 
-use crate::AuthError;
 use crate::provider::ProviderConfig;
+use crate::{AuthError, Outcome};
 
 /// `PhabricatorPeopleExternalPHIDType`.
 const ACCOUNT_PHID_TYPE: PhidType = PhidType::new(*b"XUSR");
@@ -42,6 +43,8 @@ pub struct ExternalAccount {
     provider_config_phid: Phid,
     /// What the provider says about the account (`didUpdateAccount()`).
     pub profile: AccountProfile,
+    /// `emailVerified`, which neither installed provider ever sets.
+    pub email_verified: bool,
     properties: Map<String, Value>,
     identifiers: Vec<Identifier>,
 }
@@ -90,6 +93,7 @@ impl ExternalAccount {
             account_domain: provider.kind.adapter_domain().to_owned(),
             provider_config_phid: provider.phid.clone(),
             profile: AccountProfile::default(),
+            email_verified: false,
             properties: Map::new(),
             identifiers: Vec::new(),
         }
@@ -113,6 +117,7 @@ impl ExternalAccount {
                 real_name: rows::opt_text(row, "realName")?,
                 email: rows::opt_text(row, "email")?,
             },
+            email_verified: rows::flag(row, "emailVerified")?,
             properties,
             identifiers: Vec::new(),
         })
@@ -122,6 +127,11 @@ impl ExternalAccount {
     /// saved.
     pub fn account_secret(&self) -> Option<&str> {
         self.account_secret.as_deref()
+    }
+
+    /// The provider configuration the account belongs to.
+    pub fn provider_config_phid(&self) -> &Phid {
+        &self.provider_config_phid
     }
 
     /// `setProperty()`.
@@ -148,7 +158,7 @@ impl ExternalAccount {
 const ACCOUNT_COLUMNS: &str = "account.id, account.phid, account.userPHID, \
     account.accountSecret, account.accountType, account.accountDomain, \
     account.providerConfigPHID, account.username, account.realName, account.email, \
-    account.properties";
+    account.emailVerified, account.properties, account.accountURI, account.profileImagePHID";
 
 /// The identifiers of `account`, newest first like
 /// `PhabricatorExternalAccountIdentifierQuery`.
@@ -218,6 +228,57 @@ pub async fn for_identifiers(
     Ok(Ok(account))
 }
 
+/// `PhabricatorExternalAccountQuery::withAccountSecrets()`: the account a
+/// registration or link URI names. `Unsupported` for accounts with a
+/// profile image or an account URI, which [`save()`] would clear where
+/// PHP writes them back, and where PHP's `executeOne()` throws.
+pub async fn for_secret(
+    database: &Database,
+    secret: &str,
+) -> Result<Outcome<Option<ExternalAccount>>, AuthError> {
+    let sql = format!(
+        "SELECT {ACCOUNT_COLUMNS} FROM {} account WHERE account.accountSecret IN (?) \
+         ORDER BY account.id DESC",
+        database.table("user", "user_externalaccount"),
+    );
+    let found = phab_db::sqlx::query(&sql)
+        .bind(secret)
+        .fetch_all(database.pool())
+        .await?;
+    let row = match found.as_slice() {
+        [] => return Ok(Outcome::Done(None)),
+        [row] => row,
+        _ => return Ok(Outcome::Unsupported("two external accounts share a secret")),
+    };
+    if rows::opt_text(row, "accountURI")?.is_some()
+        || rows::opt_text(row, "profileImagePHID")?.is_some()
+    {
+        return Ok(Outcome::Unsupported(
+            "an external account with a profile image or URI",
+        ));
+    }
+    Ok(Outcome::Done(Some(ExternalAccount::from_row(row)?)))
+}
+
+/// Whether `user` has an account on `provider`
+/// (`withUserPHIDs()->withProviderConfigPHIDs()`).
+pub async fn user_has_account(
+    database: &Database,
+    provider: &ProviderConfig,
+    user: &Phid,
+) -> Result<bool, AuthError> {
+    let sql = format!(
+        "SELECT 1 FROM {} WHERE userPHID IN (?) AND providerConfigPHID IN (?) LIMIT 1",
+        database.table("user", "user_externalaccount"),
+    );
+    Ok(phab_db::sqlx::query(&sql)
+        .bind(user.as_str())
+        .bind(provider.phid.as_str())
+        .fetch_optional(database.pool())
+        .await?
+        .is_some())
+}
+
 /// `newExternalAccountForUser()` up to `didUpdateAccount()`: the account
 /// of `provider` linked to `user`, or a new one. Not saved yet.
 pub async fn for_user(
@@ -265,6 +326,19 @@ pub async fn save(
     account: &mut ExternalAccount,
     now: i64,
 ) -> Result<(), AuthError> {
+    let mut transaction = database.pool().begin().await?;
+    save_on(&mut transaction, database, account, now).await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+/// [`save()`] on a connection whose transaction the caller holds.
+pub async fn save_on(
+    transaction: &mut MySqlConnection,
+    database: &Database,
+    account: &mut ExternalAccount,
+    now: i64,
+) -> Result<(), AuthError> {
     let accounts = database.table("user", "user_externalaccount");
     let identifiers = database.table("user", "user_externalaccountidentifier");
     if account.account_secret.as_deref().is_none_or(str::is_empty) {
@@ -272,7 +346,6 @@ pub async fn save(
     }
     let properties = properties_json(&account.properties);
 
-    let mut transaction = database.pool().begin().await?;
     if let Some(id) = account.id {
         let sql = format!(
             "UPDATE {accounts} SET userPHID = ?, accountSecret = ?, username = ?, \
@@ -354,7 +427,6 @@ pub async fn save(
             identifier.id = Some(i64::try_from(result.last_insert_id()).unwrap_or(i64::MAX));
         }
     }
-    transaction.commit().await?;
     Ok(())
 }
 

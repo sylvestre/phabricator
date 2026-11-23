@@ -1,21 +1,26 @@
 //! Web login (W7), off unless `PHAB_RUST_LOGIN=1`: the login page, the BMO
 //! OAuth callback, password login for administrators, the end of the login
-//! (`/auth/validate/`, `/auth/finish/`) and logout.
+//! (`/auth/validate/`, `/auth/finish/` with its TOTP prompt), registration
+//! of BMO accounts (`/auth/register/<key>/`), linking and refreshing BMO
+//! accounts (`/auth/link/`, `/auth/refresh/`, `/auth/confirmlink/`) and
+//! logout.
 //!
 //! Sessions, cookies and log rows are written exactly as PHP writes them, so
 //! a user logged in by one stack is logged in on both. Every step which
 //! Rust doesn't port hands the request to PHP with a `421` *before*
 //! anything is written or sent to Bugzilla, so PHP's replay sees the same
-//! state: logged-in visitors (linking accounts), invites, multi-factor
-//! prompts, registration, rate limits, CAPTCHAs, password hashes to
-//! upgrade, non-administrator passwords and every error PHP raises before
-//! the OAuth code is spent. Once the code is spent it can't be replayed,
-//! so later failures are answered here.
+//! state: invites, factors other than TOTP, registrations which mail a
+//! verification link, rate limits, CAPTCHAs, password hashes to upgrade,
+//! non-administrator passwords and every error PHP raises before the OAuth
+//! code is spent. Once the code is spent it can't be replayed, so later
+//! failures are answered here.
 
 mod finish;
+mod link;
 mod logout;
 mod page;
 mod provider;
+mod register;
 pub(crate) mod request;
 mod start;
 
@@ -25,11 +30,13 @@ use axum::response::Response;
 use phab_auth::csrf::{self, CsrfKey, CsrfSecret};
 use phab_auth::session::{self, SESSION_COOKIE, SessionDigest, SessionType, SessionUser};
 use phab_auth::{Outcome, Writes};
-use phab_core::Config;
+use phab_core::{Config, php};
 
 pub use finish::{finish, validate};
+pub use link::{confirm as confirm_link, link, refresh};
 pub use logout::logout;
 pub use provider::login as provider_login;
+pub use register::register;
 pub use start::{logged_out, start};
 
 use crate::error::PageError;
@@ -200,9 +207,18 @@ impl<'a, S: WebState> Context<'a, S> {
         if self.request.exists("__hisec__") {
             return Err(PageError::Fallback("a multi-factor form"));
         }
+        self.validate_csrf().await?;
+        Ok(true)
+    }
+
+    /// `validateCSRF()`: the token of the `__csrf__` field, or of the
+    /// `X-Phabricator-Csrf` header when the field is `empty()`. PHP throws
+    /// on a bad token, an error page which is PHP's to render.
+    async fn validate_csrf(&self) -> Result<(), PageError> {
         let token = self
             .request
-            .nonempty_str("__csrf__")
+            .str("__csrf__")
+            .filter(|token| php::is_truthy_str(token))
             .or_else(|| {
                 self.request
                     .header(axum::http::HeaderName::from_static("x-phabricator-csrf"))
@@ -212,7 +228,7 @@ impl<'a, S: WebState> Context<'a, S> {
             return Err(PageError::Fallback("a form post without a session"));
         };
         if csrf::is_valid_token(&secret, &key, token, self.state.now())? {
-            Ok(true)
+            Ok(())
         } else {
             Err(PageError::Fallback("an invalid CSRF token"))
         }

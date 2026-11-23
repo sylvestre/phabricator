@@ -47,5 +47,82 @@
     <a href="/">Cancel</a>
   </form>
   {%- endif %}
+  {%- if let Some(form) = factors %}
+  <form class="login-mfa" method="post" action="{{ form.action }}">
+    <input type="hidden" name="__csrf__" value="{{ form.csrf_token }}">
+    <input type="hidden" name="__form__" value="1">
+    <input type="hidden" name="__hisec__" value="1">
+    {%- if let Some(tokens) = form.answered_tokens %}
+    <input type="hidden" name="__hisec.challenges__" value="{{ tokens }}">
+    {%- endif %}
+    {%- if let Some(username) = form.username %}
+    <p>Welcome, <strong>{{ username }}</strong>. To complete the process of logging in, provide your multi-factor credentials.</p>
+    {%- endif %}
+    {%- for factor in form.factors %}
+    <fieldset>
+      <legend>App Code</legend>
+      {%- if let Some(input) = factor.input %}
+      <label>{% if let Some(error) = input.error %}<span class="error">{{ error }}</span> {% endif %}<input type="text" name="{{ input.name }}" value="{{ input.value }}" inputmode="numeric" autocomplete="off" autofocus></label>
+      {%- endif %}
+      {%- if let Some(wait) = factor.wait %}
+      <p class="errors" role="alert"><span class="error">Wait</span> {{ wait }}</p>
+      {%- endif %}
+      {%- if factor.answered %}
+      <p>You responded to this challenge correctly.</p>
+      {%- endif %}
+      <small>Factor Name: {{ factor.factor_name }}</small>
+    </fieldset>
+    {%- endfor %}
+    <button type="submit">Continue</button>
+    <a href="{{ form.cancel_uri }}">Cancel</a>
+  </form>
+  {%- endif %}
+  {%- if let Some(link) = link %}
+  <ul class="login-buttons">
+    <li><a class="button" href="{{ link.href }}">{{ link.label }}</a></li>
+  </ul>
+  {%- endif %}
+  {%- if let Some(dialog) = confirm_link %}
+  <form method="post" action="{{ dialog.action }}">
+    <input type="hidden" name="__csrf__" value="{{ dialog.csrf_token }}">
+    <input type="hidden" name="__form__" value="1">
+    <p>Confirm the link with this BMO account. This account will be able to log in to your Phabricator account.</p>
+    <p>External Account: <strong>{{ dialog.account_name }}</strong> <small>BMO</small></p>
+    <button type="submit">Confirm Account Link</button>
+    <a href="/settings/panel/external/">Cancel</a>
+  </form>
+  {%- endif %}
+  {%- if let Some(dialog) = email_in_use %}
+  <form method="post" action="{{ dialog.action }}">
+    <input type="hidden" name="__csrf__" value="{{ dialog.csrf_token }}">
+    <input type="hidden" name="__form__" value="1">
+    <input type="hidden" name="phase" value="1">
+    <p>You are creating a new account linked to an existing external account.</p>
+    <p>The email address ("<strong>{{ dialog.address }}</strong>") associated with the external account is already in use by an existing Phabricator account. Multiple Phabricator accounts may not have the same email address, so you can not use this email address to register a new account.</p>
+    <p>If you want to register a new account, continue with this registration workflow and choose a new, unique email address for the new account.</p>
+    <p>If you want to link an existing Phabricator account to this external account, do not continue. Instead: log in to your existing account, then go to "Settings" and link the account in the "External Accounts" panel.</p>
+    <p>If you continue, you will create a new account. You will not be able to link this external account to an existing account.</p>
+    <button type="submit">Create New Account</button>
+    <a href="/auth/login/">Cancel</a>
+  </form>
+  {%- endif %}
+  {%- if let Some(form) = register %}
+  <form class="login-register" method="post" action="{{ form.action }}">
+    <input type="hidden" name="__csrf__" value="{{ form.csrf_token }}">
+    <input type="hidden" name="__form__" value="1">
+    <input type="hidden" name="phase" value="2">
+    <p>External Account: <strong>{{ form.account_name }}</strong> <small>{{ form.provider }}</small></p>
+    <label>Username {% if let Some(error) = form.username_error %}<span class="error">{{ error }}</span> {% endif %}<input type="text" name="username" value="{{ form.username }}" autocomplete="username" autofocus></label>
+    <label>Real Name {% if let Some(error) = form.real_name_error %}<span class="error">{{ error }}</span> {% endif %}<input type="text" name="realName" value="{{ form.real_name }}" autocomplete="name"></label>
+    {%- if let Some(email) = form.email %}
+    <label>Email {% if let Some(error) = form.email_error %}<span class="error">{{ error }}</span> {% endif %}<input type="email" name="email" value="{{ email }}" autocomplete="email"></label>
+    {%- if let Some(caption) = form.email_caption %}
+    <small>{{ caption }}</small>
+    {%- endif %}
+    {%- endif %}
+    <button type="submit">Register Account</button>
+    <a href="/auth/start/">Cancel</a>
+  </form>
+  {%- endif %}
 </section>
 {% endblock %}

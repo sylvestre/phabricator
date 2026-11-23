@@ -75,10 +75,19 @@ async fn handle<S: WebState>(
     body: &Bytes,
 ) -> Result<Response, PageError> {
     let mut context = Context::new(state, method, uri, headers, body).await?;
-    // Linking, refreshing, partial sessions and disabled users.
-    if matches!(context.visitor, Visitor::LoggedIn { .. }) {
-        return Err(PageError::Fallback("logged in"));
-    }
+    // A logged-in viewer links or refreshes an account. Disabled users get
+    // PHP's roadblock, partial sessions PHP's prompt
+    // (`PhabricatorController::willBeginExecution()`).
+    let viewer = match &context.visitor {
+        Visitor::LoggedIn { found } if found.user.is_disabled => {
+            return Err(PageError::Fallback("a disabled user"));
+        }
+        Visitor::LoggedIn { found } if found.session.is_partial => {
+            return Err(PageError::Fallback("a partial session"));
+        }
+        Visitor::LoggedIn { found } => Some(found.user.clone()),
+        _ => None,
+    };
     if context.request.nonempty_cookie(INVITE_COOKIE).is_some() {
         return Err(PageError::Fallback("an invite"));
     }
@@ -90,9 +99,10 @@ async fn handle<S: WebState>(
         return Err(PageError::Fallback("an unknown or disabled provider"));
     };
     let keys = context.session_digest().await?;
-    match provider.kind {
-        ProviderKind::Bmo => bmo_login(&mut context, &provider, &keys).await,
-        ProviderKind::Password => password_login(&mut context, &provider, &keys).await,
+    match (provider.kind, viewer) {
+        (ProviderKind::Bmo, viewer) => bmo_login(&mut context, &provider, &keys, viewer).await,
+        (ProviderKind::Password, None) => password_login(&mut context, &provider, &keys).await,
+        (ProviderKind::Password, Some(_)) => Err(PageError::Fallback("logged in")),
     }
 }
 
@@ -102,6 +112,7 @@ async fn bmo_login<S: WebState>(
     context: &mut Context<'_, S>,
     provider: &ProviderConfig,
     keys: &SessionDigest,
+    viewer: Option<User>,
 ) -> Result<Response, PageError> {
     let config = context.config();
     let app = bmo_app(config, provider)?;
@@ -181,7 +192,65 @@ async fn bmo_login<S: WebState>(
         ));
         return Ok(finish_page(context, &page));
     }
-    continue_with_account(context, provider, keys, external).await
+    match viewer {
+        None => continue_with_account(context, provider, keys, external).await,
+        Some(viewer) => link_account(context, provider, &viewer, external).await,
+    }
+}
+
+/// The part of `handleRequest()` after the provider returned an account,
+/// for a logged-in viewer: a refresh of their own account, or a link
+/// confirmed by `/auth/confirmlink/`.
+async fn link_account<S: WebState>(
+    context: &mut Context<'_, S>,
+    provider: &ProviderConfig,
+    viewer: &User,
+    external: ExternalAccount,
+) -> Result<Response, PageError> {
+    let name = provider.kind.name();
+    let config = context.config();
+    if let Some(user_phid) = &external.user_phid {
+        if *user_phid == viewer.phid {
+            // A refresh: the account was saved with the new token.
+            return Ok(take_request(context).redirect(config, super::link::PANEL_URI));
+        }
+        let page = LoginPage::error(
+            "Login Failed",
+            format!(
+                "The external service (\"{name}\") you just used to log in is already \
+                 associated with another {SERVER_NAME} user account. Log in to the other \
+                 {SERVER_NAME} account and unlink the external account before linking it to a \
+                 new {SERVER_NAME} account."
+            ),
+        );
+        return Ok(finish_page(context, &page));
+    }
+    // One account per provider (T2549).
+    if external_account::user_has_account(context.state.database(), provider, &viewer.phid).await? {
+        let page = LoginPage::error(
+            "Login Failed",
+            format!(
+                "Your {SERVER_NAME} account is already connected to an external account on this \
+                 service (\"{name}\"), but you are currently logged in to the service with a \
+                 different account. Log out of the external service, then log back in with the \
+                 correct account before refreshing the account link."
+            ),
+        );
+        return Ok(finish_page(context, &page));
+    }
+    if !provider.allow_link {
+        let page = LoginPage::error(
+            "Login Failed",
+            format!(
+                "The external service (\"{name}\") you just authenticated with is not \
+                 configured to allow account linking on this server. An administrator may have \
+                 recently disabled it."
+            ),
+        );
+        return Ok(finish_page(context, &page));
+    }
+    // `processLinkUser()`.
+    set_account_key_and_continue(context, external, "confirmlink").await
 }
 
 /// The part of `handleRequest()` after the provider returned an account,
@@ -190,7 +259,7 @@ async fn continue_with_account<S: WebState>(
     context: &mut Context<'_, S>,
     provider: &ProviderConfig,
     keys: &SessionDigest,
-    mut external: ExternalAccount,
+    external: ExternalAccount,
 ) -> Result<Response, PageError> {
     let name = provider.kind.name();
     if let Some(user_phid) = external.user_phid.clone() {
@@ -231,8 +300,18 @@ async fn continue_with_account<S: WebState>(
         );
         return Ok(finish_page(context, &page));
     }
-    // `processRegisterUser()` and `setAccountKeyAndContinue()`: the
-    // registration page itself is PHP's.
+    // `processRegisterUser()`.
+    set_account_key_and_continue(context, external, "register").await
+}
+
+/// `setAccountKeyAndContinue()`: a new registration key, whose digest the
+/// account keeps and the browser holds in `phreg`, then
+/// `/auth/<page>/<account secret>/`.
+async fn set_account_key_and_continue<S: WebState>(
+    context: &mut Context<'_, S>,
+    mut external: ExternalAccount,
+    page: &str,
+) -> Result<Response, PageError> {
     let config = context.config();
     let now = context.state.now();
     let registration_key = random::random_characters(REGISTRATION_KEY_LENGTH);
@@ -243,13 +322,13 @@ async fn continue_with_account<S: WebState>(
         .request
         .set_temporary_cookie(config, REGISTRATION_COOKIE, &registration_key, now);
     let secret = external.account_secret().unwrap_or_default().to_owned();
-    Ok(take_request(context).redirect(config, &format!("/auth/register/{secret}/")))
+    Ok(take_request(context).redirect(config, &format!("/auth/{page}/{secret}/")))
 }
 
 /// `PhabricatorAuthController::loginUser()`: a partial session, the
 /// username and session cookies, the registration cookies cleared, and
 /// the redirect to `/auth/validate/`.
-async fn login_user<S: WebState>(
+pub(super) async fn login_user<S: WebState>(
     context: &mut Context<'_, S>,
     keys: &SessionDigest,
     user: &User,
@@ -291,7 +370,7 @@ fn escape_html(text: &str) -> String {
 }
 
 /// The request out of `context`, to answer with its cookies.
-fn take_request<S>(context: &mut Context<'_, S>) -> super::request::LoginRequest {
+pub(super) fn take_request<S>(context: &mut Context<'_, S>) -> super::request::LoginRequest {
     std::mem::replace(
         &mut context.request,
         super::request::LoginRequest::new(

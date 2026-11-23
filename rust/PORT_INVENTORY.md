@@ -275,16 +275,16 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/auth/config/edit/[{id}/]` | `PhabricatorAuthEditController` | not ported | write (form or action) |
 | `/auth/config/{enable\|disable}/{id}/` | `PhabricatorAuthDisableController` | not ported | write (form or action) |
 | `/auth/config/view/{id}/` | `PhabricatorAuthProviderViewController` | not ported | admin: auth provider |
-| `/auth/login/{pkey}/[{extra}/]` | `PhabricatorAuthLoginController` | ported, not routed | W7 web login, off by default (`PHAB_RUST_LOGIN=1`); security review pending |
+| `/auth/login/{pkey}/[{extra}/]` | `PhabricatorAuthLoginController` | ported, not routed | W7 web login, off by default (`PHAB_RUST_LOGIN=1`); also links and refreshes BMO accounts of logged-in users; security review pending |
 | `/auth/loggedout/` | `PhabricatorAuthStartController` | ported, not routed | W7 web login, off by default (`PHAB_RUST_LOGIN=1`); security review pending |
 | `/auth/invite/{code}/` | `PhabricatorAuthInviteController` | not ported | invites (unused with BMO login) |
-| `/auth/register/[{akey}/]` | `PhabricatorAuthRegisterController` | not ported | write: account registration (BMO login creates accounts) |
+| `/auth/register/[{akey}/]` | `PhabricatorAuthRegisterController` | ported, not routed | W7, `PHAB_RUST_LOGIN=1`: BMO accounts with an account key, approval mail included; PHP keeps addresses to verify by mail, `auth.email-domains`, invites, event listeners, `phabricator.production-uri`, taken addresses and `/auth/register/` without a key; security review pending |
 | `/auth/start/` | `PhabricatorAuthStartController` | ported, not routed | W7 web login, off by default (`PHAB_RUST_LOGIN=1`); security review pending |
 | `/auth/validate/` | `PhabricatorAuthValidateController` | ported, not routed | W7 web login, off by default (`PHAB_RUST_LOGIN=1`); security review pending |
-| `/auth/finish/` | `PhabricatorAuthFinishController` | ported, not routed | W7 web login, off by default (`PHAB_RUST_LOGIN=1`); security review pending |
+| `/auth/finish/` | `PhabricatorAuthFinishController` | ported, not routed | W7 web login, off by default (`PHAB_RUST_LOGIN=1`); TOTP prompt (`auth_challenge`, `auth.factor` rate limit, `jump_to_hisec`); other factor types stay PHP; security review pending |
 | `/auth/unlink/{id}/` | `PhabricatorAuthUnlinkController` | not ported | write (form or action) |
-| `/auth/{link\|refresh}/{id}/` | `PhabricatorAuthLinkController` | not ported | write (form or action) |
-| `/auth/confirmlink/{akey}/` | `PhabricatorAuthConfirmLinkController` | not ported | write: links an external account |
+| `/auth/{link\|refresh}/{id}/` | `PhabricatorAuthLinkController` | ported, not routed | W7, `PHAB_RUST_LOGIN=1`: BMO only; security review pending |
+| `/auth/confirmlink/{akey}/` | `PhabricatorAuthConfirmLinkController` | ported, not routed | W7, `PHAB_RUST_LOGIN=1`: BMO only, with the TOTP prompt of `requireHighSecurityToken()`; security review pending |
 | `/auth/session/terminate/{id}/` | `PhabricatorAuthTerminateSessionController` | not ported | write (form or action) |
 | `/auth/token/revoke/{id}/` | `PhabricatorAuthRevokeTokenController` | not ported | write (form or action) |
 | `/auth/session/downgrade/` | `PhabricatorAuthDowngradeSessionController` | not ported | write (form or action) |

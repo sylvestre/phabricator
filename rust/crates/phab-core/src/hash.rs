@@ -40,6 +40,15 @@ pub fn hmac_sha256(message: &[u8], key: &[u8]) -> Result<String, HashError> {
     hmac_hex::<Hmac<Sha256>>(message, key)
 }
 
+/// `hash_hmac('sha1', $message, $key, true)`: the raw HMAC-SHA1, which
+/// `hash_hmac()` computes for any key, empty ones included.
+pub fn hmac_sha1_raw(message: &[u8], key: &[u8]) -> [u8; 20] {
+    let mut mac =
+        <Hmac<Sha1> as KeyInit>::new_from_slice(key).expect("HMAC accepts keys of any length");
+    mac.update(message);
+    mac.finalize().into_bytes().into()
+}
+
 /// The hex digest of an HMAC; PHP refuses empty keys.
 fn hmac_hex<M: Mac + KeyInit>(message: &[u8], key: &[u8]) -> Result<String, HashError> {
     if key.is_empty() {

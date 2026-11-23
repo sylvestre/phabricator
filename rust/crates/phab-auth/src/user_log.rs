@@ -33,6 +33,11 @@ pub enum LogType {
     Logout,
     /// `PhabricatorLoginFailureUserLogType`: a wrong password.
     LoginFailure,
+    /// `PhabricatorEnterHisecUserLogType`: the session went into high
+    /// security.
+    EnterHisec,
+    /// `PhabricatorFailHisecUserLogType`: a multi-factor answer was wrong.
+    FailHisec,
 }
 
 impl LogType {
@@ -44,6 +49,8 @@ impl LogType {
             Self::FullLogin => "login-full",
             Self::Logout => "logout",
             Self::LoginFailure => "login-fail",
+            Self::EnterHisec => "hisec-enter",
+            Self::FailHisec => "hisec-fail",
         }
     }
 }

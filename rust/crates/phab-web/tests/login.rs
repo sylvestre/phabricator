@@ -24,6 +24,9 @@ const DIGEST_KEY_HEX: &str = "00112233445566778899aabbccddeeff";
 const CSRF_KEY_HEX: &str = "6b3379";
 const ALTERNATE_KEY_HEX: &str = "a17e";
 const HOST: &str = "phab.example";
+/// The RFC 6238 test secret, in base32: the `mfa` user's TOTP factor.
+const TOTP_SECRET: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+const CHALLENGE_KEY_HEX: &str = "c0ffee";
 /// Account secrets fill their `binary(64)` column.
 const ACCOUNT_SECRET: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const BMO_PROVIDER: &str = "PHID-AUTH-bmo";
@@ -153,7 +156,14 @@ fn session_key(token: &str) -> String {
 /// and `mfa` (BMO 1004, with a factor); alice has the session
 /// `alice-token`, mfa the partial session `mfa-token`.
 async fn setup() -> Option<TestDatabase> {
-    let test_db = TestDatabase::create(&["user", "auth", "system"]).await?;
+    setup_with(&[]).await
+}
+
+/// [`setup()`] with more application databases.
+async fn setup_with(extra: &[&str]) -> Option<TestDatabase> {
+    let mut applications = vec!["user", "auth", "system"];
+    applications.extend_from_slice(extra);
+    let test_db = TestDatabase::create(&applications).await?;
     test_db
         .execute(&format!(
             "INSERT INTO `{{ns}}_user`.user (phid, userName, realName, dateCreated, dateModified, \
@@ -168,7 +178,8 @@ async fn setup() -> Option<TestDatabase> {
              ('PHID-EADR-1', 'PHID-USER-admin', 'admin@example.com', 1, 1, 1, 1); \
              INSERT INTO `{{ns}}_auth`.auth_hmackey (keyName, keyValue, dateCreated, dateModified) \
              VALUES ('session.digest', '{DIGEST_KEY_HEX}', 1, 1), \
-               ('csrf', '{CSRF_KEY_HEX}', 1, 1), ('csrf.alternate', '{ALTERNATE_KEY_HEX}', 1, 1); \
+               ('csrf', '{CSRF_KEY_HEX}', 1, 1), ('csrf.alternate', '{ALTERNATE_KEY_HEX}', 1, 1), \
+               ('auth.challenge.token', '{CHALLENGE_KEY_HEX}', 1, 1); \
              INSERT INTO `{{ns}}_user`.phabricator_session \
                (userPHID, type, sessionKey, sessionStart, sessionExpires, phid, isPartial) VALUES \
              ('PHID-USER-alice', 'web', '{alice}', 1, {expires}, 'PHID-SSSN-1', 0), \
@@ -192,7 +203,7 @@ async fn setup() -> Option<TestDatabase> {
              ('PHID-FPRV-1', 'totp', 'active', '{{}}', 1, 1, 'TOTP'); \
              INSERT INTO `{{ns}}_auth`.auth_factorconfig (phid, userPHID, factorName, \
                factorSecret, properties, dateCreated, dateModified, factorProviderPHID) VALUES \
-             ('PHID-AFTR-1', 'PHID-USER-mfa', 'phone', 'x', '{{}}', 1, 1, 'PHID-FPRV-1'); \
+             ('PHID-AFTR-1', 'PHID-USER-mfa', 'phone', '{TOTP_SECRET}', '[]', 1, 1, 'PHID-FPRV-1'); \
              ALTER TABLE `{{ns}}_user`.user_externalaccount DROP KEY account_details",
             alice = session_key("alice-token"),
             mfa = session_key("mfa-token"),
@@ -240,6 +251,8 @@ fn config(bugzilla_url: &str) -> Config {
 
 /// The router with Rust login on, or off.
 fn app(test_db: &TestDatabase, config: Config, login: bool) -> Router {
+    // Errors of pages are only logged.
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let state = Arc::new(State {
         database: test_db.database().clone(),
         remarkup: phab_web::remarkup::new_engine(&config),
@@ -298,8 +311,20 @@ fn cookie_value(response: &Response, name: &str) -> Option<String> {
         .map(|rest| rest.split(';').next().unwrap().to_owned())
 }
 
+#[track_caller]
 fn location(response: &Response) -> &str {
-    response.headers()[header::LOCATION].to_str().unwrap()
+    response
+        .headers()
+        .get(header::LOCATION)
+        .unwrap_or_else(|| {
+            panic!(
+                "no redirect: {} {:?}",
+                response.status(),
+                response.headers()
+            )
+        })
+        .to_str()
+        .unwrap()
 }
 
 fn assert_fallback(response: &Response, reason: &str) {
@@ -388,6 +413,10 @@ async fn every_login_route_goes_to_php_when_rust_login_is_off() {
         "/auth/login/password:self/",
         "/auth/validate/?expect=alice",
         "/auth/finish/",
+        "/auth/link/1/",
+        "/auth/refresh/1/",
+        "/auth/confirmlink/secret-1001/",
+        "/auth/register/secret-1001/",
         "/logout/",
     ] {
         assert_fallback(&get(&app, path, "phcid=cid").await, "Rust login is off");
@@ -496,13 +525,13 @@ async fn the_callback_refuses_bad_client_state_before_calling_bugzilla() {
         ),
         (
             uri(&format!("code=code-1001&state={good}")),
-            "phcid=cid; phsid=alice-token",
-            "logged in",
+            "phcid=cid; phsid=mfa-token",
+            "a partial session",
         ),
         (
             uri(&format!("code=code-1001&state={good}")),
-            "phcid=cid; phsid=mfa-token",
-            "logged in",
+            "phcid=other; phsid=alice-token",
+            "a wrong OAuth state",
         ),
         (
             uri(&format!("code=code-1001&state={good}")),
@@ -700,23 +729,387 @@ async fn finishing_a_login_never_redirects_off_the_site() {
     test_db.drop_databases().await;
 }
 
+/// The TOTP code of the test factor for `timestep`.
+fn totp_code(timestep: i64) -> String {
+    phab_auth::totp::TotpSecret::new(TOTP_SECRET)
+        .unwrap()
+        .code(timestep)
+}
+
+/// The value of the hidden field `name` of a page.
+fn hidden_field(page: &str, name: &str) -> Option<String> {
+    page.split(&format!("name=\"{name}\" value=\""))
+        .nth(1)
+        .map(|rest| rest.split('"').next().unwrap().replace("&#58;", ":"))
+}
+
+/// Rows of a table, as one text line each, in ID order.
+async fn rows(test_db: &TestDatabase, sql: &str) -> Vec<String> {
+    let sql = sql.replace("{ns}", test_db.database().namespace());
+    phab_db::sqlx::query_scalar::<_, Vec<u8>>(&sql)
+        .fetch_all(test_db.database().pool())
+        .await
+        .unwrap_or_else(|error| panic!("{sql}: {error}"))
+        .into_iter()
+        .map(|row| String::from_utf8(row).unwrap())
+        .collect()
+}
+
+const CHALLENGE_ROW: &str = "SELECT CONCAT_WS('|', userPHID, factorPHID, sessionPHID, \
+    workflowKey, challengeKey, challengeTTL, IFNULL(responseDigest, 'NULL'), \
+    IFNULL(responseTTL, 'NULL'), isCompleted, properties, dateCreated, dateModified, \
+    LEFT(phid, 10)) FROM `{ns}_auth`.auth_challenge ORDER BY id";
+const ACTION_ROWS: &str = "SELECT CONCAT_WS('|', actorIdentity, action, score, epoch) \
+    FROM `{ns}_system`.system_actionlog ORDER BY id";
+const HISEC_LOG: &str = "SELECT CONCAT_WS('|', action, actorPHID, userPHID, session, details) \
+    FROM `{ns}_user`.user_log WHERE action LIKE 'hisec-%' OR action = 'login-full' ORDER BY id";
+
 #[tokio::test]
-async fn multi_factor_prompts_are_left_to_php() {
+async fn totp_factors_finish_the_login_like_php() {
     let Some(test_db) = setup().await else {
         return;
     };
     let bugzilla = fake_bugzilla().await;
     let app = app(&test_db, config(&bugzilla.url), true);
-    let response = get(&app, "/auth/finish/", "phsid=mfa-token").await;
-    assert_fallback(&response, "multi-factor authentication is pending");
+    let step = NOW / 30;
+    let cookie = "phsid=mfa-token";
+    let csrf = user_csrf_token("PHID-USER-mfa", "mfa-token");
+
+    // The prompt issues one challenge for the current timestep, bound to
+    // the session, alive for three timesteps.
+    let response = get(&app, "/auth/finish/", cookie).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    let page = text(response).await;
+    assert!(
+        page.contains("name=\"authfactor.1.mfa.response\""),
+        "{page}"
+    );
+    assert!(page.contains("name=\"__hisec__\""));
+    assert!(page.contains("Factor Name: phone"));
+    assert!(!page.contains(TOTP_SECRET));
+    let challenge = format!(
+        "PHID-USER-mfa|PHID-AFTR-1|PHID-SSSN-2|legacy|{step}|{}|NULL|NULL|0|[]|{NOW}|{NOW}|PHID-CHAL-",
+        NOW + 90
+    );
+    assert_eq!(
+        rows(&test_db, CHALLENGE_ROW).await,
+        std::slice::from_ref(&challenge)
+    );
+    // Showing it again issues nothing new.
+    get(&app, "/auth/finish/", cookie).await;
+    assert_eq!(
+        rows(&test_db, CHALLENGE_ROW).await,
+        std::slice::from_ref(&challenge)
+    );
+
+    // A POST without a valid CSRF token is PHP's (it throws), before any
+    // write.
     let response = post(
         &app,
         "/auth/finish/",
-        "phsid=mfa-token",
-        &[("__hisec__", "1")],
+        cookie,
+        &[
+            ("__form__", "1"),
+            ("__hisec__", "1"),
+            ("__csrf__", "B@forgedforgedforgedforged"),
+            ("authfactor.1.mfa.response", &totp_code(step)),
+        ],
     )
     .await;
-    assert_fallback(&response, "a multi-factor form");
+    assert_fallback(&response, "an invalid CSRF token");
+    assert_eq!(rows(&test_db, ACTION_ROWS).await, Vec::<String>::new());
+
+    // A wrong code counts against the rate limit and is logged.
+    let answer = |code: String| {
+        vec![
+            ("__form__", "1".to_owned()),
+            ("__hisec__", "1".to_owned()),
+            ("__csrf__", csrf.clone()),
+            ("authfactor.1.mfa.response", code),
+        ]
+    };
+    let send = async |cookie: &str, fields: Vec<(&str, String)>| {
+        let pairs: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(key, value)| (*key, value.as_str()))
+            .collect();
+        post(&app, "/auth/finish/", cookie, &pairs).await
+    };
+    // A code two timesteps away is outside the window.
+    let response = send(cookie, answer(totp_code(step + 2))).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    assert!(page.contains(">Invalid<"), "{page}");
+    assert_eq!(
+        rows(&test_db, ACTION_ROWS).await,
+        [format!("PHID-USER-mfa|auth.factor|1|{NOW}")]
+    );
+    let digest = session_key("mfa-token");
+    let fail = format!(
+        "hisec-fail|PHID-USER-mfa|PHID-USER-mfa|{digest}|\
+         {{\"host\":\"web-1\",\"user_agent\":\"Test\\/1.0\"}}"
+    );
+    assert_eq!(rows(&test_db, HISEC_LOG).await, std::slice::from_ref(&fail));
+    // An empty answer is required, and is no attempt.
+    let page = text(send(cookie, answer(String::new())).await).await;
+    assert!(page.contains(">Required<"), "{page}");
+    assert_eq!(rows(&test_db, ACTION_ROWS).await.len(), 1);
+
+    // The right code (from the next timestep, within the window) answers
+    // the challenge, completes it, credits the attempt back and makes the
+    // session full.
+    let response = send(cookie, answer(format!(" {} ", totp_code(step + 1)))).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(location(&response), "https://phab.example/");
+    let completed: Vec<String> = rows(&test_db, CHALLENGE_ROW).await;
+    let [completed] = completed.as_slice() else {
+        panic!("{completed:?}");
+    };
+    let parts: Vec<&str> = completed.split('|').collect();
+    assert_eq!(parts[6].len(), 64, "a SHA-256 digest of the response token");
+    assert_eq!(parts[7], (NOW + 60).to_string());
+    assert_eq!(parts[8], "1");
+    assert_eq!(parts[9], format!("{{\"totp.timestep\":{}}}", step + 1));
+    assert_eq!(
+        rows(&test_db, ACTION_ROWS).await,
+        [
+            format!("PHID-USER-mfa|auth.factor|1|{NOW}"),
+            format!("PHID-USER-mfa|auth.factor|1|{NOW}"),
+            format!("PHID-USER-mfa|auth.factor|-1|{NOW}"),
+        ]
+    );
+    let partial: i64 = scalar(
+        &test_db,
+        "SELECT isPartial FROM `{ns}_user`.phabricator_session WHERE phid = 'PHID-SSSN-2'",
+    )
+    .await;
+    assert_eq!(partial, 0);
+    assert_eq!(
+        rows(&test_db, HISEC_LOG).await,
+        [
+            fail.clone(),
+            fail.clone(),
+            format!(
+                "login-full|PHID-USER-mfa|PHID-USER-mfa|{digest}|\
+                 {{\"host\":\"web-1\",\"user_agent\":\"Test\\/1.0\"}}"
+            ),
+        ]
+    );
+
+    // Replays: another partial session of the user can't use the code
+    // again, nor get a challenge while the completed one is alive.
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_user`.phabricator_session (userPHID, type, sessionKey, \
+               sessionStart, sessionExpires, phid, isPartial) VALUES \
+             ('PHID-USER-mfa', 'web', '{}', 1, {}, 'PHID-SSSN-3', 1)",
+            session_key("mfa2-token"),
+            NOW + 600,
+        ))
+        .await;
+    let other = "phsid=mfa2-token";
+    let page = text(get(&app, "/auth/finish/", other).await).await;
+    assert!(
+        page.contains("recently issued a challenge to a different login session. Wait 91 seconds"),
+        "{page}"
+    );
+    let other_csrf = user_csrf_token("PHID-USER-mfa", "mfa2-token");
+    let mut replay = answer(totp_code(step + 1));
+    replay[2].1 = other_csrf;
+    let response = send(other, replay).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(text(response).await.contains("Wait 91 seconds"));
+    assert_eq!(rows(&test_db, CHALLENGE_ROW).await.len(), 1);
+    // A wait is no attempt: the rate limit doesn't move.
+    assert_eq!(rows(&test_db, ACTION_ROWS).await.len(), 3);
+    let partial: i64 = scalar(
+        &test_db,
+        "SELECT isPartial FROM `{ns}_user`.phabricator_session WHERE phid = 'PHID-SSSN-3'",
+    )
+    .await;
+    assert_eq!(partial, 1);
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn totp_answers_carry_over_and_jump_into_high_security() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    let bugzilla = fake_bugzilla().await;
+    let app = app(&test_db, config(&bugzilla.url), true);
+    let step = NOW / 30;
+    // A second factor: one right answer and one wrong one keep the right
+    // one's token in the form.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_auth`.auth_factorconfig (phid, userPHID, factorName, \
+               factorSecret, properties, dateCreated, dateModified, factorProviderPHID) VALUES \
+             ('PHID-AFTR-2', 'PHID-USER-mfa', 'tablet', 'MZXW6YTBOI', '[]', 1, 1, \
+               'PHID-FPRV-1')",
+        )
+        .await;
+    let cookie = "phsid=mfa-token; jump_to_hisec=1";
+    let csrf = user_csrf_token("PHID-USER-mfa", "mfa-token");
+    get(&app, "/auth/finish/", cookie).await;
+    let response = post(
+        &app,
+        "/auth/finish/",
+        cookie,
+        &[
+            ("__form__", "1"),
+            ("__hisec__", "1"),
+            ("__csrf__", &csrf),
+            ("authfactor.1.mfa.response", &totp_code(step)),
+            ("authfactor.2.mfa.response", "000000"),
+        ],
+    )
+    .await;
+    let page = text(response).await;
+    assert!(
+        page.contains("You responded to this challenge correctly."),
+        "{page}"
+    );
+    let tokens = hidden_field(&page, "__hisec.challenges__").unwrap();
+    assert!(tokens.starts_with("PHID-CHAL-"), "{tokens}");
+
+    // A forged token is PHP's exception page.
+    let (phid, _) = tokens.split_once(':').unwrap();
+    let response = post(
+        &app,
+        "/auth/finish/",
+        cookie,
+        &[
+            ("__form__", "1"),
+            ("__hisec__", "1"),
+            ("__csrf__", &csrf),
+            ("__hisec.challenges__", &format!("{phid}:forged")),
+        ],
+    )
+    .await;
+    assert_fallback(&response, "a forged multi-factor challenge token");
+
+    // Without the token, the answered challenge is a replay.
+    let page = text(
+        post(
+            &app,
+            "/auth/finish/",
+            cookie,
+            &[("__form__", "1"), ("__hisec__", "1"), ("__csrf__", &csrf)],
+        )
+        .await,
+    )
+    .await;
+    assert!(page.contains("Responses may not be reused"), "{page}");
+
+    // With it, the second factor's code finishes the login, straight into
+    // high security.
+    let second = phab_auth::totp::TotpSecret::new("MZXW6YTBOI")
+        .unwrap()
+        .code(step);
+    let response = post(
+        &app,
+        "/auth/finish/",
+        cookie,
+        &[
+            ("__form__", "1"),
+            ("__hisec__", "1"),
+            ("__csrf__", &csrf),
+            ("__hisec.challenges__", &tokens),
+            ("authfactor.2.mfa.response", &second),
+        ],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(
+        cookie_value(&response, "jump_to_hisec").as_deref(),
+        Some("deleted")
+    );
+    let session: String = scalar(
+        &test_db,
+        "SELECT CONCAT_WS('|', isPartial, highSecurityUntil) \
+         FROM `{ns}_user`.phabricator_session WHERE phid = 'PHID-SSSN-2'",
+    )
+    .await;
+    assert_eq!(session, format!("0|{}", NOW + 900));
+    let completed: i64 = scalar(
+        &test_db,
+        "SELECT SUM(isCompleted) FROM `{ns}_auth`.auth_challenge",
+    )
+    .await;
+    assert_eq!(completed, 2);
+    let actions: Vec<String> = rows(&test_db, HISEC_LOG)
+        .await
+        .iter()
+        .map(|row| row.split('|').next().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        actions,
+        ["hisec-fail", "hisec-fail", "hisec-enter", "login-full"]
+    );
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn multi_factor_paths_php_handles_are_left_to_it() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    let bugzilla = fake_bugzilla().await;
+    let app = app(&test_db, config(&bugzilla.url), true);
+    let csrf = user_csrf_token("PHID-USER-mfa", "mfa-token");
+    let hisec_post = [
+        ("__form__", "1"),
+        ("__hisec__", "1"),
+        ("__csrf__", csrf.as_str()),
+        ("authfactor.1.mfa.response", "123456"),
+    ];
+
+    // Ten failed answers in the last hour: PHP's rate limit page, before
+    // any challenge is issued.
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_system`.system_actionlog (actorHash, actorIdentity, action, \
+               score, epoch) VALUES ('{}', 'PHID-USER-mfa', 'auth.factor', 11, {})",
+            hash::digest_for_index(b"PHID-USER-mfa"),
+            NOW - 60
+        ))
+        .await;
+    assert_fallback(
+        &get(&app, "/auth/finish/", "phsid=mfa-token").await,
+        "too many multi-factor attempts",
+    );
+    assert_fallback(
+        &post(&app, "/auth/finish/", "phsid=mfa-token", &hisec_post).await,
+        "too many multi-factor attempts",
+    );
+    test_db
+        .execute("DELETE FROM `{ns}_system`.system_actionlog")
+        .await;
+
+    // The challenge token key PHP would create.
+    test_db
+        .execute("DELETE FROM `{ns}_auth`.auth_hmackey WHERE keyName = 'auth.challenge.token'")
+        .await;
+    assert_fallback(
+        &post(&app, "/auth/finish/", "phsid=mfa-token", &hisec_post).await,
+        "the challenge token key does not exist yet",
+    );
+
+    // Factors other than TOTP.
+    test_db
+        .execute("UPDATE `{ns}_auth`.auth_factorprovider SET providerFactorKey = 'sms'")
+        .await;
+    assert_fallback(
+        &get(&app, "/auth/finish/", "phsid=mfa-token").await,
+        "a multi-factor factor other than TOTP",
+    );
+    assert_eq!(
+        scalar::<i64>(&test_db, "SELECT COUNT(*) FROM `{ns}_auth`.auth_challenge").await,
+        0
+    );
+    assert_eq!(rows(&test_db, ACTION_ROWS).await, Vec::<String>::new());
     let partial: i64 = scalar(
         &test_db,
         "SELECT isPartial FROM `{ns}_user`.phabricator_session WHERE phid = 'PHID-SSSN-2'",
@@ -1098,4 +1491,418 @@ async fn logout_needs_a_valid_form_post() {
         location(&response).ends_with(&format!("&state={}&response_type=code", state_for("cid")))
     );
     test_db.drop_databases().await;
+}
+
+/// The databases registration and linking write to or read policies from.
+const LINK_DATABASES: &[&str] = &["worker", "metamta", "spaces", "project"];
+
+/// The anonymous session and registration key a BMO callback for an
+/// unknown account hands out, and where it sends the browser.
+async fn start_registration(app: &Router, code: &str) -> (String, String, String) {
+    let response = bmo_callback(app, code).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    let session = cookie_value(&response, "phsid").unwrap();
+    let key = cookie_value(&response, "phreg").unwrap();
+    let target = location(&response)
+        .strip_prefix("https://phab.example")
+        .unwrap()
+        .to_owned();
+    (session, key, target)
+}
+
+const USER_ROW: &str = "SELECT CONCAT_WS('|', userName, realName, isEmailVerified, isApproved, \
+    isAdmin, isDisabled, isSystemAgent, isMailingList, isEnrolledInMultiFactor, \
+    LENGTH(conduitCertificate), LENGTH(accountSecret), IFNULL(profileImagePHID, 'NULL'), \
+    dateCreated, dateModified, LEFT(phid, 10)) FROM `{ns}_user`.user WHERE userName = 'newbie'";
+const TASK_ROWS: &str = "SELECT CONCAT_WS('|', task.taskClass, task.priority, \
+    IFNULL(task.objectPHID, 'NULL'), data.data) FROM `{ns}_worker`.worker_activetask task \
+    JOIN `{ns}_worker`.worker_taskdata data ON data.id = task.dataID ORDER BY task.id";
+
+#[tokio::test]
+async fn bmo_registration_creates_accounts_like_php() {
+    let Some(test_db) = setup_with(LINK_DATABASES).await else {
+        return;
+    };
+    let bugzilla = fake_bugzilla().await;
+    let app = app(&test_db, config(&bugzilla.url), true);
+    test_db
+        .execute(&format!(
+            "UPDATE `{{ns}}_auth`.auth_providerconfig SET shouldTrustEmails = 1 \
+             WHERE phid = '{BMO_PROVIDER}'"
+        ))
+        .await;
+    let (session, key, target) = start_registration(&app, "code-2000").await;
+    assert!(target.starts_with("/auth/register/"), "{target}");
+    let cookie = format!("phsid={session}; phreg={key}");
+
+    // The browser which started the registration gets the form.
+    let response = get(&app, &target, &cookie).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    assert!(page.contains("value=\"nick2000\""), "{page}");
+    assert!(!page.contains("name=\"email\""), "the address is BMO's");
+    let csrf = hidden_field(&page, "__csrf__").unwrap();
+
+    // Another browser, or a forged key, gets PHP's errors.
+    let page = text(get(&app, &target, &format!("phsid={session}")).await).await;
+    assert!(page.contains("did not submit a registration key"), "{page}");
+    let page = text(get(&app, &target, &format!("phsid={session}; phreg=forged")).await).await;
+    assert!(page.contains("different registration key"), "{page}");
+    let page = text(get(&app, "/auth/register/nosuchsecret/", &cookie).await).await;
+    assert!(page.contains("No valid linkable account."), "{page}");
+
+    let form = |username: &str| {
+        vec![
+            ("__form__", "1".to_owned()),
+            ("__csrf__", csrf.clone()),
+            ("phase", "2".to_owned()),
+            ("username", username.to_owned()),
+            ("realName", "New Bie".to_owned()),
+        ]
+    };
+    let send = async |fields: Vec<(&str, String)>| {
+        let pairs: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(key, value)| (*key, value.as_str()))
+            .collect();
+        post(&app, &target, &cookie, &pairs).await
+    };
+    // Invalid and taken usernames: the form again, nothing written.
+    let page = text(send(form("new bie")).await).await;
+    assert!(
+        page.contains("Usernames must contain only numbers"),
+        "{page}"
+    );
+    let page = text(send(form("ALICE")).await).await;
+    assert!(
+        page.contains("Another user already has that username."),
+        "{page}"
+    );
+    let mut forged = form("newbie");
+    forged[1].1 = "B@forgedforgedforgedforged".to_owned();
+    assert_fallback(&send(forged).await, "an invalid CSRF token");
+    assert_eq!(
+        scalar::<i64>(&test_db, "SELECT COUNT(*) FROM `{ns}_user`.user").await,
+        4
+    );
+
+    let response = send(form("newbie")).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(
+        location(&response),
+        "https://phab.example/auth/validate/?expect=newbie"
+    );
+    assert_eq!(cookie_value(&response, "phreg").as_deref(), Some("deleted"));
+    let token = cookie_value(&response, "phsid").unwrap();
+
+    // `auth.require-approval` is on by default: unapproved, and the
+    // administrators get mail.
+    let user: String = scalar(&test_db, USER_ROW).await;
+    assert_eq!(
+        user,
+        format!("newbie|New Bie|1|0|0|0|0|0|0|255|64|NULL|{NOW}|{NOW}|PHID-USER-")
+    );
+    let user_phid: String = scalar(
+        &test_db,
+        "SELECT phid FROM `{ns}_user`.user WHERE userName = 'newbie'",
+    )
+    .await;
+    let email: String = scalar(
+        &test_db,
+        &format!(
+            "SELECT CONCAT_WS('|', address, isVerified, isPrimary, LENGTH(verificationCode), \
+               dateCreated, LEFT(phid, 10)) FROM `{{ns}}_user`.user_email \
+             WHERE userPHID = '{user_phid}'"
+        ),
+    )
+    .await;
+    assert_eq!(
+        email,
+        format!("user2000@example.com|1|1|24|{NOW}|PHID-EADR-")
+    );
+    let tokens = rows(
+        &test_db,
+        "SELECT token FROM `{ns}_user`.user_nametoken ORDER BY token",
+    )
+    .await;
+    assert_eq!(tokens, ["bie", "new", "newbie"]);
+    let linked: String = scalar(
+        &test_db,
+        "SELECT account.userPHID FROM `{ns}_user`.user_externalaccount account \
+         JOIN `{ns}_user`.user_externalaccountidentifier identifier \
+         ON identifier.externalAccountPHID = account.phid WHERE identifier.identifierRaw = '2000'",
+    )
+    .await;
+    assert_eq!(linked, user_phid);
+    let mail_id: i64 = scalar(&test_db, "SELECT id FROM `{ns}_metamta`.metamta_mail").await;
+    assert_eq!(
+        rows(&test_db, TASK_ROWS).await,
+        [
+            format!(
+                "PhabricatorSearchWorker|3500|{user_phid}|{{\"documentPHID\":\"{user_phid}\",\
+                 \"parameters\":[],\"strict\":false}}"
+            ),
+            "PhabricatorRepositoryIdentityChangeWorker|2000|NULL|\
+             {\"emailAddresses\":[\"user2000@example.com\"]}"
+                .to_owned(),
+            format!("PhabricatorMetaMTAWorker|1000|NULL|{mail_id}"),
+        ]
+    );
+    let mail: String = scalar(
+        &test_db,
+        "SELECT CONCAT_WS('|', IFNULL(actorPHID, 'NULL'), status, IFNULL(relatedPHID, 'NULL'), \
+           parameters) FROM `{ns}_metamta`.metamta_mail",
+    )
+    .await;
+    assert_eq!(
+        mail,
+        "NULL|queued|NULL|{\"sensitive\":true,\"mustEncrypt\":false,\
+         \"to\":[\"PHID-USER-admin\"],\"subject\":\"[Phabricator] New User \\\"newbie\\\" \
+         Awaiting Approval\",\"body\":\"Newly registered user \\\"newbie\\\" is awaiting \
+         account approval by an administrator.\\n\\nAPPROVAL QUEUE\\n  \
+         https:\\/\\/phab.example\\/people\\/query\\/approval\\/\\n\\nDISABLE APPROVAL QUEUE\\n  \
+         https:\\/\\/phab.example\\/config\\/edit\\/auth.require-approval\\/\\n\"}"
+    );
+    let edges = rows(
+        &test_db,
+        "SELECT CONCAT_WS('|', type, dst, seq) FROM `{ns}_metamta`.edge",
+    )
+    .await;
+    assert_eq!(edges, ["57|PHID-USER-admin|0"]);
+    let partial: i64 = scalar(
+        &test_db,
+        &format!(
+            "SELECT isPartial FROM `{{ns}}_user`.phabricator_session WHERE sessionKey = '{}'",
+            session_key(&token)
+        ),
+    )
+    .await;
+    assert_eq!(partial, 1);
+
+    // The registration can't be replayed: the account is linked now.
+    let page = text(get(&app, &target, &cookie).await).await;
+    assert!(page.contains("already linked to another user"), "{page}");
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn registrations_php_writes_differently_are_left_to_it() {
+    let Some(test_db) = setup_with(LINK_DATABASES).await else {
+        return;
+    };
+    let bugzilla = fake_bugzilla().await;
+    let app = app(&test_db, config(&bugzilla.url), true);
+    let (session, key, target) = start_registration(&app, "code-2001").await;
+    let cookie = format!("phsid={session}; phreg={key}");
+    let csrf = hidden_field(&text(get(&app, &target, &cookie).await).await, "__csrf__").unwrap();
+    // BMO addresses aren't trusted here: PHP mails a verification link.
+    let response = post(
+        &app,
+        &target,
+        &cookie,
+        &[
+            ("__form__", "1"),
+            ("__csrf__", &csrf),
+            ("phase", "2"),
+            ("username", "other"),
+            ("realName", "Other"),
+        ],
+    )
+    .await;
+    assert_fallback(&response, "an address to verify by mail");
+    assert_eq!(
+        scalar::<i64>(&test_db, "SELECT COUNT(*) FROM `{ns}_user`.user").await,
+        4
+    );
+    assert_eq!(rows(&test_db, TASK_ROWS).await, Vec::<String>::new());
+    // Invites and registrations without an account key are PHP's.
+    assert_fallback(
+        &get(&app, &target, &format!("{cookie}; invite=abc")).await,
+        "an invite",
+    );
+    assert_fallback(
+        &get(&app, "/auth/register/", &cookie).await,
+        "a registration without an account key",
+    );
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn logged_in_users_link_and_refresh_bmo_accounts() {
+    let Some(test_db) = setup_with(LINK_DATABASES).await else {
+        return;
+    };
+    let bugzilla = fake_bugzilla().await;
+    let app = app(&test_db, config(&bugzilla.url), true);
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_user`.phabricator_session (userPHID, type, sessionKey, \
+               sessionStart, sessionExpires, phid, isPartial) VALUES \
+             ('PHID-USER-admin', 'web', '{}', 1, {expires}, 'PHID-SSSN-3', 0), \
+             ('PHID-USER-mfa', 'web', '{}', 1, {expires}, 'PHID-SSSN-4', 0)",
+            session_key("admin-token"),
+            session_key("mfa-full-token"),
+            expires = NOW + 29 * 86_400,
+        ))
+        .await;
+
+    // Alice's BMO account is linked: she can refresh it, not link another.
+    let page = text(get(&app, "/auth/link/1/", "phsid=alice-token").await).await;
+    assert!(page.contains("Account Already Linked"), "{page}");
+    let response = get(&app, "/auth/refresh/1/", "phsid=alice-token").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let client_id = cookie_value(&response, "phcid").unwrap();
+    let page = text(response).await;
+    assert!(page.contains("Refresh Account Link"), "{page}");
+    assert!(
+        page.contains(&format!("state={}", state_for(&client_id))),
+        "{page}"
+    );
+    let page = text(get(&app, "/auth/refresh/1/", "phsid=admin-token").await).await;
+    assert!(page.contains("No Account Linked"), "{page}");
+    // Logged out, or with Rust login off, these are PHP's.
+    assert_fallback(&get(&app, "/auth/link/1/", "").await, "logged out");
+    let off = super_app_off(&test_db, &bugzilla.url);
+    assert_fallback(
+        &get(&off, "/auth/link/1/", "phsid=admin-token").await,
+        "Rust login is off",
+    );
+
+    // The refresh: Bugzilla sends Alice back with her own account.
+    let state = state_for("cid");
+    let callback =
+        |code: &str| format!("/auth/login/bmo:bugzilla.mozilla.org/?code={code}&state={state}");
+    let response = get(&app, &callback("code-1001"), "phcid=cid; phsid=alice-token").await;
+    assert_eq!(
+        location(&response),
+        "https://phab.example/settings/panel/external/"
+    );
+    // Someone else's account can't be linked.
+    let page = text(get(&app, &callback("code-1001"), "phcid=cid; phsid=admin-token").await).await;
+    assert!(page.contains("already associated with another"), "{page}");
+
+    // A new account goes to the confirmation, which links it once the
+    // viewer confirms with a form post.
+    let response = get(&app, &callback("code-3000"), "phcid=cid; phsid=admin-token").await;
+    let target = location(&response)
+        .strip_prefix("https://phab.example")
+        .unwrap()
+        .to_owned();
+    assert!(target.starts_with("/auth/confirmlink/"), "{target}");
+    let key = cookie_value(&response, "phreg").unwrap();
+    let cookie = format!("phsid=admin-token; phreg={key}");
+    let page = text(get(&app, &target, &cookie).await).await;
+    assert!(page.contains("Confirm Account Link"), "{page}");
+    assert!(page.contains("nick3000"), "{page}");
+    let page = text(get(&app, &target, "phsid=admin-token").await).await;
+    assert!(page.contains("did not submit a registration key"), "{page}");
+    let csrf = user_csrf_token("PHID-USER-admin", "admin-token");
+    let response = post(
+        &app,
+        &target,
+        &cookie,
+        &[("__form__", "1"), ("__csrf__", &csrf)],
+    )
+    .await;
+    assert_eq!(
+        location(&response),
+        "https://phab.example/settings/panel/external/"
+    );
+    assert_eq!(cookie_value(&response, "phreg").as_deref(), Some("deleted"));
+    let linked: String = scalar(
+        &test_db,
+        "SELECT account.userPHID FROM `{ns}_user`.user_externalaccount account \
+         JOIN `{ns}_user`.user_externalaccountidentifier identifier \
+         ON identifier.externalAccountPHID = account.phid WHERE identifier.identifierRaw = '3000'",
+    )
+    .await;
+    assert_eq!(linked, "PHID-USER-admin");
+
+    // A user with a TOTP factor confirms with a code, for this link only.
+    // (Their BMO account is unlinked first: one account per provider.)
+    test_db
+        .execute(
+            "UPDATE `{ns}_user`.user_externalaccount SET userPHID = NULL \
+             WHERE phid = 'PHID-XUSR-mfa'",
+        )
+        .await;
+    let response = get(
+        &app,
+        &callback("code-3001"),
+        "phcid=cid; phsid=mfa-full-token",
+    )
+    .await;
+    let target = location(&response)
+        .strip_prefix("https://phab.example")
+        .unwrap()
+        .to_owned();
+    let key = cookie_value(&response, "phreg").unwrap();
+    let cookie = format!("phsid=mfa-full-token; phreg={key}");
+    let csrf = user_csrf_token("PHID-USER-mfa", "mfa-full-token");
+    let page = text(
+        post(
+            &app,
+            &target,
+            &cookie,
+            &[("__form__", "1"), ("__csrf__", &csrf)],
+        )
+        .await,
+    )
+    .await;
+    assert!(page.contains("Provide MFA Credentials"), "{page}");
+    assert!(
+        page.contains("name=\"authfactor.1.mfa.response\""),
+        "{page}"
+    );
+    let account_phid: String = scalar(
+        &test_db,
+        "SELECT account.phid FROM `{ns}_user`.user_externalaccount account \
+         JOIN `{ns}_user`.user_externalaccountidentifier identifier \
+         ON identifier.externalAccountPHID = account.phid WHERE identifier.identifierRaw = '3001'",
+    )
+    .await;
+    let workflow: String = scalar(
+        &test_db,
+        "SELECT workflowKey FROM `{ns}_auth`.auth_challenge",
+    )
+    .await;
+    assert_eq!(workflow, format!("account.link({account_phid})"));
+    let response = post(
+        &app,
+        &target,
+        &cookie,
+        &[
+            ("__form__", "1"),
+            ("__hisec__", "1"),
+            ("__csrf__", &csrf),
+            ("authfactor.1.mfa.response", &totp_code(NOW / 30)),
+        ],
+    )
+    .await;
+    assert_eq!(
+        location(&response),
+        "https://phab.example/settings/panel/external/"
+    );
+    let linked: String = scalar(
+        &test_db,
+        &format!(
+            "SELECT userPHID FROM `{{ns}}_user`.user_externalaccount WHERE phid = '{account_phid}'"
+        ),
+    )
+    .await;
+    assert_eq!(linked, "PHID-USER-mfa");
+    // A token for this action, not high security for the session.
+    let until: String = scalar(
+        &test_db,
+        "SELECT IFNULL(highSecurityUntil, 'NULL') FROM `{ns}_user`.phabricator_session \
+         WHERE phid = 'PHID-SSSN-4'",
+    )
+    .await;
+    assert_eq!(until, "NULL");
+    test_db.drop_databases().await;
+}
+
+/// The router with Rust login off.
+fn super_app_off(test_db: &TestDatabase, bugzilla_url: &str) -> Router {
+    app(test_db, config(bugzilla_url), false)
 }

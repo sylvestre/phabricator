@@ -152,7 +152,19 @@ impl<S: WebState> FromRequestParts<Arc<S>> for WebUser {
     type Rejection = PageError;
 
     async fn from_request_parts(parts: &mut Parts, state: &Arc<S>) -> Result<Self, PageError> {
-        let token = cookie(&parts.headers, SESSION_COOKIE)
+        Self::from_headers(state.as_ref(), &parts.headers).await
+    }
+}
+
+impl WebUser {
+    /// The viewer of a request with these headers, with the checks
+    /// `PhabricatorController::willBeginExecution()` makes of controllers
+    /// which require a login.
+    pub async fn from_headers<S: WebState>(
+        state: &S,
+        headers: &HeaderMap,
+    ) -> Result<Self, PageError> {
+        let token = cookie(headers, SESSION_COOKIE)
             .filter(|token| !token.is_empty())
             .ok_or(PageError::Fallback("logged out"))?;
         let config = state.config();
@@ -203,7 +215,7 @@ impl<S: WebState> FromRequestParts<Arc<S>> for WebUser {
             let instructions = match text {
                 Some(text) => Some(
                     crate::remarkup::render(
-                        state.as_ref(),
+                        state,
                         &found.user.viewer(),
                         &text,
                         phab_remarkup::Mode::Html,

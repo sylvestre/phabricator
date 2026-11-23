@@ -1,7 +1,8 @@
 //! The end of a login: `PhabricatorAuthValidateController` checks that the
 //! browser kept the cookies, `PhabricatorAuthFinishController` turns the
-//! partial session into a full one when the user has no multi-factor
-//! authentication to pass. With factors, the prompt is PHP's.
+//! partial session into a full one once the user passed multi-factor
+//! authentication, or has no factor to pass. Factors other than TOTP are
+//! PHP's to prompt for.
 
 use std::sync::Arc;
 
@@ -9,7 +10,9 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::Response;
-use phab_auth::session;
+use phab_auth::Outcome;
+use phab_auth::mfa::{self, HighSecurity, HisecRequest, Mode, Planned};
+use phab_auth::session::{self, SessionUser};
 
 use super::page::LoginPage;
 use super::request::is_valid_local_uri;
@@ -108,10 +111,6 @@ async fn show_finish<S: WebState>(
 ) -> Result<Response, PageError> {
     let mut context = Context::new(state, method, uri, headers, body).await?;
     context.refuse_restricted_parameters()?;
-    if context.request.is_post() {
-        // Answers to the multi-factor prompt.
-        return Err(PageError::Fallback("a multi-factor form"));
-    }
     let config = context.config();
     let found = match &context.visitor {
         Visitor::LoggedIn { found } if found.user.is_disabled => {
@@ -123,17 +122,45 @@ async fn show_finish<S: WebState>(
             return Ok(context.request.redirect(config, "/"));
         }
     };
-    // `requireHighSecuritySession()` issues a token at once when the user
-    // has no factor; otherwise it prompts, which PHP does.
-    if phab_auth::user::is_enrolled_in_multi_factor(state.database(), &found.user.phid).await? {
-        return Err(PageError::Fallback(
-            "multi-factor authentication is pending",
-        ));
+    // `requireHighSecuritySession()` validates the CSRF token of every
+    // POST, after issuing challenges; PHP throws on a bad one. Checking it
+    // first writes nothing PHP's replay wouldn't.
+    if context.request.is_post() {
+        context.validate_csrf().await?;
     }
+    // `jump_to_hisec`, read with PHP truthiness.
+    let jump_into_hisec = context
+        .request
+        .cookie(HISEC_COOKIE)
+        .is_some_and(phab_core::php::is_truthy_str);
     let now = state.now();
     let info = context.request.info(&context.settings.hostname);
-    session::upgrade_partial_session(state.database(), &found, now, &info).await?;
+    let request = &context.request;
+    let field = |name: &str| request.str(name).map(str::to_owned);
+    let hisec = HisecRequest {
+        is_post: request.is_post(),
+        is_hisec_form: request.exists("__hisec__"),
+        field: &field,
+    };
+    let mode = Mode {
+        upgrade_session: true,
+        jump_into_hisec,
+        workflow_key: mfa::LEGACY_WORKFLOW,
+    };
+    let planned = match mfa::plan(state.database(), &found, &hisec, mode, now).await? {
+        Outcome::Done(planned) => planned,
+        Outcome::Unsupported(reason) => return Err(PageError::Fallback(reason)),
+    };
+    let outcome = match planned {
+        Planned::Token => HighSecurity::Token,
+        Planned::Challenge(plan) => mfa::execute(state.database(), *plan, now, &info).await?,
+    };
+    if let HighSecurity::Prompt { factors, answered } = outcome {
+        let page = factor_page(&context, &found, factors, &answered).await?;
+        return Ok(context.request.finish(page.render(StatusCode::OK)));
+    }
 
+    session::upgrade_partial_session(state.database(), &found, now, &info).await?;
     let next = context
         .request
         .nonempty_cookie(NEXT_URI_COOKIE)
@@ -148,6 +175,26 @@ async fn show_finish<S: WebState>(
         "/".to_owned()
     };
     Ok(context.request.redirect(config, &next))
+}
+
+/// The "Provide Multi-Factor Credentials" dialog, posting back to
+/// `/auth/finish/`; cancelling logs out.
+async fn factor_page<S: WebState>(
+    context: &Context<'_, S>,
+    found: &SessionUser,
+    factors: Vec<mfa::PromptFactor>,
+    answered: &mfa::AnsweredTokens,
+) -> Result<LoginPage, PageError> {
+    let mut page = LoginPage::new("Provide Multi-Factor Credentials");
+    page.factors = Some(super::link::factor_form(
+        context.request.uri.path(),
+        context.csrf_token().await?,
+        Some(found.user.user_name.clone()),
+        factors,
+        answered,
+        "/logout/",
+    ));
+    Ok(page)
 }
 
 #[cfg(test)]
