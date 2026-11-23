@@ -695,10 +695,12 @@ async fn publishes_a_comment_like_php() {
     fixture.finish().await;
 }
 
-/// With Mozilla's mail by default (`email.default` 2), nobody gets this
-/// mail: the rows are the same, but the notifications stay unread.
+/// With Mozilla's mail by default (`email.default` 2), Phabricator sends
+/// none of this mail, but Mozilla's reaches the recipients, so their
+/// notifications are read (`filterDeliverableByAnyMailActors()`), as PHP
+/// marks them on the dev stack.
 #[tokio::test]
-async fn leaves_notifications_unread_without_mail() {
+async fn marks_notifications_read_for_mozilla_mail() {
     let Some(fixture) = fixture().await else {
         return;
     };
@@ -725,8 +727,8 @@ async fn leaves_notifications_unread_without_mail() {
     assert_eq!(
         notifications,
         [
-            ("PHID-USER-alice".to_owned(), "0".to_owned()),
-            ("PHID-USER-dave".to_owned(), "0".to_owned()),
+            ("PHID-USER-alice".to_owned(), "1".to_owned()),
+            ("PHID-USER-dave".to_owned(), "1".to_owned()),
         ]
     );
     fixture.finish().await;
