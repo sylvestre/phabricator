@@ -20,6 +20,9 @@
     <p class="notice" role="status">Changes saved.</p>
     {%- endif %}
     <h2>{{ form.title }}</h2>
+    {%- if let Some(editor) = form.editor %}{% if let Some(warning) = editor.warning %}
+    <p class="notice" role="alert">{{ warning }}</p>
+    {%- endif %}{% endif %}
     <form class="settings-form" method="post" action="{{ form.action }}">
       {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
       <input type="hidden" name="__form__" value="1">
@@ -48,6 +51,33 @@
       {%- endfor %}
       <button type="submit">Save Changes</button>
     </form>
+    {%- if let Some(editor) = form.editor %}
+    <h2>External Editor URI Variables</h2>
+    <table class="hm-table settings-table">
+      <thead><tr><th>Variable</th><th>Replaced With</th><th>Example</th></tr></thead>
+      <tbody>
+        {%- for (key, name, example) in editor.variables %}
+        <tr><td><tt>%{{ key }}</tt></td><td>{{ name }}</td><td class="wide">{{ example }}</td></tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    <header class="settings-box-header">
+      <h2>Supported Editor Protocols</h2>
+      {%- if editor.can_configure %}<a class="button" href="/config/edit/uri.allowed-editor-protocols/"><span class="fa fa-sliders" aria-hidden="true"></span> View Configuration</a>{% else %}<span class="button disabled"><span class="fa fa-sliders" aria-hidden="true"></span> View Configuration</span>{% endif %}
+    </header>
+    {%- if editor.protocols.is_empty() %}
+    <p class="muted">No allowed editor protocols are configured.</p>
+    {%- else %}
+    <table class="hm-table settings-table">
+      <thead><tr><th>Protocol</th><th>Description</th></tr></thead>
+      <tbody>
+        {%- for (protocol, label) in editor.protocols %}
+        <tr><td>{{ protocol }}://</td><td class="wide">{% if let Some(label) = label %}{{ label }}{% else %}<em>Supported Protocol</em>{% endif %}</td></tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    {%- endif %}
+    {%- endif %}
     {%- endif %}
     {%- if let Some(mail) = content.mail %}
     <h2>Email Preferences</h2>

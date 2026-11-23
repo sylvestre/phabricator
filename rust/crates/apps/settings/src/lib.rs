@@ -3,6 +3,7 @@
 
 pub mod account;
 pub mod editor;
+pub mod editor_uri;
 pub mod mail_tags;
 pub mod preferences;
 pub mod setting;

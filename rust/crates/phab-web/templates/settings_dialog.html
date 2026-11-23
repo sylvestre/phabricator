@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="dialog" aria-labelledby="dialog-title">
+  <h1 id="dialog-title">{{ title }}</h1>
+  {%- if let Some(notice) = notice %}
+  <p class="notice" role="status">{{ notice }}</p>
+  {%- endif %}
+  {%- if !errors.is_empty() %}
+  <ul class="errors" role="alert">
+    {%- for error in errors %}
+    <li>{{ error }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  <form class="settings-form" method="post" action="{{ action }}">
+    {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+    <input type="hidden" name="__form__" value="1">
+    <input type="hidden" name="__dialog__" value="1">
+    {%- for (name, value) in hidden %}
+    <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {%- endfor %}
+    {%- for paragraph in paragraphs %}
+    <p>{{ paragraph.text }}{% if let Some(strong) = paragraph.strong %}<strong>{{ strong }}</strong>{{ paragraph.tail }}{% endif %}</p>
+    {%- endfor %}
+    {%- if let Some(field) = field %}
+    <div class="settings-field">
+      <label for="dialog-{{ field.name }}">{{ field.label }}{% if let Some(error) = field.error %} <span class="error">{{ error }}</span>{% endif %}</label>
+      <input type="text" id="dialog-{{ field.name }}" name="{{ field.name }}" value="{{ field.value }}"{% if field.read_only %} readonly{% endif %}>
+    </div>
+    {%- endif %}
+    {%- if let Some(hisec) = hisec %}
+    <input type="hidden" name="__hisec__" value="1">
+    {%- if let Some(tokens) = hisec.answered_tokens %}
+    <input type="hidden" name="__hisec.challenges__" value="{{ tokens }}">
+    {%- endif %}
+    {%- for factor in hisec.factors %}
+    <fieldset>
+      <legend>App Code</legend>
+      {%- if let Some(input) = factor.input %}
+      <label>{% if let Some(error) = input.error %}<span class="error">{{ error }}</span> {% endif %}<input type="text" name="{{ input.name }}" value="{{ input.value }}" inputmode="numeric" autocomplete="off" autofocus></label>
+      {%- endif %}
+      {%- if let Some(wait) = factor.wait %}
+      <p class="errors" role="alert"><span class="error">Wait</span> {{ wait }}</p>
+      {%- endif %}
+      {%- if factor.answered %}
+      <p>You responded to this challenge correctly.</p>
+      {%- endif %}
+      <small>Factor Name: {{ factor.factor_name }}</small>
+    </fieldset>
+    {%- endfor %}
+    {%- endif %}
+    {%- for paragraph in after %}
+    <p>{{ paragraph }}</p>
+    {%- endfor %}
+    {%- if let Some(submit) = submit %}
+    <button type="submit">{{ submit }}</button>
+    {%- endif %}
+    {%- if let Some((uri, label)) = cancel %}
+    <a href="{{ uri }}">{{ label }}</a>
+    {%- endif %}
+  </form>
+</section>
+{% endblock %}

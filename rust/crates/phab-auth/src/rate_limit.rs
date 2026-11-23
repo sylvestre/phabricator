@@ -1,8 +1,9 @@
-//! Rate limits of `PhabricatorSystemActionEngine`, as the password login
-//! uses them.
+//! Rate limits of `PhabricatorSystemActionEngine`, as the password login,
+//! multi-factor prompts and the Email Addresses panel use them.
 
 use phab_core::hash;
 use phab_db::Database;
+use phab_db::sqlx::MySqlConnection;
 
 use crate::AuthError;
 
@@ -29,6 +30,13 @@ pub const TRY_PASSWORD: SystemAction = SystemAction {
 pub const TRY_FACTOR: SystemAction = SystemAction {
     constant: "auth.factor",
     threshold: 10.0 / WINDOW,
+};
+
+/// `PhabricatorSettingsAddEmailAction`: 6 addresses an hour, for each
+/// user.
+pub const ADD_EMAIL: SystemAction = SystemAction {
+    constant: "email.add",
+    threshold: 6.0 / WINDOW,
 };
 
 /// `loadBlockedActors()` for one actor, without writing: whether `actor`
@@ -62,6 +70,19 @@ pub async fn record(
     score: f64,
     now: i64,
 ) -> Result<(), AuthError> {
+    let mut connection = database.pool().acquire().await?;
+    record_on(&mut connection, database, actor, action, score, now).await
+}
+
+/// [`record()`] on `connection`, which may be in a transaction.
+pub async fn record_on(
+    connection: &mut MySqlConnection,
+    database: &Database,
+    actor: &str,
+    action: SystemAction,
+    score: f64,
+    now: i64,
+) -> Result<(), AuthError> {
     let sql = format!(
         "INSERT INTO {} (actorHash, actorIdentity, action, score, epoch) VALUES (?, ?, ?, ?, ?)",
         database.table("system", "system_actionlog")
@@ -72,7 +93,7 @@ pub async fn record(
         .bind(action.constant)
         .bind(score)
         .bind(now)
-        .execute(database.pool())
+        .execute(connection)
         .await?;
     Ok(())
 }

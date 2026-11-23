@@ -2,23 +2,29 @@
 //! and the panels people use (W14).
 //!
 //! Ported: the panel list, the preference panels built on the edit engine
-//! (Date and Time, Language, Diff and Display Preferences, Email Delivery
-//! and Format) with their saves, Email Preferences (mail tags) with its
-//! save, and the lists of email addresses, sessions, Conduit API tokens
-//! and authentication factors. Saves write the rows PHP's
-//! `PhabricatorUserPreferencesEditor` writes
-//! ([`phab_app_settings::editor`]).
+//! (Date and Time, Language, Diff and Display Preferences, External
+//! Editor, Email Delivery and Format) with their saves, Email Preferences
+//! (mail tags) with its save, and the lists of email addresses, sessions,
+//! Conduit API tokens and authentication factors. Saves write the rows
+//! PHP's `PhabricatorUserPreferencesEditor` writes
+//! ([`phab_app_settings::editor`]). The actions of the address list
+//! ([`emails`]), of Conduit API tokens ([`tokens`]) and of sessions
+//! ([`sessions`]) write what PHP writes, through the high security prompt
+//! where PHP requires it ([`dialog`]).
 //!
-//! Left to PHP (`421`): the other panels, every action of the list panels
-//! (adding, verifying or removing addresses, MFA enrolment, tokens and
-//! sessions), workflow dialogs, administrators editing bots and mailing
-//! lists, the global defaults and the administrators' list of settings, the
-//! translations of developer mode, and saves PHP would refuse (it shows
-//! the errors on the form).
+//! Left to PHP (`421`): the other panels, MFA enrolment, workflow dialogs,
+//! administrators editing the settings of bots and mailing lists (but
+//! bots' API tokens), the global defaults and the administrators' list of
+//! settings, the translations of developer mode, and saves PHP would
+//! refuse (it shows the errors on the form).
 
+mod dialog;
+mod emails;
 mod form;
 mod lists;
 mod mail;
+mod sessions;
+mod tokens;
 
 use std::sync::Arc;
 
@@ -144,7 +150,7 @@ fn panel_groups(facts: &PanelFacts) -> Vec<(&'static str, Vec<Panel>)> {
             vec![
                 panel("diff", "Diff Preferences", "fa-cog", Kind::Form),
                 panel("display", "Display Preferences", "fa-desktop", Kind::Form),
-                panel("editor", "External Editor", "fa-i-cursor", Kind::Php),
+                panel("editor", "External Editor", "fa-i-cursor", Kind::Form),
             ],
         ),
         ("Authentication", authentication),
@@ -296,6 +302,30 @@ pub(crate) fn routes<S: WebState>() -> Router<Arc<S>> {
         .route(
             "/settings/user/{username}/page/{key}/",
             routing::get(user_panel::<S>).post(user_panel::<S>),
+        )
+        .route(
+            "/conduit/token/edit/",
+            routing::get(tokens::generate::<S>).post(tokens::generate::<S>),
+        )
+        .route(
+            "/conduit/token/edit/{id}/",
+            routing::get(tokens::view::<S>).post(tokens::view::<S>),
+        )
+        .route(
+            "/conduit/token/terminate/",
+            routing::get(tokens::terminate_all::<S>).post(tokens::terminate_all::<S>),
+        )
+        .route(
+            "/conduit/token/terminate/{id}/",
+            routing::get(tokens::terminate::<S>).post(tokens::terminate::<S>),
+        )
+        .route(
+            "/auth/session/terminate/{id}/",
+            routing::get(sessions::terminate::<S>).post(sessions::terminate::<S>),
+        )
+        .route(
+            "/auth/session/downgrade/",
+            routing::get(sessions::downgrade::<S>).post(sessions::downgrade::<S>),
         )
 }
 

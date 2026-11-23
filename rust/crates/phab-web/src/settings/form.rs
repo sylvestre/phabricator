@@ -4,6 +4,7 @@
 
 use axum::response::Response;
 use phab_app_settings::editor::{self, Change};
+use phab_app_settings::editor_uri;
 use phab_app_settings::preferences::Preferences;
 use phab_app_settings::setting::{self, Control, Setting};
 use phab_core::php;
@@ -49,6 +50,71 @@ pub(crate) struct FormView {
     pub(super) action: String,
     pub(super) saved: bool,
     pub(super) fields: Vec<FieldView>,
+    /// What the External Editor panel adds around its form.
+    pub(super) editor: Option<EditorView>,
+}
+
+/// `PhabricatorExternalEditorSettingsPanel`'s head and tail content.
+pub(crate) struct EditorView {
+    /// Why the stored pattern no longer works.
+    pub(super) warning: Option<String>,
+    /// `getVariableDefinitions()`.
+    pub(super) variables: Vec<(&'static str, &'static str, &'static str)>,
+    /// The allowed protocols and their labels (`None`: "Supported
+    /// Protocol").
+    pub(super) protocols: Vec<(String, Option<&'static str>)>,
+    /// Whether the "View Configuration" button is enabled.
+    pub(super) can_configure: bool,
+}
+
+/// `newSettingsPanelEditFormTailContent()`'s labels of protocols.
+fn protocol_label(protocol: &str) -> Option<&'static str> {
+    Some(match protocol {
+        "http" => "Hypertext Transfer Protocol",
+        "https" => "Hypertext Transfer Protocol over SSL",
+        "txmt" => "TextMate",
+        "mvim" => "MacVim",
+        "subl" => "Sublime Text",
+        "vim" => "Vim",
+        "emacs" => "Emacs",
+        "vscode" => "Visual Studio Code",
+        "editor" => "Generic Editor",
+        "idea" => "IntelliJ IDEA",
+        "zed" => "Zed",
+        _ => return None,
+    })
+}
+
+/// The External Editor panel's content: a warning when the pattern the
+/// viewer uses no longer validates (`newSettingsPanelEditFormHeadContent()`),
+/// and the tables of variables and protocols.
+fn editor_view<S: WebState>(
+    panel: &PanelRequest<'_, S>,
+    current: &Value,
+) -> Result<EditorView, PageError> {
+    let config = panel.state.config();
+    let pattern = php::string_cast(current);
+    let warning = if pattern.is_empty() {
+        None
+    } else {
+        match editor_uri::validate(config, &pattern) {
+            Ok(()) => None,
+            Err(Some(message)) => Some(message),
+            Err(None) => return Err(PageError::Fallback("an editor pattern PHP can't parse")),
+        }
+    };
+    Ok(EditorView {
+        warning,
+        variables: editor_uri::VARIABLES.to_vec(),
+        protocols: editor_uri::allowed_protocols(config)
+            .into_iter()
+            .map(|protocol| {
+                let label = protocol_label(&protocol);
+                (protocol, label)
+            })
+            .collect(),
+        can_configure: panel.viewer.user.is_admin,
+    })
 }
 
 /// The settings of the panel; `None` when one of them needs PHP.
@@ -147,11 +213,24 @@ async fn render<S: WebState>(
             }
         })
         .collect();
+    let editor = if panel.panel.key == "editor" {
+        // `getUserSetting()`: the viewer's value, or the global default.
+        let current = match preferences.get(setting::EDITOR) {
+            Value::Null => setting::find(setting::EDITOR)
+                .map(|editor| effective_default(editor, &context, global))
+                .unwrap_or_default(),
+            value => value.clone(),
+        };
+        Some(editor_view(&panel, &current)?)
+    } else {
+        None
+    };
     let form = FormView {
         title: panel.panel.name,
         action: panel.uri(),
         saved,
         fields,
+        editor,
     };
     Ok(panel.render(Content {
         form: Some(form),

@@ -17,7 +17,8 @@ the stack and copy it from the browser). A scenario posts one form:
 (as `editengine.actions` is). `__form__` and a `__csrf__` token are added
 unless the scenario gives its own. The token comes from the `__csrf__`
 input of `--csrf-page`, fetched from PHP before the first snapshot. `{D3}`
-in a path or a field is the PHID of revision D3. The optional `sql`
+in a path or a field is the PHID of revision D3, `{@alice}` the PHID of
+user alice. The optional `sql`
 statements run on both sides before the post, and are undone with the
 rest.
 
@@ -59,11 +60,69 @@ RUST_URL = "http://phab-rust:8080"
 # network and have PHP.
 CLIENT = os.environ.get("WEB_PARITY_CLIENT", WP.PHP)
 
-# Bookkeeping of the web requests themselves.
-WP.IGNORED.add("phabricator_user.phabricator_session")
+# The sessions are compared: the settings actions delete them and take them
+# out of high security. Both sides extend the posting session when they
+# load the user, so its expiry is left out (`session_rows()`). Conduit
+# tokens are compared too: the posts make none of their own.
+WP.IGNORED.discard("phabricator_user.phabricator_session")
+WP.IGNORED.discard("phabricator_conduit.conduit_token")
+
+# `phabricator_session` rows: (id, userPHID, type, sessionKey,
+# sessionStart, sessionExpires, ...).
+SESSION_EXPIRES = re.compile(r"^(\(\d+,'[^']*','[^']*','[^']*',\d+,)\d+")
+# A new token's secret (`api-` and 28 random characters).
+TOKEN_SECRET = re.compile(r"'(api|cli|clr)-[a-z2-7]{28}'")
+# A new address's verification code, and the link mail carries it in.
+VERIFICATION_CODE = re.compile(r"'[a-z2-7]{24}'")
+VERIFICATION_LINK = re.compile(r"(emailverify\\*/)[a-z2-7]{24}")
+# What the activity log records about the request, which differs between
+# PHP behind nginx and the Rust service called directly: the host, the
+# user agent and the remote address (the column after the dates).
+LOG_HOST = re.compile(r'(\\"host\\":\\")[^\\"]*')
+LOG_AGENT = re.compile(r'(\\"user_agent\\":)(?:null|\\"[^\\"]*\\")')
+LOG_ADDRESS = re.compile(r"(,\d+,\d+,)'[^']*'(,(?:'[^']*'|NULL)\);?$)")
+
+
+def settings_values(table, values):
+    """Normalizes what a run of the settings actions makes up."""
+    if table == "phabricator_user.phabricator_session":
+        return SESSION_EXPIRES.sub(r"\1<expires>", values)
+    if table == "phabricator_conduit.conduit_token":
+        return TOKEN_SECRET.sub(r"'\1-<secret>'", values)
+    if table == "phabricator_user.user_email":
+        return VERIFICATION_CODE.sub("'<code>'", values)
+    if table == "phabricator_metamta.metamta_mail":
+        return VERIFICATION_LINK.sub(r"\1<code>", values)
+    if table == "phabricator_user.user_log":
+        values = LOG_HOST.sub(r"\1<host>", values)
+        values = LOG_AGENT.sub(r"\1<agent>", values)
+        return LOG_ADDRESS.sub(r"\1'<address>'\2", values)
+    return values
+
+
+_ROWS = WP.rows
+_NORMALIZE = WP.normalize
+
+
+def session_rows(snapshot):
+    return {(table, SESSION_EXPIRES.sub(r"\1<expires>", values))
+            if table == "phabricator_user.phabricator_session"
+            else (table, values)
+            for table, values in _ROWS(snapshot)}
+
+
+def normalize_settings(changes, known, started, finished):
+    changes = {(table, settings_values(table, values))
+               for table, values in changes}
+    return _NORMALIZE(changes, known, started, finished)
+
+
+WP.rows = session_rows
+WP.normalize = normalize_settings
 
 CSRF = re.compile(r'name="__csrf__" value="([^"]+)"')
 REVISION = re.compile(r"\{D([1-9][0-9]*)\}")
+USER = re.compile(r"\{@([A-Za-z0-9_.-]+)\}")
 
 # Posts a form without following redirects; prints the status line, the
 # Location and the body.
@@ -96,8 +155,18 @@ def revision_phid(match):
     return out
 
 
+def user_phid(match):
+    out = WP.sh(["docker", "exec", WP.DB, "sh", "-c",
+                 f"{WP.MYSQL} -N -e \"SELECT phid FROM "
+                 "phabricator_user.user WHERE userName = "
+                 f"'{match.group(1)}'\" 2>/dev/null"]).decode().strip()
+    if not out:
+        raise SystemExit(f"no user {match.group(1)}")
+    return out
+
+
 def expand(text):
-    return REVISION.sub(revision_phid, text)
+    return USER.sub(user_phid, REVISION.sub(revision_phid, text))
 
 
 def csrf_token(phsid, page):

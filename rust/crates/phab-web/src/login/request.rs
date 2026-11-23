@@ -153,6 +153,22 @@ impl LoginRequest {
         }
     }
 
+    /// `getPassthroughRequestParameters()`: the request data (`$_POST +
+    /// $_GET`, the last of duplicate names winning) without the magic
+    /// parameters, whose names start with `__`.
+    pub fn passthrough_parameters(&self) -> Vec<(String, String)> {
+        let mut parameters: Vec<(String, String)> = Vec::new();
+        for (key, _) in self.post.iter().chain(&self.get) {
+            if key.starts_with("__") || parameters.iter().any(|(known, _)| known == key) {
+                continue;
+            }
+            if let Some(value) = self.str(key) {
+                parameters.push((key.clone(), value.to_owned()));
+            }
+        }
+        parameters
+    }
+
     /// `getExists()`.
     pub fn exists(&self, name: &str) -> bool {
         self.str(name).is_some()

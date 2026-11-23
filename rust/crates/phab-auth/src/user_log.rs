@@ -3,6 +3,7 @@
 
 use phab_core::{Phid, php};
 use phab_db::Database;
+use phab_db::sqlx::MySqlConnection;
 use serde_json::{Map, Value, json};
 
 use crate::AuthError;
@@ -38,6 +39,14 @@ pub enum LogType {
     EnterHisec,
     /// `PhabricatorFailHisecUserLogType`: a multi-factor answer was wrong.
     FailHisec,
+    /// `PhabricatorExitHisecUserLogType`: the user left high security.
+    ExitHisec,
+    /// `PhabricatorAddEmailUserLogType`.
+    AddEmail,
+    /// `PhabricatorRemoveEmailUserLogType`.
+    RemoveEmail,
+    /// `PhabricatorPrimaryEmailUserLogType`.
+    PrimaryEmail,
 }
 
 impl LogType {
@@ -51,6 +60,10 @@ impl LogType {
             Self::LoginFailure => "login-fail",
             Self::EnterHisec => "hisec-enter",
             Self::FailHisec => "hisec-fail",
+            Self::ExitHisec => "hisec-exit",
+            Self::AddEmail => "email-add",
+            Self::RemoveEmail => "email-remove",
+            Self::PrimaryEmail => "email-primary",
         }
     }
 }
@@ -78,25 +91,42 @@ pub async fn insert(
     request: &RequestInfo,
     now: i64,
 ) -> Result<(), AuthError> {
+    let mut connection = database.pool().acquire().await?;
+    let values = (&Value::Null, &Value::Null);
+    insert_on(&mut connection, database, entry, values, request, now).await
+}
+
+/// `PhabricatorUserLog::save()` on `connection`, with the values of
+/// `setOldValue()` and `setNewValue()`.
+pub async fn insert_on(
+    connection: &mut MySqlConnection,
+    database: &Database,
+    entry: LogEntry<'_>,
+    (old_value, new_value): (&Value, &Value),
+    request: &RequestInfo,
+    now: i64,
+) -> Result<(), AuthError> {
     let mut details = entry.details;
     details.insert("host".to_owned(), json!(request.hostname));
     details.insert("user_agent".to_owned(), json!(request.user_agent));
     let sql = format!(
         "INSERT INTO {} (actorPHID, userPHID, action, oldValue, newValue, details, \
            dateCreated, dateModified, remoteAddr, session) \
-         VALUES (?, ?, ?, 'null', 'null', ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         database.table("user", "user_log")
     );
     phab_db::sqlx::query(&sql)
         .bind(entry.actor.map(Phid::as_str))
         .bind(entry.user_phid)
         .bind(entry.action.as_str())
+        .bind(php::json_encode(old_value))
+        .bind(php::json_encode(new_value))
         .bind(php::json_encode(&Value::Object(details)))
         .bind(now)
         .bind(now)
         .bind(&request.remote_address)
         .bind(entry.session)
-        .execute(database.pool())
+        .execute(connection)
         .await?;
     Ok(())
 }

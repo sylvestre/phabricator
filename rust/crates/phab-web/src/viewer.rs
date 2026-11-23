@@ -8,7 +8,7 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, header};
 use phab_auth::csrf::{CsrfKey, CsrfSecret};
-use phab_auth::session::{self, SESSION_COOKIE, Session, SessionType};
+use phab_auth::session::{self, SESSION_COOKIE, Session, SessionType, SessionUser};
 use phab_auth::{Outcome, User, Writes, csrf};
 use phab_core::PhidType;
 use phab_policy::loader::{self, NoExtendedObjects};
@@ -43,6 +43,15 @@ impl WebUser {
     /// The session cookie, to call PHP as the user.
     pub fn session_token(&self) -> &SessionToken {
         &self.session_token
+    }
+
+    /// The user and their session, as the multi-factor prompt takes them.
+    pub(crate) fn session_user(&self) -> SessionUser {
+        SessionUser {
+            user: self.user.clone(),
+            session: self.session.clone(),
+            csrf_secret: self.csrf_secret.clone(),
+        }
     }
 
     /// The checks of `PhabricatorController::willBeginExecution()` which

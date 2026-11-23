@@ -1,6 +1,8 @@
 //! The list panels: email addresses, authentication factors, Conduit API
-//! tokens and sessions. Their actions (the links of the lists) and any
-//! post are PHP's.
+//! tokens and sessions. The actions of the address list are
+//! [`super::emails`]; those of tokens and sessions have their own routes
+//! ([`super::tokens`], [`super::sessions`]). Factor actions and other
+//! posts are PHP's.
 
 use axum::response::Response;
 use phab_app_people::profile::relative_time;
@@ -48,7 +50,12 @@ pub(crate) struct EmailsView {
 pub(super) async fn email_addresses<S: WebState>(
     panel: PanelRequest<'_, S>,
 ) -> Result<Response, PageError> {
-    require_list(&panel, &["new", "delete", "verify", "primary"])?;
+    let panel = match super::emails::dispatch(panel).await? {
+        Ok(response) => return Ok(response),
+        Err(panel) => panel,
+    };
+    // What is left is PHP's list, whatever the query string.
+    require_list(&panel, &[])?;
     let addresses =
         account::email_addresses(panel.state.database(), &panel.viewer.user.phid).await?;
     let view = EmailsView {

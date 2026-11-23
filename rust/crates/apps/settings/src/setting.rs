@@ -43,7 +43,7 @@ enum Kind {
     /// `PhabricatorOptionGroupSetting`.
     Groups(fn(&Context<'_>) -> Vec<OptionGroup>),
     /// `PhabricatorStringSetting`, with the validation of the setting.
-    Text(fn(&str) -> bool),
+    Text(fn(&Context<'_>, &str) -> bool),
     /// `PhabricatorInternalSetting`: no control, values stored as given.
     Internal,
 }
@@ -78,6 +78,8 @@ pub const TIMEZONE: &str = "timezone";
 pub const TIMEZONE_IGNORE_OFFSET: &str = "time.offset.ignore";
 /// `PhabricatorTranslationSetting::SETTINGKEY`.
 pub const TRANSLATION: &str = "translation";
+/// `PhabricatorEditorSetting::SETTINGKEY`.
+pub const EDITOR: &str = "editor";
 /// `PhabricatorEmailTagsSetting::SETTINGKEY`.
 pub const MAIL_TAGS: &str = "mailtags";
 
@@ -163,11 +165,35 @@ fn pronoun_options(context: &Context<'_>) -> Vec<(String, String)> {
 
 /// `PhabricatorMonospacedFontSetting::filterMonospacedCSSRule()` leaves
 /// the value as it is.
-fn is_safe_font(value: &str) -> bool {
+fn is_safe_font(_: &Context<'_>, value: &str) -> bool {
     value
         .chars()
         .all(|character| character.is_ascii_alphanumeric() || " ,\"./-".contains(character))
 }
+
+/// `PhabricatorEditorSetting::validateTransactionValue()`.
+fn is_valid_editor_pattern(context: &Context<'_>, value: &str) -> bool {
+    crate::editor_uri::validate(context.config, value).is_ok()
+}
+
+/// `PhabricatorEditorSetting::getControlInstructions()`, with the link of
+/// `PhabricatorEnv::getDoclink()`.
+const EDITOR_INSTRUCTIONS: &str = concat!(
+    "Many text editors can be configured as URI handlers for special protocols like ",
+    "`editor://`. If you have installed and configured such an editor, some applications ",
+    "can generate links that you can click to open files locally.\n\n",
+    "Provide a URI pattern for building external editor URIs in your environment. For ",
+    "example, if you use TextMate on macOS, the pattern for your machine may look something ",
+    "like this:\n\n",
+    "```name=\"Example: TextMate on macOS\"\n",
+    "txmt://open/?url=file:///Users/alincoln/editor_links/%n/%f&line=%l\n",
+    "```\n\n\n",
+    "For complete instructions on editor configuration, see **[[ ",
+    "https://secure.phabricator.com/diviner/find/",
+    "?name=User%20Guide%3A%20Configuring%20an%20External%20Editor&type=article&jump=1",
+    " | User Guide: Configuring an External Editor ]]**.\n\n",
+    "See the tables below for a list of supported variables and protocols.",
+);
 
 const DATE_FORMAT_INSTRUCTIONS: &str = "Select the format you prefer for editing dates.";
 
@@ -383,6 +409,15 @@ pub const SETTINGS: &[Setting] = &[
             ])
         }),
         default: |_| json!("disabled"),
+    },
+    Setting {
+        key: EDITOR,
+        name: "Editor Link",
+        panel: Some("editor"),
+        order: 300,
+        instructions: Some(EDITOR_INSTRUCTIONS),
+        kind: Kind::Text(is_valid_editor_pattern),
+        default: |_| Value::Null,
     },
     Setting {
         key: "no-mail",
@@ -607,7 +642,7 @@ impl Setting {
                         .iter()
                         .any(|(key, _)| *key == *text)
             }
-            Kind::Text(is_valid) => text.is_empty() || is_valid(&text),
+            Kind::Text(is_valid) => text.is_empty() || is_valid(context, &text),
             Kind::Internal => true,
         };
         if valid {

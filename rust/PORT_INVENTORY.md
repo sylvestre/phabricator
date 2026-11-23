@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 8 | 25 | 120 |
-| Web routes | 38 | – | 52 | 7 | 281 | 378 |
+| Web routes | 42 | – | 52 | 7 | 277 | 378 |
 
 Of the 25 methods not ported, 22 write (or depend on a write); the read-only ones left are `auth.querypublickeys`, `conduit.query`, `diffusion.findsymbols`.
 
@@ -285,9 +285,9 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/auth/unlink/{id}/` | `PhabricatorAuthUnlinkController` | not ported | write (form or action) |
 | `/auth/{link\|refresh}/{id}/` | `PhabricatorAuthLinkController` | ported, not routed | W7, `PHAB_RUST_LOGIN=1`: BMO only; security review pending |
 | `/auth/confirmlink/{akey}/` | `PhabricatorAuthConfirmLinkController` | ported, not routed | W7, `PHAB_RUST_LOGIN=1`: BMO only, with the TOTP prompt of `requireHighSecurityToken()`; security review pending |
-| `/auth/session/terminate/{id}/` | `PhabricatorAuthTerminateSessionController` | not ported | write (form or action) |
+| `/auth/session/terminate/{id}/` | `PhabricatorAuthTerminateSessionController` | Rust | deletes one or all of the viewer's other sessions (PHP logs nothing); sessions of external accounts and workflow dialogs 421 |
 | `/auth/token/revoke/{id}/` | `PhabricatorAuthRevokeTokenController` | not ported | write (form or action) |
-| `/auth/session/downgrade/` | `PhabricatorAuthDowngradeSessionController` | not ported | write (form or action) |
+| `/auth/session/downgrade/` | `PhabricatorAuthDowngradeSessionController` | Rust | leaves high security (`hisec-exit` log row); workflow dialogs 421 |
 | `/auth/enroll/[{pageKey}/]` | `PhabricatorAuthNeedsMultiFactorController` | not ported | MFA enrollment (writes a factor); Rust pages send the user there |
 | `/auth/sshkey/for/{forPHID}/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorAuthSSHKeyListController` | not ported | SSH keys (unused without hosting) |
 | `/auth/sshkey/generate/` | `PhabricatorAuthSSHKeyGenerateController` | not ported | write (form or action) |
@@ -328,8 +328,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/conduit/log/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorConduitLogController` | not ported | admin: call log (search engine) |
 | `/conduit/log/view/{view}/` | `PhabricatorConduitLogController` | not ported | admin: call log (search engine) |
 | `/conduit/token/` | `PhabricatorConduitTokenController` | not ported | shows (and on first use creates) the CLI token |
-| `/conduit/token/edit/[{id}/]` | `PhabricatorConduitTokenEditController` | not ported | write (form or action) |
-| `/conduit/token/terminate/[{id}/]` | `PhabricatorConduitTokenTerminateController` | not ported | write (form or action) |
+| `/conduit/token/edit/[{id}/]` | `PhabricatorConduitTokenEditController` | Rust | generates and shows the viewer's tokens (and bots' for administrators), behind the TOTP high security prompt; other users' tokens, non-TOTP factors and workflow dialogs 421 |
+| `/conduit/token/terminate/[{id}/]` | `PhabricatorConduitTokenTerminateController` | Rust | expires one or all of the viewer's tokens (and bots' for administrators), behind the TOTP high security prompt; other users' tokens, non-TOTP factors and workflow dialogs 421 |
 | `/conduit/login/` | `PhabricatorConduitTokenHandshakeController` | not ported | `arc install-certificate` (writes a token) |
 | `/api/{method}` | `PhabricatorConduitAPIController` | partial | per method: see "Conduit methods" |
 
@@ -701,7 +701,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Route | Controller | Port | Note |
 |---|---|---|---|
 | `/settings/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorSettingsListController` | partial | `/settings/` only (redirect, or the list for admins) |
-| `/settings/user/{username}/[page/{pageKey}/]` | `PhabricatorSettingsMainController` | partial | panels: datetime, language, diff, display, email, emaildelivery, emailformat, emailpreferences, multifactor, apitokens, sessions; preference saves are written by Rust; other panels and list actions 421 |
+| `/settings/user/{username}/[page/{pageKey}/]` | `PhabricatorSettingsMainController` | partial | panels: datetime, language, diff, display, editor, email, emaildelivery, emailformat, emailpreferences, multifactor, apitokens, sessions; preference saves are written by Rust; the address actions (`?new`, `?delete`, `?verify`, `?primary`) write `PhabricatorUserEditor`'s rows (`user_email`, `user_log`, the `email.add` rate limit, the destruction log, revoked reset links, identity tasks) and the mail of `PhabricatorUserEmail` (`metamta_mail` and its task), behind the TOTP high security prompt where PHP requires one; non-TOTP factors, `auth.email-domains`, refused or taken addresses, `phabricator.production-uri`, unverified accounts making an address primary, removals other objects refer to, workflow dialogs, MFA enrolment, the other panels and administrators editing bots and mailing lists 421 |
 | `/settings/builtin/global/[page/{pageKey}/]` | `PhabricatorSettingsMainController` | not ported | admin: the global default settings |
 | `/settings/panel/{panel}/` | `PhabricatorSettingsMainController` | Rust | redirects to the user's panel |
 | `/settings/adjust/` | `PhabricatorSettingsAdjustController` | not ported | write (form or action) |

@@ -55,7 +55,7 @@ fn session_key(token: &str) -> String {
 /// `alice` and `bob`.
 async fn setup() -> Option<TestDatabase> {
     let test_db = TestDatabase::create(&[
-        "user", "auth", "worker", "herald", "conduit", "spaces", "project",
+        "user", "auth", "worker", "herald", "conduit", "spaces", "project", "system",
     ])
     .await?;
     test_db
@@ -935,10 +935,21 @@ async fn list_panels_show_the_users_own() {
     assert!(page.contains(r#"href="/auth/session/terminate/3/""#));
     assert!(!page.contains("Leave High Security"));
 
-    // Their actions are PHP's.
+    // Address actions need high security first: the prompt of factors
+    // whose secret isn't base32 is PHP's (`settings_actions.rs` tests the
+    // actions and the prompt).
     for path in [
         "/settings/user/alice/page/email/?new=true",
         "/settings/user/alice/page/email/?delete=1",
+    ] {
+        let response = get(&test_db, path, ALICE).await;
+        assert_eq!(
+            fallback_reason(&response),
+            "a TOTP secret which is not base32"
+        );
+    }
+    // Factor actions and other panels are PHP's.
+    for path in [
         "/settings/user/alice/page/multifactor/?new=true",
         "/settings/user/alice/page/multifactor/?edit=2",
         "/settings/user/alice/page/ssh/",

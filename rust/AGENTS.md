@@ -120,7 +120,12 @@ with `include /app/nginx/rust/page.inc;` to `rust/nginx/rust-web.conf` and
 reload nginx. Writes from Rust pages go through PHP (`PHAB_PHP_URL`) and
 must answer failures with 503, which nginx doesn't replay. The settings
 pages write preferences themselves, as PHP's editor does: they answer 421
-only before writing, so the replay writes once. So do PHP's comment form of
+only before writing, so the replay writes once. So do the actions of the
+account panels: email addresses, Conduit API tokens
+(`/conduit/token/{edit|terminate}/`) and sessions
+(`/auth/session/{terminate/<id>|downgrade}/`), behind the TOTP high
+security prompt where PHP requires one
+(`crates/phab-web/src/settings/dialog.rs`). So do PHP's comment form of
 revisions (`/differential/revision/edit/N/comment/`) and the subscribe
 action (`/subscriptions/add|delete/PHID-DREV-.../`), through the Rust
 editor with a web content source (`crates/phab-web/src/web_edit.rs`),
