@@ -1,0 +1,75 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>{% if let Some(icon) = icon %}<span class="fa {{ icon }}" aria-hidden="true"></span> {% endif %}{{ heading }}</h1>
+  {%- if !tags.is_empty() %}
+  <ul class="tags">{% for tag in tags %}<li class="tag">{{ tag }}</li>{% endfor %}</ul>
+  {%- endif %}
+</header>
+{%- if !nav.is_empty() %}
+<nav class="bucket-switch" aria-label="{{ heading }}">
+  {%- for link in nav %}
+  <a href="{{ link.uri }}"{% if link.inactive %} aria-current="page"{% endif %}>{% if let Some(icon) = link.icon %}<span class="fa {{ icon }}" aria-hidden="true"></span> {% endif %}{{ link.name }}</a>
+  {%- endfor %}
+</nav>
+{%- endif %}
+<div class="columns">
+<section class="main-column">
+{%- for section in sections %}
+<section class="system-section"{% if let Some(anchor) = section.anchor %} id="{{ anchor }}"{% endif %}>
+  {%- if let Some(title) = section.title %}<h2>{{ title }}</h2>{% endif %}
+  {%- match section.body %}
+  {%- when Body::Properties(properties) %}
+  <dl class="properties">
+    {%- for property in properties %}
+    <dt>{{ property.label }}</dt><dd>{{ property.value_html|safe }}</dd>
+    {%- endfor %}
+  </dl>
+  {%- when Body::Table(table) %}
+  {%- if table.rows.is_empty() %}
+  <p class="muted">{{ table.empty }}</p>
+  {%- else %}
+  <table class="hm-table">
+    <thead><tr>{% for header in table.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {%- for row in table.rows %}
+      <tr>{% for cell in row %}<td>{{ cell|safe }}</td>{% endfor %}</tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+  {%- when Body::List(list) %}
+  {%- if list.items.is_empty() %}
+  <p class="muted">{{ list.empty }}</p>
+  {%- else %}
+  <ul class="hm-list">
+    {%- for item in list.items %}
+    <li{% if item.disabled %} class="hm-disabled"{% endif %}>
+      <p class="hm-item">{% if let Some(icon) = item.icon %}<span class="fa {{ icon }}" aria-hidden="true"></span> {% endif %}{% if let Some(uri) = item.uri %}<a href="{{ uri }}">{{ item.name }}</a>{% else %}<strong>{{ item.name }}</strong>{% endif %}
+        {%- for tag in item.tags %} <span class="tag">{{ tag }}</span>{% endfor %}</p>
+      {%- for attribute in item.attributes_html %}
+      <p class="hm-attribute muted">{{ attribute|safe }}</p>
+      {%- endfor %}
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  {%- when Body::Html(html) %}
+  {{ html|safe }}
+  {%- when Body::Notice(text) %}
+  <p class="notice">{{ text }}</p>
+  {%- endmatch %}
+</section>
+{%- endfor %}
+</section>
+{%- if !side.is_empty() %}
+<aside class="side-column">
+  <ul class="hm-actions">
+    {%- for link in side %}
+    <li>{% if link.inactive %}<span class="hm-disabled" aria-disabled="true">{% if let Some(icon) = link.icon %}<span class="fa {{ icon }}" aria-hidden="true"></span> {% endif %}{{ link.name }}</span>{% else %}<a href="{{ link.uri }}">{% if let Some(icon) = link.icon %}<span class="fa {{ icon }}" aria-hidden="true"></span> {% endif %}{{ link.name }}</a>{% endif %}</li>
+    {%- endfor %}
+  </ul>
+</aside>
+{%- endif %}
+</div>
+{% endblock %}

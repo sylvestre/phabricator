@@ -266,6 +266,33 @@ remotes which are not local paths; mirrors; fetch rules; branch filters
 with regular expressions). It doesn't replace the pull daemon: run it by
 hand; the locks keep it from working on a repository PHP is updating.
 
+`phab-cli` (`bins/phab-cli`) replaces the `bin/` workflows the port
+keeps, with the configuration of `PHAB_CONFIG_DIR`:
+
+```sh
+phab-cli config get <key>                     # bin/config get: local.json and the database, as JSON
+phab-cli config set [--database] <key> <value>  # or --stdin; local.json, or config_entry
+phab-cli config delete [--database] <key>
+phab-cli config list
+phab-cli repository discover|refs|update <repository>  # phab-worker repository
+phab-cli worker execute --id <task>           # bin/worker execute, for phab-worker's classes
+phab-cli storage status                       # bin/storage status, read-only
+```
+
+`config set` checks values as `bin/config` does and rewrites `local.json`
+in `PhutilJSON`'s format; types whose checks are PHP code of their own
+(`custom:*`, `cluster.mailers` and the other JSON types of applications,
+the Review Helper options) exit 3 before writing, as do task classes
+`phab-worker` doesn't run and the `bin/` workflows not listed. Usage
+errors exit 77, like `bin/`.
+
+The option, application, Conduit method and schema patch catalogs the
+pages and `phab-cli` read instead of PHP's classes
+(`crates/apps/config/options.json`, `crates/phab-web/catalog/*.json`,
+`bins/phab-cli/patches.json`) come from `scripts/generate-catalogs.php`,
+run in the PHP container: regenerate them when PHP's options, applications,
+methods or patches change.
+
 `phab-worker --once [--id N]` leases and runs one task, prints the outcome
 as JSON and exits (3 when the task was left to PHP).
 `rust/scripts/worker-parity.py` compares its rows with PHP's

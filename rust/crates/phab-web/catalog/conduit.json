@@ -1,0 +1,5098 @@
+[
+  {
+    "name": "almanac.binding.edit",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Apply transactions to create a new binding or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "almanac.binding.search",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Read information about Almanac bindings.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "almanac.device.edit",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Apply transactions to create a new device or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "almanac.device.search",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Read information about Almanac devices.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "almanac.interface.edit",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Apply transactions to create a new interface or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "almanac.interface.search",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Read information about Almanac interfaces.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "almanac.namespace.edit",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Apply transactions to create a new namespace or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "almanac.namespace.search",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Read information about Almanac namespaces.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "almanac.network.edit",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Apply transactions to create a new network or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "almanac.network.search",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Read information about Almanac networks.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "almanac.service.edit",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Apply transactions to create a new service or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "almanac.service.search",
+    "application_name": "almanac",
+    "application": "PhabricatorAlmanacApplication",
+    "summary": "Read information about Almanac services.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "audit.query",
+    "application_name": "audit",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Query audit requests.",
+    "description": "Query audit requests.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"diffusion.commit.search\" instead.",
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "auditorPHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "commitPHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "status",
+        "type": "optional string-constant<\"audit-status-any\", \"audit-status-open\", \"audit-status-concern\", \"audit-status-accepted\", \"audit-status-partial\"> (default = \"audit-status-any\")"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "auth.logout",
+    "application_name": "auth",
+    "application": "PhabricatorAuthApplication",
+    "summary": "Terminate all login sessions.",
+    "description": "Terminate all web login sessions. If called via OAuth, also terminate the current OAuth token.\n\nWARNING: This method does what it claims on the label. If you call this method via the test console in the web UI, it will log you out!",
+    "status": "unstable",
+    "status_description": "These methods are recently introduced and subject to change.",
+    "return_type": "void",
+    "params": [],
+    "errors": [],
+    "scope": "scope.always",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "auth.querypublickeys",
+    "application_name": "auth",
+    "application": "PhabricatorAuthApplication",
+    "summary": "Query public keys.",
+    "description": "Query public keys.",
+    "status": "unstable",
+    "status_description": "These methods are recently introduced and subject to change.",
+    "return_type": "result-set",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<id>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "objectPHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "keys",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "bmoexternalaccount.search",
+    "application_name": "bmoexternalaccount",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Retrieve external user PHID data based on BMO ID.",
+    "description": "Retrieve external user PHID data based on BMO ID.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict<string, wild>",
+    "params": [
+      {
+        "name": "accountids",
+        "type": "required list<string>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "bugzilla.account.search",
+    "application_name": "bugzilla",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Retrieve Bugzilla data based on Bugzilla ID or Phabricator PHID.",
+    "description": "Retrieve Bugzilla data based on Bugzilla ID or Phabricator PHID.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict<string, wild>",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<string>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "calendar.event.edit",
+    "application_name": "calendar",
+    "application": "PhabricatorCalendarApplication",
+    "summary": "Apply transactions to create a new event or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "calendar.event.search",
+    "application_name": "calendar",
+    "application": "PhabricatorCalendarApplication",
+    "summary": "Read information about events.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "conduit.connect",
+    "application_name": "conduit",
+    "application": null,
+    "summary": "Connect a session-based client.",
+    "description": "Connect a session-based client.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "dict<string, any>",
+    "params": [
+      {
+        "name": "client",
+        "type": "required string"
+      },
+      {
+        "name": "clientVersion",
+        "type": "required int"
+      },
+      {
+        "name": "clientDescription",
+        "type": "optional string"
+      },
+      {
+        "name": "user",
+        "type": "optional string"
+      },
+      {
+        "name": "authToken",
+        "type": "optional int"
+      },
+      {
+        "name": "authSignature",
+        "type": "optional string"
+      },
+      {
+        "name": "host",
+        "type": "deprecated"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-BAD-VERSION",
+        "meaning": "Client/server version mismatch. Upgrade your server or downgrade your client."
+      },
+      {
+        "code": "NEW-ARC-VERSION",
+        "meaning": "Client/server version mismatch. Upgrade your client."
+      },
+      {
+        "code": "ERR-UNKNOWN-CLIENT",
+        "meaning": "Client is unknown."
+      },
+      {
+        "code": "ERR-INVALID-USER",
+        "meaning": "The username you are attempting to authenticate with is not valid."
+      },
+      {
+        "code": "ERR-INVALID-CERTIFICATE",
+        "meaning": "Your authentication certificate for this server is invalid."
+      },
+      {
+        "code": "ERR-INVALID-TOKEN",
+        "meaning": "The challenge token you are authenticating with is outside of the allowed time range. Either your system clock is out of whack or you're executing a replay attack."
+      },
+      {
+        "code": "ERR-NO-CERTIFICATE",
+        "meaning": "This server requires authentication."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": false,
+    "documentation_pages": 0
+  },
+  {
+    "name": "conduit.getcapabilities",
+    "application_name": "conduit",
+    "application": null,
+    "summary": "List capabilities, wire formats, and authentication protocols available on this server.",
+    "description": "List capabilities, wire formats, and authentication protocols available on this server.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "dict<string, any>",
+    "params": [],
+    "errors": [],
+    "scope": "scope.always",
+    "internal": false,
+    "requires_authentication": false,
+    "documentation_pages": 0
+  },
+  {
+    "name": "conduit.getcertificate",
+    "application_name": "conduit",
+    "application": null,
+    "summary": "Retrieve certificate information for a user.",
+    "description": "Retrieve certificate information for a user.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "dict<string, any>",
+    "params": [
+      {
+        "name": "token",
+        "type": "required string"
+      },
+      {
+        "name": "host",
+        "type": "required string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-BAD-TOKEN",
+        "meaning": "Token does not exist or has expired."
+      },
+      {
+        "code": "ERR-RATE-LIMIT",
+        "meaning": "You have made too many invalid token requests recently. Wait before making more."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": false,
+    "documentation_pages": 0
+  },
+  {
+    "name": "conduit.ping",
+    "application_name": "conduit",
+    "application": null,
+    "summary": "Basic ping for monitoring or a health-check.",
+    "description": "Basic ping for monitoring or a health-check.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "string",
+    "params": [],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": false,
+    "documentation_pages": 0
+  },
+  {
+    "name": "conduit.query",
+    "application_name": "conduit",
+    "application": null,
+    "summary": "Returns the parameters of the Conduit methods.",
+    "description": "Returns the parameters of the Conduit methods.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "dict<dict>",
+    "params": [],
+    "errors": [],
+    "scope": "scope.always",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "dashboard.panel.edit",
+    "application_name": "dashboard",
+    "application": "PhabricatorDashboardApplication",
+    "summary": "Apply transactions to create a new dashboard panel or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "differential.changeset.search",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Read information about changesets.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "differential.close",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Close a Differential revision.",
+    "description": "Close a Differential revision.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"differential.revision.edit\" instead.",
+    "return_type": "void",
+    "params": [
+      {
+        "name": "revisionID",
+        "type": "required int"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_NOT_FOUND",
+        "meaning": "Revision was not found."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.createcomment",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Add a comment to a Differential revision.",
+    "description": "Add a comment to a Differential revision.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"differential.revision.edit\" instead.",
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "revision_id",
+        "type": "required revisionid"
+      },
+      {
+        "name": "message",
+        "type": "optional string"
+      },
+      {
+        "name": "action",
+        "type": "optional string"
+      },
+      {
+        "name": "silent",
+        "type": "optional bool"
+      },
+      {
+        "name": "attach_inlines",
+        "type": "optional bool"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_BAD_REVISION",
+        "meaning": "Bad revision ID."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.creatediff",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Create a new Differential diff.",
+    "description": "Create a new Differential diff.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "changes",
+        "type": "required list<dict>"
+      },
+      {
+        "name": "sourceMachine",
+        "type": "optional string"
+      },
+      {
+        "name": "sourcePath",
+        "type": "required string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      },
+      {
+        "name": "bookmark",
+        "type": "optional string"
+      },
+      {
+        "name": "sourceControlSystem",
+        "type": "optional string-constant<\"svn\", \"git\", \"hg\">"
+      },
+      {
+        "name": "sourceControlPath",
+        "type": "optional string"
+      },
+      {
+        "name": "sourceControlBaseRevision",
+        "type": "optional string"
+      },
+      {
+        "name": "creationMethod",
+        "type": "optional string"
+      },
+      {
+        "name": "lintStatus",
+        "type": "optional string-constant<\"none\", \"skip\", \"okay\", \"warn\", \"fail\">"
+      },
+      {
+        "name": "unitStatus",
+        "type": "optional string-constant<\"none\", \"skip\", \"okay\", \"warn\", \"fail\">"
+      },
+      {
+        "name": "repositoryPHID",
+        "type": "optional phid"
+      },
+      {
+        "name": "parentRevisionID",
+        "type": "deprecated"
+      },
+      {
+        "name": "authorPHID",
+        "type": "deprecated"
+      },
+      {
+        "name": "repositoryUUID",
+        "type": "deprecated"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-NO-CONTENT",
+        "meaning": "Diff may not be empty."
+      },
+      {
+        "code": "ERR-USAGE-NO-SOURCE-PATH",
+        "meaning": "You must specify a source path."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.createinline",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Add an inline comment to a Differential revision.",
+    "description": "Add an inline comment to a Differential revision.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "revisionID",
+        "type": "optional revisionid"
+      },
+      {
+        "name": "diffID",
+        "type": "optional diffid"
+      },
+      {
+        "name": "filePath",
+        "type": "required string"
+      },
+      {
+        "name": "isNewFile",
+        "type": "required bool"
+      },
+      {
+        "name": "lineNumber",
+        "type": "required int"
+      },
+      {
+        "name": "lineLength",
+        "type": "optional int"
+      },
+      {
+        "name": "content",
+        "type": "required string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-BAD-REVISION",
+        "meaning": "Bad revision ID."
+      },
+      {
+        "code": "ERR-BAD-DIFF",
+        "meaning": "Bad diff ID, or diff does not belong to revision."
+      },
+      {
+        "code": "ERR-NEED-DIFF",
+        "meaning": "Neither revision ID nor diff ID was provided."
+      },
+      {
+        "code": "ERR-NEED-FILE",
+        "meaning": "A file path was not provided."
+      },
+      {
+        "code": "ERR-BAD-FILE",
+        "meaning": "Requested file doesn't exist in this revision."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.createrawdiff",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Create a new Differential diff from a raw diff source.",
+    "description": "Create a new Differential diff from a raw diff source.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "diff",
+        "type": "required string"
+      },
+      {
+        "name": "repositoryPHID",
+        "type": "optional string"
+      },
+      {
+        "name": "viewPolicy",
+        "type": "optional string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.createrevision",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Create a new Differential revision.",
+    "description": "Create a new Differential revision.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"differential.revision.edit\" instead.",
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "user",
+        "type": "ignored"
+      },
+      {
+        "name": "diffid",
+        "type": "required diffid"
+      },
+      {
+        "name": "fields",
+        "type": "required dict"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_BAD_DIFF",
+        "meaning": "Bad diff ID."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.diff.search",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Read information about diffs.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "differential.getcommitmessage",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Retrieve Differential commit messages or message templates.",
+    "description": "Retrieve Differential commit messages or message templates.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty string",
+    "params": [
+      {
+        "name": "revision_id",
+        "type": "optional revision_id"
+      },
+      {
+        "name": "fields",
+        "type": "optional dict<string, wild>"
+      },
+      {
+        "name": "edit",
+        "type": "optional string-constant<\"edit\", \"create\">"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_NOT_FOUND",
+        "meaning": "Revision was not found."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.getcommitpaths",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Query which paths should be included when committing a Differential revision.",
+    "description": "Query which paths should be included when committing a Differential revision.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty list<string>",
+    "params": [
+      {
+        "name": "revision_id",
+        "type": "required int"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_NOT_FOUND",
+        "meaning": "No such revision exists."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.getrawdiff",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Retrieve a raw diff",
+    "description": "Retrieve a raw diff",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty string",
+    "params": [
+      {
+        "name": "diffID",
+        "type": "required diffID"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_NOT_FOUND",
+        "meaning": "Diff not found."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.parsecommitmessage",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Parse commit messages for Differential fields.",
+    "description": "Parse commit messages for Differential fields.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "corpus",
+        "type": "required string"
+      },
+      {
+        "name": "partial",
+        "type": "optional bool"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.query",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Query Differential revisions which match certain criteria.",
+    "description": "Query Differential revisions which match certain criteria.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"differential.revision.search\" instead.",
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "authors",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "ccs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "reviewers",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "paths",
+        "type": "unsupported"
+      },
+      {
+        "name": "commitHashes",
+        "type": "optional list<pair<string-constant<\"gtcm\", \"gttr\", \"hgcm\">, string>>"
+      },
+      {
+        "name": "status",
+        "type": "optional string-constant<\"status-any\", \"status-open\", \"status-accepted\", \"status-needs-review\", \"status-needs-revision\", \"status-closed\", \"status-abandoned\">"
+      },
+      {
+        "name": "order",
+        "type": "optional string-constant<\"order-modified\", \"order-created\">"
+      },
+      {
+        "name": "limit",
+        "type": "optional uint"
+      },
+      {
+        "name": "offset",
+        "type": "optional uint"
+      },
+      {
+        "name": "ids",
+        "type": "optional list<uint>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "subscribers",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "responsibleUsers",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "branches",
+        "type": "optional list<string>"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-INVALID-PARAMETER",
+        "meaning": "Missing or malformed parameter."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.querydiffs",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Query differential diffs which match certain criteria.",
+    "description": "Query differential diffs which match certain criteria.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"differential.diff.search\" instead.",
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<uint>"
+      },
+      {
+        "name": "revisionIDs",
+        "type": "optional list<uint>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.revision.edit",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Apply transactions to create or update a revision.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "differential.revision.search",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Read information about revisions.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "differential.setdiffproperty",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Attach properties to Differential diffs.",
+    "description": "Attach properties to Differential diffs.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "void",
+    "params": [
+      {
+        "name": "diff_id",
+        "type": "required diff_id"
+      },
+      {
+        "name": "name",
+        "type": "required string"
+      },
+      {
+        "name": "data",
+        "type": "required string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_NOT_FOUND",
+        "meaning": "Diff was not found."
+      },
+      {
+        "code": "ERR_PERMISSIONS",
+        "meaning": "You do not have permission to modify this diff."
+      },
+      {
+        "code": "ERR_INVALID_DATA",
+        "meaning": "Property data is not valid JSON."
+      },
+      {
+        "code": "ERR_NO_NAME",
+        "meaning": "Name cannot be empty."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.updaterevision",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Update a Differential revision.",
+    "description": "Update a Differential revision.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"differential.revision.edit\" instead.",
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "id",
+        "type": "required revisionid"
+      },
+      {
+        "name": "diffid",
+        "type": "required diffid"
+      },
+      {
+        "name": "fields",
+        "type": "required dict"
+      },
+      {
+        "name": "message",
+        "type": "required string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_BAD_DIFF",
+        "meaning": "Bad diff ID."
+      },
+      {
+        "code": "ERR_BAD_REVISION",
+        "meaning": "Bad revision ID."
+      },
+      {
+        "code": "ERR_WRONG_USER",
+        "meaning": "You are not the author of this revision."
+      },
+      {
+        "code": "ERR_CLOSED",
+        "meaning": "This revision has already been closed."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.custom.revision.visibility",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Return whether a revision is \"unprocessed\" (still waiting on phab-bot), \"secure\" or \"public\". Answers for revisions the caller can not otherwise see.",
+    "description": "Return whether a revision is \"unprocessed\" (still waiting on phab-bot), \"secure\" or \"public\". Answers for revisions the caller can not otherwise see.",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "revisionID",
+        "type": "required int"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-INVALID-PARAMETER",
+        "meaning": "Missing or malformed parameter."
+      },
+      {
+        "code": "ERR-REVISION-NOT-FOUND",
+        "meaning": "Revision not found."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.getalldiffs",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Load all diffs for given revisions from Differential.",
+    "description": "Load all diffs for given revisions from Differential.",
+    "status": "deprecated",
+    "status_description": "This method has been deprecated in favor of differential.querydiffs.",
+    "return_type": "dict",
+    "params": [
+      {
+        "name": "revision_ids",
+        "type": "required list<int>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.getdiff",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Load the content of a diff from Differential by revision ID or diff ID.",
+    "description": "Load the content of a diff from Differential by revision ID or diff ID.",
+    "status": "deprecated",
+    "status_description": "This method has been deprecated in favor of differential.querydiffs.",
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "revision_id",
+        "type": "optional id"
+      },
+      {
+        "name": "diff_id",
+        "type": "optional id"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_BAD_DIFF",
+        "meaning": "No such diff exists."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.getrevision",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Load the content of a revision from Differential.",
+    "description": "Load the content of a revision from Differential.",
+    "status": "deprecated",
+    "status_description": "Replaced by 'differential.query'.",
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "revision_id",
+        "type": "required id"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_BAD_REVISION",
+        "meaning": "No such revision exists."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "differential.getrevisioncomments",
+    "application_name": "differential",
+    "application": "PhabricatorDifferentialApplication",
+    "summary": "Retrieve Differential Revision Comments.",
+    "description": "Retrieve Differential Revision Comments.",
+    "status": "deprecated",
+    "status_description": "Obsolete and doomed, see T2222.",
+    "return_type": "nonempty list<dict<string, wild>>",
+    "params": [
+      {
+        "name": "ids",
+        "type": "required list<int>"
+      },
+      {
+        "name": "inlines",
+        "type": "optional bool (deprecated)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.blame",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Get blame information for a list of paths.",
+    "description": "Get blame information for a list of paths.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "paths",
+        "type": "required list<string>"
+      },
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "timeout",
+        "type": "optional int"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.branchquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Determine what branches exist for a repository.",
+    "description": "Determine what branches exist for a repository.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "closed",
+        "type": "optional bool"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "contains",
+        "type": "optional string"
+      },
+      {
+        "name": "patterns",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.browsequery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "File(s) information for a repository at an (optional) path and (optional) commit.",
+    "description": "File(s) information for a repository at an (optional) path and (optional) commit.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "array",
+    "params": [
+      {
+        "name": "path",
+        "type": "optional string"
+      },
+      {
+        "name": "commit",
+        "type": "optional string"
+      },
+      {
+        "name": "needValidityOnly",
+        "type": "optional bool"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.commit.edit",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Apply transactions to edit an existing commit. This method can not create new commits.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "diffusion.commit.search",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Read information about commits.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "diffusion.commitparentsquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Get the commit identifiers for a commit's parent or parents.",
+    "description": "Get the commit identifiers for a commit's parent or parents.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<string>",
+    "params": [
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.diffquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Get diff information from a repository for a specific path at an (optional) commit.",
+    "description": "Get diff information from a repository for a specific path at an (optional) commit.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "array",
+    "params": [
+      {
+        "name": "path",
+        "type": "required string"
+      },
+      {
+        "name": "commit",
+        "type": "optional string"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.existsquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Determine if code exists in a version control system.",
+    "description": "Determine if code exists in a version control system.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "bool",
+    "params": [
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.filecontentquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Retrieve file content from a repository.",
+    "description": "Retrieve file content from a repository.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "array",
+    "params": [
+      {
+        "name": "path",
+        "type": "required string"
+      },
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "timeout",
+        "type": "optional int"
+      },
+      {
+        "name": "byteLimit",
+        "type": "optional int"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.findsymbols",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Retrieve Diffusion symbol information.",
+    "description": "Retrieve Diffusion symbol information.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty list<dict>",
+    "params": [
+      {
+        "name": "name",
+        "type": "optional string"
+      },
+      {
+        "name": "namePrefix",
+        "type": "optional string"
+      },
+      {
+        "name": "context",
+        "type": "optional string"
+      },
+      {
+        "name": "language",
+        "type": "optional string"
+      },
+      {
+        "name": "type",
+        "type": "optional string"
+      },
+      {
+        "name": "repositoryPHID",
+        "type": "optional string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.historyquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Returns history information for a repository at a specific commit and path.",
+    "description": "Returns history information for a repository at a specific commit and path.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "array",
+    "params": [
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "against",
+        "type": "optional string"
+      },
+      {
+        "name": "path",
+        "type": "required string"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "limit",
+        "type": "required int"
+      },
+      {
+        "name": "needDirectChanges",
+        "type": "optional bool"
+      },
+      {
+        "name": "needChildChanges",
+        "type": "optional bool"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.internal.ancestors",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Internal method for filtering ref ancestors.",
+    "description": "Internal method for filtering ref ancestors.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<string>",
+    "params": [
+      {
+        "name": "ref",
+        "type": "required string"
+      },
+      {
+        "name": "commits",
+        "type": "required list<string>"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": true,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.internal.gitrawdiffquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Internal method for getting raw diff information.",
+    "description": "Internal method for getting raw diff information.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "string",
+    "params": [
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": true,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.lastmodifiedquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Get the commits at which paths were last modified.",
+    "description": "Get the commits at which paths were last modified.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, string>",
+    "params": [
+      {
+        "name": "paths",
+        "type": "required map<string, string>"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.mergedcommitsquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Merged commit information for a specific commit in a repository.",
+    "description": "Merged commit information for a specific commit in a repository.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "array",
+    "params": [
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.querycommits",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Retrieve information about commits.",
+    "description": "Retrieve information about commits.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"diffusion.commit.search\" instead.",
+    "return_type": "map<string, dict>",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<int>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "names",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "repositoryPHID",
+        "type": "optional phid"
+      },
+      {
+        "name": "needMessages",
+        "type": "optional bool"
+      },
+      {
+        "name": "bypassCache",
+        "type": "optional bool"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.querypaths",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Filename search on a repository.",
+    "description": "Filename search on a repository.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<string>",
+    "params": [
+      {
+        "name": "path",
+        "type": "required string"
+      },
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "pattern",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.rawdiffquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Get raw diff information from a repository for a specific commit at an (optional) path.",
+    "description": "Get raw diff information from a repository for a specific commit at an (optional) path.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "string",
+    "params": [
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "path",
+        "type": "optional string"
+      },
+      {
+        "name": "linesOfContext",
+        "type": "optional int"
+      },
+      {
+        "name": "againstCommit",
+        "type": "optional string"
+      },
+      {
+        "name": "timeout",
+        "type": "optional int"
+      },
+      {
+        "name": "byteLimit",
+        "type": "optional int"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.refsquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Query a git repository for ref information at a specific commit.",
+    "description": "Query a git repository for ref information at a specific commit.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "array",
+    "params": [
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.repository.edit",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Apply transactions to create a new repository or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "diffusion.repository.search",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Read information about repositories.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "diffusion.resolverefs",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Resolve references into stable, canonical identifiers.",
+    "description": "Resolve references into stable, canonical identifiers.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "dict<string, list<dict<string, wild>>>",
+    "params": [
+      {
+        "name": "refs",
+        "type": "required list<string>"
+      },
+      {
+        "name": "types",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.searchquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Search (grep) a repository at a specific path and commit.",
+    "description": "Search (grep) a repository at a specific path and commit.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "array",
+    "params": [
+      {
+        "name": "path",
+        "type": "required string"
+      },
+      {
+        "name": "commit",
+        "type": "optional string"
+      },
+      {
+        "name": "grep",
+        "type": "required string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.tagsquery",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Retrieve information about tags in a repository.",
+    "description": "Retrieve information about tags in a repository.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "array",
+    "params": [
+      {
+        "name": "names",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "commit",
+        "type": "optional string"
+      },
+      {
+        "name": "needMessages",
+        "type": "optional bool"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      },
+      {
+        "name": "callsign",
+        "type": "optional string (deprecated)"
+      },
+      {
+        "name": "repository",
+        "type": "optional string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-REPOSITORY",
+        "meaning": "There is no matching repository."
+      },
+      {
+        "code": "ERR-UNKNOWN-VCS-TYPE",
+        "meaning": "Unknown repository VCS type."
+      },
+      {
+        "code": "ERR-UNSUPPORTED-VCS",
+        "meaning": "VCS is not supported for this method."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.uri.edit",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Apply transactions to create a new repository URI or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "diffusion.getlintmessages",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Get lint messages for existing code.",
+    "description": "Get lint messages for existing code.",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "repositoryPHID",
+        "type": "required phid"
+      },
+      {
+        "name": "branch",
+        "type": "required string"
+      },
+      {
+        "name": "commit",
+        "type": "optional string"
+      },
+      {
+        "name": "files",
+        "type": "required list<string>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.looksoon",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Advises this server to look for new commits in a repository as soon as possible. This advice is most useful if you have just pushed new commits to that repository.",
+    "description": "Advises this server to look for new commits in a repository as soon as possible. This advice is most useful if you have just pushed new commits to that repository.",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "void",
+    "params": [
+      {
+        "name": "callsigns",
+        "type": "optional list<string> (deprecated)"
+      },
+      {
+        "name": "repositories",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "urgency",
+        "type": "optional string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.updatecoverage",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Publish coverage information for a repository.",
+    "description": "Publish coverage information for a repository.",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "void",
+    "params": [
+      {
+        "name": "repositoryPHID",
+        "type": "required phid"
+      },
+      {
+        "name": "branch",
+        "type": "required string"
+      },
+      {
+        "name": "commit",
+        "type": "required string"
+      },
+      {
+        "name": "coverage",
+        "type": "required map<string, string>"
+      },
+      {
+        "name": "mode",
+        "type": "optional string-constant<\"overwrite\", \"update\">"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "diffusion.getrecentcommitsbypath",
+    "application_name": "diffusion",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Get commit identifiers for recent commits affecting a given path.",
+    "description": "Get commit identifiers for recent commits affecting a given path.",
+    "status": "deprecated",
+    "status_description": "Obsoleted by \"diffusion.historyquery\".",
+    "return_type": "nonempty list<string>",
+    "params": [
+      {
+        "name": "callsign",
+        "type": "required string"
+      },
+      {
+        "name": "path",
+        "type": "required string"
+      },
+      {
+        "name": "branch",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_NOT_FOUND",
+        "meaning": "Repository was not found."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "edge.search",
+    "application_name": "edge",
+    "application": null,
+    "summary": "Read edge relationships between objects.",
+    "description": "Read edge relationships between objects.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "sourcePHIDs",
+        "type": "list<phid>"
+      },
+      {
+        "name": "types",
+        "type": "list<const>"
+      },
+      {
+        "name": "destinationPHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 1
+  },
+  {
+    "name": "feed.for_email.query",
+    "application_name": "feed",
+    "application": null,
+    "summary": "Query the feed for events that trigger email notifications",
+    "description": "Query the feed for events that trigger email notifications",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "list",
+    "params": [
+      {
+        "name": "storyLimit",
+        "type": "optional int (default 100)"
+      },
+      {
+        "name": "after",
+        "type": "string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "feed.for_email.query_id",
+    "application_name": "feed",
+    "application": null,
+    "summary": "Query the feed for events that trigger email notifications, paging by feed story ID",
+    "description": "Query the feed for events that trigger email notifications, paging by feed story ID",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "list",
+    "params": [
+      {
+        "name": "storyLimit",
+        "type": "optional int (default 100, clamped to 1-1000)"
+      },
+      {
+        "name": "after",
+        "type": "optional int"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "feed.for_email.status",
+    "application_name": "feed",
+    "application": null,
+    "summary": "Provides the \"query key\" of the most recent feed story",
+    "description": "Provides the \"query key\" of the most recent feed story",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "str",
+    "params": [],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "feed.for_email.status_id",
+    "application_name": "feed",
+    "application": null,
+    "summary": "Provides the feed story ID of the most recent feed story",
+    "description": "Provides the feed story ID of the most recent feed story",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "int",
+    "params": [],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "feed.query",
+    "application_name": "feed",
+    "application": "PhabricatorFeedApplication",
+    "summary": "Query the feed for stories",
+    "description": "Query the feed for stories",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "filterPHIDs",
+        "type": "optional list <phid>"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default 100)"
+      },
+      {
+        "name": "after",
+        "type": "optional int"
+      },
+      {
+        "name": "before",
+        "type": "optional int"
+      },
+      {
+        "name": "view",
+        "type": "optional string (data, html, html-summary, text)"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-TYPE",
+        "meaning": "Unsupported view type, possibles are: html, data, html-summary, text"
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "feed.query_id",
+    "application_name": "feed",
+    "application": "PhabricatorFeedApplication",
+    "summary": "Query the feed for stories",
+    "description": "Query the feed for stories",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "limit",
+        "type": "optional int (default 100)"
+      },
+      {
+        "name": "after",
+        "type": "optional int"
+      },
+      {
+        "name": "before",
+        "type": "optional int"
+      },
+      {
+        "name": "view",
+        "type": "optional string (data, html, html-summary, text)"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-UNKNOWN-TYPE",
+        "meaning": "Unsupported view type, possibles are: html, data, html-summary, text"
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "file.allocate",
+    "application_name": "file",
+    "application": "PhabricatorFilesApplication",
+    "summary": "Prepare to upload a file.",
+    "description": "Prepare to upload a file.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "name": "contentLength",
+        "type": "int"
+      },
+      {
+        "name": "contentHash",
+        "type": "optional string"
+      },
+      {
+        "name": "viewPolicy",
+        "type": "optional string"
+      },
+      {
+        "name": "deleteAfterEpoch",
+        "type": "optional int"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "file.download",
+    "application_name": "file",
+    "application": "PhabricatorFilesApplication",
+    "summary": "Download a file from the server.",
+    "description": "Download a file from the server.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty base64-bytes",
+    "params": [
+      {
+        "name": "phid",
+        "type": "required phid"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-BAD-PHID",
+        "meaning": "No such file exists."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "file.info",
+    "application_name": "file",
+    "application": "PhabricatorFilesApplication",
+    "summary": "Get information about a file.",
+    "description": "Get information about a file.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"file.search\" instead.",
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "phid",
+        "type": "optional phid"
+      },
+      {
+        "name": "id",
+        "type": "optional id"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-NOT-FOUND",
+        "meaning": "No such file exists."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "file.querychunks",
+    "application_name": "file",
+    "application": "PhabricatorFilesApplication",
+    "summary": "Get information about file chunks.",
+    "description": "Get information about file chunks.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<wild>",
+    "params": [
+      {
+        "name": "filePHID",
+        "type": "phid"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "file.search",
+    "application_name": "file",
+    "application": "PhabricatorFilesApplication",
+    "summary": "Read information about files.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "file.upload",
+    "application_name": "file",
+    "application": "PhabricatorFilesApplication",
+    "summary": "Upload a file to the server.",
+    "description": "Upload a file to the server.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty guid",
+    "params": [
+      {
+        "name": "data_base64",
+        "type": "required nonempty base64-bytes"
+      },
+      {
+        "name": "name",
+        "type": "optional string"
+      },
+      {
+        "name": "viewPolicy",
+        "type": "optional valid policy string or <phid>"
+      },
+      {
+        "name": "canCDN",
+        "type": "optional bool"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "file.uploadchunk",
+    "application_name": "file",
+    "application": "PhabricatorFilesApplication",
+    "summary": "Upload a chunk of file data to the server.",
+    "description": "Upload a chunk of file data to the server.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "void",
+    "params": [
+      {
+        "name": "filePHID",
+        "type": "phid"
+      },
+      {
+        "name": "byteStart",
+        "type": "int"
+      },
+      {
+        "name": "data",
+        "type": "string"
+      },
+      {
+        "name": "dataEncoding",
+        "type": "string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "file.uploadhash",
+    "application_name": "file",
+    "application": "PhabricatorFilesApplication",
+    "summary": "Obsolete. Has no effect.",
+    "description": "Obsolete. Has no effect.",
+    "status": "deprecated",
+    "status_description": "This method is deprecated. Callers should use \"file.allocate\" instead.",
+    "return_type": "null",
+    "params": [
+      {
+        "name": "hash",
+        "type": "required nonempty string"
+      },
+      {
+        "name": "name",
+        "type": "required nonempty string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "flag.delete",
+    "application_name": "flag",
+    "application": "PhabricatorFlagsApplication",
+    "summary": "Clear a flag.",
+    "description": "Clear a flag.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "dict | null",
+    "params": [
+      {
+        "name": "id",
+        "type": "optional id"
+      },
+      {
+        "name": "objectPHID",
+        "type": "optional phid"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR_NOT_FOUND",
+        "meaning": "Bad flag ID."
+      },
+      {
+        "code": "ERR_WRONG_USER",
+        "meaning": "You are not the creator of this flag."
+      },
+      {
+        "code": "ERR_NEED_PARAM",
+        "meaning": "Must pass an id or an objectPHID."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "flag.edit",
+    "application_name": "flag",
+    "application": "PhabricatorFlagsApplication",
+    "summary": "Create or modify a flag.",
+    "description": "Create or modify a flag.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "dict",
+    "params": [
+      {
+        "name": "objectPHID",
+        "type": "required phid"
+      },
+      {
+        "name": "color",
+        "type": "optional int"
+      },
+      {
+        "name": "note",
+        "type": "optional string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "flag.query",
+    "application_name": "flag",
+    "application": "PhabricatorFlagsApplication",
+    "summary": "Query flag markers.",
+    "description": "Query flag markers.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "ownerPHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "types",
+        "type": "optional list<type>"
+      },
+      {
+        "name": "objectPHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "harbormaster.artifact.search",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Query information about build artifacts.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "harbormaster.build.edit",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Apply transactions to create a new build or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "harbormaster.build.search",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Find out information about builds.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "harbormaster.buildable.edit",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Apply transactions to create a new buildable or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "harbormaster.buildable.search",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Find out information about buildables.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "harbormaster.buildplan.edit",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Apply transactions to create a new build plan or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "harbormaster.buildplan.search",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Retrieve information about Harbormaster build plans.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "harbormaster.createartifact",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Create a build artifact.",
+    "description": "Use this method to attach artifacts to build targets while running builds. Artifacts can be used to carry data through a complex build workflow, provide extra information to users, or store build results.\n\nWhen creating an artifact, you will choose an `artifactType` from this table. These types of artifacts are supported:\n| Artifact Type | Name | Summary |\n|-------------|--------------|--------------|\n| `file` | **File** | Stores a reference to file data. |\n| `uri` | **URI** | Stores a URI. |\n\nEach artifact also needs an `artifactKey`, which names the artifact. Finally, you will provide some `artifactData` to fill in the content of the artifact. The data you provide depends on what type of artifact you are creating.\nFile\n--------------------------\n\nStores a reference to file data.\n\nCreate an artifact of this type by passing `file` as the `artifactType`. When creating an artifact of this type, provide these parameters as a dictionary to `artifactData`:\n| Key | Type | Description |\n|-------------|--------------|--------------|\n| `filePHID` | //string// | File to create an artifact from. |\nFor example:\n```lang=json\n{\n  \"filePHID\": \"PHID-FILE-abcdefghijklmnopqrst\"\n}\n\n```\nURI\n--------------------------\n\nStores a URI.\n\nWith `ui.external`, you can use this artifact type to add links to build results in an external build system.\n\nCreate an artifact of this type by passing `uri` as the `artifactType`. When creating an artifact of this type, provide these parameters as a dictionary to `artifactData`:\n| Key | Type | Description |\n|-------------|--------------|--------------|\n| `uri` | //string// | The URI to store. |\n| `name` | //optional string// | Optional label for this URI. |\n| `ui.external` | //optional bool// | If true, display this URI in the UI as an link to additional build details in an external build system. |\nFor example:\n```lang=json\n{\n  \"uri\": \"https://buildserver.mycompany.com/build/123/\",\n  \"name\": \"View External Build Results\",\n  \"ui.external\": true\n}\n\n```",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "wild",
+    "params": [
+      {
+        "name": "buildTargetPHID",
+        "type": "phid"
+      },
+      {
+        "name": "artifactKey",
+        "type": "string"
+      },
+      {
+        "name": "artifactType",
+        "type": "string"
+      },
+      {
+        "name": "artifactData",
+        "type": "map<string, wild>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "harbormaster.log.search",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Find out information about build logs.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "harbormaster.queryautotargets",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Load or create build autotargets.",
+    "description": "Load or create build autotargets.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, phid>",
+    "params": [
+      {
+        "name": "objectPHID",
+        "type": "phid"
+      },
+      {
+        "name": "targetKeys",
+        "type": "list<string>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "harbormaster.querybuildables",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Query Harbormaster buildables.",
+    "description": "Query Harbormaster buildables.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "wild",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<id>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "buildablePHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "containerPHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "manualBuildables",
+        "type": "optional bool"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "harbormaster.sendmessage",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Modify running builds, and report build results.",
+    "description": "Pause, abort, restart, and report results for builds.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "void",
+    "params": [
+      {
+        "name": "receiver",
+        "type": "required string|phid"
+      },
+      {
+        "name": "type",
+        "type": "required string-constant<\"abort\", \"fail\", \"pass\", \"pause\", \"restart\", \"resume\", \"work\">"
+      },
+      {
+        "name": "unit",
+        "type": "optional list<wild>"
+      },
+      {
+        "name": "lint",
+        "type": "optional list<wild>"
+      },
+      {
+        "name": "buildTargetPHID",
+        "type": "deprecated optional phid"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "harbormaster.step.edit",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Apply transactions to create a new build step or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "harbormaster.step.search",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Retrieve information about Harbormaster build steps.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "harbormaster.target.search",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Retrieve information about Harbormaster build targets.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "harbormaster.querybuilds",
+    "application_name": "harbormaster",
+    "application": "PhabricatorHarbormasterApplication",
+    "summary": "Query Harbormaster builds.",
+    "description": "Query Harbormaster builds.",
+    "status": "deprecated",
+    "status_description": "Use harbormaster.build.search instead.",
+    "return_type": "wild",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<id>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "buildStatuses",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "buildablePHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "buildPlanPHIDs",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "internal.commit.search",
+    "application_name": "internal",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Read raw information about commits.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "passphrase.query",
+    "application_name": "passphrase",
+    "application": "PhabricatorPassphraseApplication",
+    "summary": "Query credentials.",
+    "description": "Query credentials.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<int>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "needSecrets",
+        "type": "optional bool"
+      },
+      {
+        "name": "needPublicKeys",
+        "type": "optional bool"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "phid.lookup",
+    "application_name": "phid",
+    "application": null,
+    "summary": "Look up objects by name.",
+    "description": "Look up objects by name.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict<string, wild>",
+    "params": [
+      {
+        "name": "names",
+        "type": "required list<string>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "phid.query",
+    "application_name": "phid",
+    "application": null,
+    "summary": "Retrieve information about arbitrary PHIDs.",
+    "description": "Retrieve information about arbitrary PHIDs.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict<string, wild>",
+    "params": [
+      {
+        "name": "phids",
+        "type": "required list<phid>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "phid.info",
+    "application_name": "phid",
+    "application": null,
+    "summary": "Retrieve information about an arbitrary PHID.",
+    "description": "Retrieve information about an arbitrary PHID.",
+    "status": "deprecated",
+    "status_description": "Replaced by 'phid.query'.",
+    "return_type": "nonempty dict<string, wild>",
+    "params": [
+      {
+        "name": "phid",
+        "type": "required phid"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-BAD-PHID",
+        "meaning": "No such object exists."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "policy.create",
+    "application_name": "policy",
+    "application": null,
+    "summary": "Create custom access control policy objects.",
+    "description": "Create custom access control policy objects.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, string>",
+    "params": [
+      {
+        "name": "objectType",
+        "type": "required string"
+      },
+      {
+        "name": "default",
+        "type": "required string"
+      },
+      {
+        "name": "policy",
+        "type": "required list<map<string, wild>>"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-INVALID-PARAMETER",
+        "meaning": "Missing or malformed parameter."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "policy.query",
+    "application_name": "policy",
+    "application": null,
+    "summary": "Find information about custom policies.",
+    "description": "Find information about custom policies.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "dict<string, wild>",
+    "params": [
+      {
+        "name": "phids",
+        "type": "required list<phid>"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-INVALID-PARAMETER",
+        "meaning": "Missing or malformed parameter."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "portal.edit",
+    "application_name": "portal",
+    "application": "PhabricatorDashboardApplication",
+    "summary": "Apply transactions to create a new portal or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "portal.search",
+    "application_name": "portal",
+    "application": "PhabricatorDashboardApplication",
+    "summary": "Read information about portals.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "project.create",
+    "application_name": "project",
+    "application": "PhabricatorProjectApplication",
+    "summary": "Create a project.",
+    "description": "Create a project.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"project.edit\" instead.",
+    "return_type": "dict",
+    "params": [
+      {
+        "name": "name",
+        "type": "required string"
+      },
+      {
+        "name": "members",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "icon",
+        "type": "optional string"
+      },
+      {
+        "name": "color",
+        "type": "optional string"
+      },
+      {
+        "name": "tags",
+        "type": "optional list<string>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "project.edit",
+    "application_name": "project",
+    "application": "PhabricatorProjectApplication",
+    "summary": "Apply transactions to create a new project or edit an existing one.",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "project.query",
+    "application_name": "project",
+    "application": "PhabricatorProjectApplication",
+    "summary": "Execute searches for Projects.",
+    "description": "Execute searches for Projects.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"project.search\" instead.",
+    "return_type": "list",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<int>"
+      },
+      {
+        "name": "names",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "slugs",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "icons",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "colors",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "status",
+        "type": "optional string-constant<\"status-any\", \"status-open\", \"status-closed\", \"status-active\", \"status-archived\">"
+      },
+      {
+        "name": "members",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "limit",
+        "type": "optional int"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "project.search",
+    "application_name": "project",
+    "application": "PhabricatorProjectApplication",
+    "summary": "Read information about projects.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "remarkup.process",
+    "application_name": "remarkup",
+    "application": null,
+    "summary": "Process text through remarkup.",
+    "description": "Process text through remarkup.",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "nonempty dict",
+    "params": [
+      {
+        "name": "context",
+        "type": "required string-constant<\"differential\", \"feed\", \"diffusion\">"
+      },
+      {
+        "name": "contents",
+        "type": "required list<string>"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-NO-CONTENT",
+        "meaning": "Content may not be empty."
+      },
+      {
+        "code": "ERR-INVALID-ENGINE",
+        "meaning": "Invalid markup engine."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "repository.query",
+    "application_name": "repository",
+    "application": "PhabricatorDiffusionApplication",
+    "summary": "Query repositories.",
+    "description": "Query repositories.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"diffusion.repository.search\" instead.",
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "ids",
+        "type": "optional list<int>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "callsigns",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "vcsTypes",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "remoteURIs",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "uuids",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "reviewhelper.request",
+    "application_name": "reviewhelper",
+    "application": null,
+    "summary": "Request an AI-assisted code review for a revision.",
+    "description": "Request an AI-assisted code review for a revision.",
+    "status": "unstable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "revisionID",
+        "type": "required int"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-REVISION-NOT-FOUND",
+        "meaning": "Revision not found or not visible."
+      },
+      {
+        "code": "ERR-INELIGIBLE-REVISION",
+        "meaning": "This revision is not eligible for AI review."
+      },
+      {
+        "code": "ERR-SERVICE-ERROR",
+        "meaning": "Review Helper service returned an error."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "transaction.search",
+    "application_name": "transaction",
+    "application": null,
+    "summary": "Read transactions and comments for a particular object or an entire object type.",
+    "description": "Read transactions and comments for a particular object or an entire object type.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "objectIdentifier",
+        "type": "optional phid|string"
+      },
+      {
+        "name": "objectType",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 1
+  },
+  {
+    "name": "user.edit",
+    "application_name": "user",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Apply transactions to edit a user. (Users can not be created via the API.)",
+    "description": "This is a standard **ApplicationEditor** method which allows you to create and modify objects by applying transactions. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Edit%20Endpoints&type=article&jump=1 | Conduit API: Using Edit Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "transactions",
+        "type": "list<map<string, wild>>"
+      },
+      {
+        "name": "objectIdentifier",
+        "type": "optional id|phid|string"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": -1
+  },
+  {
+    "name": "user.query",
+    "application_name": "user",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Query users.",
+    "description": "Query users.",
+    "status": "frozen",
+    "status_description": "This method is frozen and will eventually be deprecated. New code should use \"user.search\" instead.",
+    "return_type": "list<dict>",
+    "params": [
+      {
+        "name": "usernames",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "emails",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "realnames",
+        "type": "optional list<string>"
+      },
+      {
+        "name": "phids",
+        "type": "optional list<phid>"
+      },
+      {
+        "name": "ids",
+        "type": "optional list<uint>"
+      },
+      {
+        "name": "offset",
+        "type": "optional int"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-INVALID-PARAMETER",
+        "meaning": "Missing or malformed parameter."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "user.search",
+    "application_name": "user",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Read information about users.",
+    "description": "This is a standard **ApplicationSearch** method which will let you list, query, or search for objects. For documentation on these endpoints, see **[[ https://secure.phabricator.com/diviner/find/?name=Conduit%20API%3A%20Using%20Search%20Endpoints&type=article&jump=1 | Conduit API: Using Search Endpoints ]]**.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "map<string, wild>",
+    "params": [
+      {
+        "name": "queryKey",
+        "type": "optional string"
+      },
+      {
+        "name": "constraints",
+        "type": "optional map<string, wild>"
+      },
+      {
+        "name": "attachments",
+        "type": "optional map<string, bool>"
+      },
+      {
+        "name": "order",
+        "type": "optional order"
+      },
+      {
+        "name": "before",
+        "type": "optional string"
+      },
+      {
+        "name": "after",
+        "type": "optional string"
+      },
+      {
+        "name": "limit",
+        "type": "optional int (default = 100)"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 6
+  },
+  {
+    "name": "user.whoami",
+    "application_name": "user",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Retrieve information about the logged-in user.",
+    "description": "Retrieve information about the logged-in user.",
+    "status": "stable",
+    "status_description": null,
+    "return_type": "nonempty dict<string, wild>",
+    "params": [],
+    "errors": [],
+    "scope": "scope.always",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "user.disable",
+    "application_name": "user",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Permanently disable specified users (admin only).",
+    "description": "Permanently disable specified users (admin only).",
+    "status": "deprecated",
+    "status_description": "Obsoleted by method \"user.edit\".",
+    "return_type": "void",
+    "params": [
+      {
+        "name": "phids",
+        "type": "required list<phid>"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-PERMISSIONS",
+        "meaning": "Only admins can call this method."
+      },
+      {
+        "code": "ERR-BAD-PHID",
+        "meaning": "Non existent user PHID."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "user.enable",
+    "application_name": "user",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Re-enable specified users (admin only).",
+    "description": "Re-enable specified users (admin only).",
+    "status": "deprecated",
+    "status_description": "Obsoleted by method \"user.edit\".",
+    "return_type": "void",
+    "params": [
+      {
+        "name": "phids",
+        "type": "required list<phid>"
+      }
+    ],
+    "errors": [
+      {
+        "code": "ERR-PERMISSIONS",
+        "meaning": "Only admins can call this method."
+      },
+      {
+        "code": "ERR-BAD-PHID",
+        "meaning": "Non existent user PHID."
+      }
+    ],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  },
+  {
+    "name": "user.find",
+    "application_name": "user",
+    "application": "PhabricatorPeopleApplication",
+    "summary": "Lookup PHIDs by username. Obsoleted by \"user.query\".",
+    "description": "Lookup PHIDs by username. Obsoleted by \"user.query\".",
+    "status": "deprecated",
+    "status_description": "Obsoleted by \"user.query\".",
+    "return_type": "nonempty dict<string, phid>",
+    "params": [
+      {
+        "name": "aliases",
+        "type": "required list<string>"
+      }
+    ],
+    "errors": [],
+    "scope": "scope.never",
+    "internal": false,
+    "requires_authentication": true,
+    "documentation_pages": 0
+  }
+]

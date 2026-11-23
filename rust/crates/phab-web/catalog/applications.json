@@ -1,0 +1,1019 @@
+[
+  {
+    "class": "PhabricatorDifferentialApplication",
+    "name": "Differential",
+    "short_description": "Pre-Commit Review",
+    "flavor_text": null,
+    "overview": "Differential is a **code review application** which allows engineers to review, discuss and approve changes to software.",
+    "icon": "fa-cog",
+    "base_uri": "/differential/",
+    "group": "core",
+    "order": 0.1,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": true,
+    "pinned_by_default_for_admins": true,
+    "capabilities": [
+      {
+        "key": "differential.default.view",
+        "label": "Default View Policy",
+        "default": "users",
+        "editable": true,
+        "caption": "Default view policy for newly created revisions."
+      }
+    ],
+    "help_articles": [
+      {
+        "name": "Differential User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Differential%20User%20Guide&type=article&jump=1"
+      }
+    ]
+  },
+  {
+    "class": "PhabricatorDiffusionApplication",
+    "name": "Diffusion",
+    "short_description": "Host and Browse Repositories",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-code",
+    "base_uri": "/diffusion/",
+    "group": "core",
+    "order": 0.12,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": true,
+    "pinned_by_default_for_admins": true,
+    "capabilities": [
+      {
+        "key": "diffusion.default.view",
+        "label": "Default View Policy",
+        "default": "users",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "diffusion.default.edit",
+        "label": "Default Edit Policy",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "diffusion.default.push",
+        "label": "Default Push Policy",
+        "default": "users",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "diffusion.create",
+        "label": "Can Create Repositories",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      }
+    ],
+    "help_articles": [
+      {
+        "name": "Diffusion User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Diffusion%20User%20Guide&type=article&jump=1"
+      },
+      {
+        "name": "Audit User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Audit%20User%20Guide&type=article&jump=1"
+      }
+    ]
+  },
+  {
+    "class": "PhabricatorAuditApplication",
+    "name": "Audit",
+    "short_description": "Browse and Audit Commits",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-check-circle-o",
+    "base_uri": "/diffusion/commit/",
+    "group": "core",
+    "order": 0.13,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorProjectApplication",
+    "name": "Projects",
+    "short_description": "Projects, Tags, and Teams",
+    "flavor_text": "Group stuff into big piles.",
+    "overview": null,
+    "icon": "fa-briefcase",
+    "base_uri": "/project/",
+    "group": "core",
+    "order": 0.15,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": true,
+    "pinned_by_default_for_admins": true,
+    "capabilities": [
+      {
+        "key": "project.create",
+        "label": "Can Create Projects",
+        "default": "users",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "project.can.lock",
+        "label": "Can Lock Project Membership",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "project.default.view",
+        "label": "Default View Policy",
+        "default": "users",
+        "editable": true,
+        "caption": "Default view policy for newly created projects."
+      },
+      {
+        "key": "project.default.edit",
+        "label": "Default Edit Policy",
+        "default": "users",
+        "editable": true,
+        "caption": "Default edit policy for newly created projects."
+      },
+      {
+        "key": "project.default.join",
+        "label": "Default Join Policy",
+        "default": "users",
+        "editable": true,
+        "caption": "Default join policy for newly created projects."
+      }
+    ],
+    "help_articles": [
+      {
+        "name": "Projects User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Projects%20User%20Guide&type=article&jump=1"
+      }
+    ]
+  },
+  {
+    "class": "PhabricatorDashboardApplication",
+    "name": "Dashboards",
+    "short_description": "Create Custom Pages",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-dashboard",
+    "base_uri": "/dashboard/",
+    "group": "core",
+    "order": 0.16,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": true,
+    "pinned_by_default_for_admins": true,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorHomeApplication",
+    "name": "Home",
+    "short_description": "Command Center",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-home",
+    "base_uri": "/home/",
+    "group": "core",
+    "order": 9,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorApplicationsApplication",
+    "name": "Applications",
+    "short_description": "Explore More Applications",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-globe",
+    "base_uri": "/applications/",
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorCelerityApplication",
+    "name": "Celerity",
+    "short_description": "Celerity Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": true,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorFavoritesApplication",
+    "name": "Favorites",
+    "short_description": "Favorite Items",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-bookmark",
+    "base_uri": "/favorites/",
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorHelpApplication",
+    "name": "Help",
+    "short_description": "Help Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": true,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorNotificationsApplication",
+    "name": "Notifications",
+    "short_description": "Real-Time Updates and Alerts",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-bell",
+    "base_uri": "/notification/",
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorPolicyApplication",
+    "name": "Policy",
+    "short_description": "Policy Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorSearchApplication",
+    "name": "Search",
+    "short_description": "Full-Text Search",
+    "flavor_text": "Find stuff in big piles.",
+    "overview": null,
+    "icon": "fa-search",
+    "base_uri": "/search/",
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorSubscriptionsApplication",
+    "name": "Subscriptions",
+    "short_description": "Subscriptions Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorSupportApplication",
+    "name": "Support",
+    "short_description": "Support Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": true,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorSystemApplication",
+    "name": "System",
+    "short_description": "System Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": true,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorTestApplication",
+    "name": "Test",
+    "short_description": "Test Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": true,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorTransactionsApplication",
+    "name": "Transactions",
+    "short_description": "Transactions Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorTypeaheadApplication",
+    "name": "Typeahead",
+    "short_description": "Typeahead Application",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-puzzle-piece",
+    "base_uri": null,
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorReviewHelperApplication",
+    "name": "Review Helper",
+    "short_description": "AI-Assisted Code Review",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-magic",
+    "base_uri": "/reviewhelper/",
+    "group": "core",
+    "order": 9.223372036854776e+18,
+    "launchable": false,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": false,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorAlmanacApplication",
+    "name": "Almanac",
+    "short_description": "Service Directory",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-server",
+    "base_uri": "/almanac/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [
+      {
+        "key": "almanac.services",
+        "label": "Can Create Services",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "almanac.devices",
+        "label": "Can Create Devices",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "almanac.networks",
+        "label": "Can Create Networks",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "almanac.namespaces",
+        "label": "Can Create Namespaces",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "almanac.cluster",
+        "label": "Can Manage Cluster Services",
+        "default": "no-one",
+        "editable": true,
+        "caption": "This permission is very dangerous. <a href=\"https://secure.phabricator.com/diviner/find/?name=Clustering%20Introduction&amp;type=article&amp;jump=1\" target=\"_blank\">Learn More</a>"
+      }
+    ],
+    "help_articles": [
+      {
+        "name": "Almanac User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Almanac%20User%20Guide&type=article&jump=1"
+      }
+    ]
+  },
+  {
+    "class": "PhabricatorCalendarApplication",
+    "name": "Calendar",
+    "short_description": "Upcoming Events",
+    "flavor_text": "Never miss an episode ever again.",
+    "overview": null,
+    "icon": "fa-calendar",
+    "base_uri": "/calendar/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": true,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [
+      {
+        "key": "calendar.event.default.view",
+        "label": "Default View Policy",
+        "default": "users",
+        "editable": true,
+        "caption": "Default view policy for newly created events."
+      },
+      {
+        "key": "calendar.event.default.edit",
+        "label": "Default Edit Policy",
+        "default": "users",
+        "editable": true,
+        "caption": "Default edit policy for newly created events."
+      }
+    ],
+    "help_articles": [
+      {
+        "name": "Calendar User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Calendar%20User%20Guide&type=article&jump=1"
+      },
+      {
+        "name": "Importing Events",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Calendar%20User%20Guide%3A%20Importing%20Events&type=article&jump=1"
+      },
+      {
+        "name": "Exporting Events",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Calendar%20User%20Guide%3A%20Exporting%20Events&type=article&jump=1"
+      }
+    ]
+  },
+  {
+    "class": "PhabricatorFeedApplication",
+    "name": "Feed",
+    "short_description": "Review Recent Activity",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-newspaper-o",
+    "base_uri": "/feed/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorFilesApplication",
+    "name": "Files",
+    "short_description": "Store and Share Files",
+    "flavor_text": "Blob store for Pokemon pictures.",
+    "overview": null,
+    "icon": "fa-file",
+    "base_uri": "/file/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [
+      {
+        "key": "files.default.view",
+        "label": "Default View Policy",
+        "default": "users",
+        "editable": true,
+        "caption": "Default view policy for newly created files."
+      }
+    ],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorFlagsApplication",
+    "name": "Flags",
+    "short_description": "Personal Bookmarks",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-flag",
+    "base_uri": "/flag/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorHarbormasterApplication",
+    "name": "Harbormaster",
+    "short_description": "Build/CI",
+    "flavor_text": "Ship Some Freight",
+    "overview": null,
+    "icon": "fa-ship",
+    "base_uri": "/harbormaster/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [
+      {
+        "key": "harbormaster.plans",
+        "label": "Can Create Build Plans",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "harbomaster.plan.default.view",
+        "label": "Default Build Plan View Policy",
+        "default": "users",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "harbormaster.plan.default.edit",
+        "label": "Default Build Plan Edit Policy",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      }
+    ],
+    "help_articles": [
+      {
+        "name": "Harbormaster User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Harbormaster%20User%20Guide&type=article&jump=1"
+      }
+    ]
+  },
+  {
+    "class": "PhabricatorHeraldApplication",
+    "name": "Herald",
+    "short_description": "Create Notification Rules",
+    "flavor_text": "Watch for danger!",
+    "overview": null,
+    "icon": "fa-bullhorn",
+    "base_uri": "/herald/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": true,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [
+      {
+        "key": "herald.global",
+        "label": "Can Manage Global Rules",
+        "default": "admin",
+        "editable": true,
+        "caption": "Global rules can bypass access controls."
+      },
+      {
+        "key": "herald.webhooks",
+        "label": "Can Create Webhooks",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      }
+    ],
+    "help_articles": [
+      {
+        "name": "Herald User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Herald%20User%20Guide&type=article&jump=1"
+      },
+      {
+        "name": "User Guide: Webhooks",
+        "href": "https://secure.phabricator.com/diviner/find/?name=User%20Guide%3A%20Webhooks&type=article&jump=1"
+      }
+    ]
+  },
+  {
+    "class": "PhabricatorPassphraseApplication",
+    "name": "Passphrase",
+    "short_description": "Credential Store",
+    "flavor_text": "Put your secrets in a lockbox.",
+    "overview": null,
+    "icon": "fa-user-secret",
+    "base_uri": "/passphrase/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [
+      {
+        "key": "passphrase.default.view",
+        "label": "Default View Policy",
+        "default": "obj.passphrase.author",
+        "editable": true,
+        "caption": "Default view policy for newly created credentials."
+      },
+      {
+        "key": "passphrase.default.edit",
+        "label": "Default Edit Policy",
+        "default": "obj.passphrase.author",
+        "editable": true,
+        "caption": "Default edit policy for newly created credentials."
+      }
+    ],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorPeopleApplication",
+    "name": "People",
+    "short_description": "User Accounts and Profiles",
+    "flavor_text": "Sort of a social utility.",
+    "overview": null,
+    "icon": "fa-users",
+    "base_uri": "/people/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": true,
+    "capabilities": [
+      {
+        "key": "people.create.users",
+        "label": "Can Create (non-bot) Users",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "people.disable.users",
+        "label": "Can Disable Users",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "people.browse",
+        "label": "Can Browse User Directory",
+        "default": "users",
+        "editable": true,
+        "caption": null
+      }
+    ],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorSettingsApplication",
+    "name": "Settings",
+    "short_description": "User Preferences",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-wrench",
+    "base_uri": "/settings/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorSpacesApplication",
+    "name": "Spaces",
+    "short_description": "Policy Namespaces",
+    "flavor_text": "Control access to groups of objects.",
+    "overview": null,
+    "icon": "fa-th-large",
+    "base_uri": "/spaces/",
+    "group": "util",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [
+      {
+        "key": "spaces.create",
+        "label": "Can Create Spaces",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      },
+      {
+        "key": "spaces.default.view",
+        "label": "Default View Policy",
+        "default": "users",
+        "editable": true,
+        "caption": "Default view policy for newly created spaces."
+      },
+      {
+        "key": "spaces.default.edit",
+        "label": "Default Edit Policy",
+        "default": "admin",
+        "editable": true,
+        "caption": "Default edit policy for newly created spaces."
+      }
+    ],
+    "help_articles": [
+      {
+        "name": "Spaces User Guide",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Spaces%20User%20Guide&type=article&jump=1"
+      }
+    ]
+  },
+  {
+    "class": "PhabricatorAuthApplication",
+    "name": "Auth",
+    "short_description": "Login/Registration",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-key",
+    "base_uri": "/auth/",
+    "group": "admin",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": true,
+    "capabilities": [
+      {
+        "key": "auth.manage.providers",
+        "label": "Can Manage Auth Providers",
+        "default": "admin",
+        "editable": true,
+        "caption": null
+      }
+    ],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorConfigApplication",
+    "name": "Config",
+    "short_description": "Configure Phabricator",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-sliders",
+    "base_uri": "/config/",
+    "group": "admin",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": true,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorDaemonsApplication",
+    "name": "Daemons",
+    "short_description": "Manage Daemons",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-pied-piper-alt",
+    "base_uri": "/daemon/",
+    "group": "admin",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorMetaMTAApplication",
+    "name": "Mail",
+    "short_description": "Send and Receive Mail",
+    "flavor_text": "Every program attempts to expand until it can read mail.",
+    "overview": null,
+    "icon": "fa-send",
+    "base_uri": "/mail/",
+    "group": "admin",
+    "order": 9.223372036854776e+18,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": []
+  },
+  {
+    "class": "PhabricatorConduitApplication",
+    "name": "Conduit",
+    "short_description": "Developer API",
+    "flavor_text": null,
+    "overview": null,
+    "icon": "fa-tty",
+    "base_uri": "/conduit/",
+    "group": "developer",
+    "order": 0.1,
+    "launchable": true,
+    "unlisted": false,
+    "prototype": false,
+    "can_uninstall": false,
+    "first_party": true,
+    "pinned_by_default": false,
+    "pinned_by_default_for_admins": false,
+    "capabilities": [],
+    "help_articles": [
+      {
+        "name": "Conduit API Overview",
+        "href": "https://secure.phabricator.com/diviner/find/?name=Conduit%20API%20Overview&type=article&jump=1"
+      }
+    ]
+  }
+]

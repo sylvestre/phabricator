@@ -168,7 +168,7 @@ fn file_routes<S: WebState>() -> Router<Arc<S>> {
 /// which of them reach the service (`rust/nginx/rust-web.conf`).
 pub fn router<S: WebState>() -> Router<Arc<S>> {
     Router::new()
-        .route("/", routing::get(queue::show::<S>))
+        .merge(crate::system::routes::<S>())
         .route("/differential/", routing::get(queue::show::<S>))
         .route("/{monogram}", routing::get(revision::by_monogram::<S>))
         .route("/{monogram}/action", routing::post(actions::submit::<S>))

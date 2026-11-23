@@ -41,6 +41,7 @@ mod settings;
 mod shell;
 mod state;
 mod subscriptions;
+mod system;
 mod time;
 mod timeline;
 mod transactions;

@@ -68,6 +68,7 @@ async fn setup(with_csrf_key: bool) -> Option<TestDatabase> {
         "repository",
         "file",
         "harbormaster",
+        "search",
     ])
     .await?;
     test_db
@@ -279,7 +280,11 @@ async fn logged_in_users_see_the_home_page() {
     assert_eq!(response.headers()[header::X_FRAME_OPTIONS], "Deny");
     let page = text(response).await;
     assert!(page.contains("<summary>alice</summary>"), "{page}");
-    assert!(page.contains("<h1>Active Revisions</h1>"), "{page}");
+    assert!(
+        page.contains("<span class=\"fa fa-home\" aria-hidden=\"true\"></span> Home</h1>"),
+        "{page}"
+    );
+    assert!(page.contains("<h2>Recent Activity</h2>"), "{page}");
     assert!(page.contains(r#"<meta name="csrf-token" content="B@"#));
     // The title is escaped, the message is trusted HTML (hsprintf()).
     assert!(page.contains("Maintenance &#60;soon&#62;"), "{page}");

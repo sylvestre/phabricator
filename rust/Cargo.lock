@@ -1677,6 +1677,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-app-config"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "phab-core",
+ "phab-db",
+ "phab-remarkup",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "phab-app-dashboard"
 version = "0.1.0"
 dependencies = [
@@ -1988,6 +2004,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "phab-cli"
+version = "0.1.0"
+dependencies = [
+ "phab-app-config",
+ "phab-core",
+ "phab-db",
+ "phab-worker",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "phab-conduit"
 version = "0.1.0"
 dependencies = [
@@ -2144,6 +2175,7 @@ dependencies = [
  "flate2",
  "form_urlencoded",
  "hex",
+ "phab-app-config",
  "phab-app-dashboard",
  "phab-app-differential",
  "phab-app-diffusion",
@@ -2152,6 +2184,7 @@ dependencies = [
  "phab-app-flag",
  "phab-app-harbormaster",
  "phab-app-herald",
+ "phab-app-metamta",
  "phab-app-people",
  "phab-app-project",
  "phab-app-settings",

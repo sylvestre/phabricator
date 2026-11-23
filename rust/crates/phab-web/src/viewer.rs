@@ -95,6 +95,22 @@ impl WebUser {
         state: &S,
         classes: &[&str],
     ) -> Result<Vec<bool>, PageError> {
+        let applications = ApplicationPolicies::from_config(state.config());
+        let visible = self.can_view_applications(state, classes).await?;
+        Ok(classes
+            .iter()
+            .zip(visible)
+            .map(|(class, visible)| visible && applications.is_installed(class))
+            .collect())
+    }
+
+    /// Whether the viewer passes the view policy of each of `classes`,
+    /// installed or not (the policy filter of `PhabricatorApplicationQuery`).
+    pub async fn can_view_applications<S: WebState>(
+        &self,
+        state: &S,
+        classes: &[&str],
+    ) -> Result<Vec<bool>, PageError> {
         let config = state.config();
         let applications = ApplicationPolicies::from_config(config);
         let viewer = self.user.viewer();
@@ -116,9 +132,6 @@ impl WebUser {
         classes
             .iter()
             .map(|class| {
-                if !applications.is_installed(class) {
-                    return Ok(false);
-                }
                 phab_policy::filter::can_see_application(&viewer, class, &facts)
                     .map_err(|error| PageError::Internal(Box::new(error)))
             })

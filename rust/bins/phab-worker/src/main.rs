@@ -1,18 +1,15 @@
 //! Runs the task classes ported to Rust from Phabricator's queue, next to
 //! PHP's taskmasters, which keep running every other class.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use phab_core::Config;
-use phab_db::Database;
-use phab_worker::{Executed, LeaseOwner, Worker, handlers};
+use phab_worker::{
+    Executed, LeaseOwner, Worker, config_dir, connect, handlers, repository_command,
+};
 use tokio::sync::watch;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
-
-mod repository_command;
 
 const USAGE: &str = "usage: phab-worker [--once [--id <task id>]...]
        phab-worker repository <workflow> ... (see phab-worker repository --help)
@@ -134,24 +131,6 @@ async fn shutdown_signal() {
     tracing::info!("shutting down after the current tasks");
 }
 
-/// `PhabricatorEnv`'s stack (defaults, `local.json`, the database), then
-/// the connection.
-async fn connect(config_dir: &std::path::Path) -> Result<(Config, Database), String> {
-    let mut config = Config::default();
-    config
-        .push_local_file(&config_dir.join("local.json"))
-        .map_err(|error| error.to_string())?;
-    let database = Database::connect(&config)
-        .await
-        .map_err(|error| error.to_string())?;
-    let entries = database
-        .load_config_entries()
-        .await
-        .map_err(|error| error.to_string())?;
-    config.push_layer("Database", entries);
-    Ok((config, database))
-}
-
 /// `phab-worker repository ...`, logging to stderr.
 async fn repository(arguments: impl Iterator<Item = String>) -> std::process::ExitCode {
     let command = match repository_command::parse(arguments) {
@@ -169,10 +148,7 @@ async fn repository(arguments: impl Iterator<Item = String>) -> std::process::Ex
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")))
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
-    let config_dir = std::env::var_os("PHAB_CONFIG_DIR").map_or_else(
-        || PathBuf::from("/app/phabricator/conf/local"),
-        PathBuf::from,
-    );
+    let config_dir = config_dir();
     let (config, database) = match connect(&config_dir).await {
         Ok(context) => context,
         Err(error) => {
@@ -212,10 +188,7 @@ async fn main() -> std::process::ExitCode {
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .with(log)
         .init();
-    let config_dir = std::env::var_os("PHAB_CONFIG_DIR").map_or_else(
-        || PathBuf::from("/app/phabricator/conf/local"),
-        PathBuf::from,
-    );
+    let config_dir = config_dir();
     let mut registry = handlers::registry();
     if let Ok(allowed) = std::env::var("PHAB_WORKER_CLASSES") {
         let allowed: Vec<&str> = allowed

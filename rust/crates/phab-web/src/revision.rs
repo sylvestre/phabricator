@@ -702,6 +702,15 @@ pub(crate) async fn by_monogram<S: WebState>(
             .await?
             .into_response());
     }
+    if let Some(id) = monogram
+        .strip_prefix('S')
+        .filter(|digits| !digits.starts_with('0'))
+        .and_then(|digits| crate::system::parse_id(digits).ok())
+    {
+        return Ok(crate::system::spaces::view(&state, viewer, id, uri)
+            .await?
+            .into_response());
+    }
     Ok(show(State(state), viewer, Path(monogram), uri)
         .await?
         .into_response())

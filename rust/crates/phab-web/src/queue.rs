@@ -39,9 +39,9 @@ pub(crate) struct Item {
 
 /// A group of the queue.
 pub(crate) struct GroupView {
-    name: &'static str,
-    no_data: Option<&'static str>,
-    items: Vec<Item>,
+    pub(crate) name: &'static str,
+    pub(crate) no_data: Option<&'static str>,
+    pub(crate) items: Vec<Item>,
 }
 
 #[derive(Template)]
@@ -56,7 +56,7 @@ pub(crate) struct QueuePage {
 /// The query string of the page.
 #[derive(Debug, Default, serde::Deserialize)]
 pub(crate) struct Params {
-    bucket: Option<String>,
+    pub(crate) bucket: Option<String>,
 }
 
 /// `DifferentialResponsibleDatasource::expandResponsibleUsers()`: the user
@@ -115,6 +115,40 @@ pub(crate) async fn items<S: WebState>(
         .collect())
 }
 
+/// The "active" query of `DifferentialRevisionSearchEngine` for the
+/// viewer, grouped by `bucket`.
+pub(crate) async fn active_groups<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    bucket: Bucket,
+) -> Result<Vec<GroupView>, PageError> {
+    let phids: Vec<Phid> = responsible(state, viewer).await?.into_iter().collect();
+    let revisions = storage::load_responsible_revisions(state.database(), &phids).await?;
+    let revisions = storage::visible_revisions(
+        state.database(),
+        state.config(),
+        &viewer.user.viewer(),
+        revisions,
+        state.now(),
+    )
+    .await
+    .map_err(|error| PageError::Internal(Box::new(error)))?;
+    // `differential.sticky-accept` defaults to true.
+    let sticky_accept = state
+        .config()
+        .value("differential.sticky-accept")
+        .is_none_or(phab_core::php::is_truthy);
+    let mut groups = Vec::new();
+    for group in buckets::group(revisions, &phids, &viewer.user.phid, bucket, sticky_accept) {
+        groups.push(GroupView {
+            name: group.name,
+            no_data: group.no_data,
+            items: items(state, &group.revisions).await?,
+        });
+    }
+    Ok(groups)
+}
+
 /// `GET /` and `GET /differential/`.
 pub(crate) async fn show<S: WebState>(
     State(state): State<Arc<S>>,
@@ -137,33 +171,7 @@ pub(crate) async fn show<S: WebState>(
         .as_deref()
         .and_then(Bucket::from_key)
         .unwrap_or(Bucket::RequiredAction);
-    let phids: Vec<Phid> = responsible(state.as_ref(), &viewer)
-        .await?
-        .into_iter()
-        .collect();
-    let revisions = storage::load_responsible_revisions(state.database(), &phids).await?;
-    let revisions = storage::visible_revisions(
-        state.database(),
-        state.config(),
-        &viewer.user.viewer(),
-        revisions,
-        state.now(),
-    )
-    .await
-    .map_err(|error| PageError::Internal(Box::new(error)))?;
-    // `differential.sticky-accept` defaults to true.
-    let sticky_accept = state
-        .config()
-        .value("differential.sticky-accept")
-        .is_none_or(phab_core::php::is_truthy);
-    let mut groups = Vec::new();
-    for group in buckets::group(revisions, &phids, &viewer.user.phid, bucket, sticky_accept) {
-        groups.push(GroupView {
-            name: group.name,
-            no_data: group.no_data,
-            items: items(state.as_ref(), &group.revisions).await?,
-        });
-    }
+    let groups = active_groups(state.as_ref(), &viewer, bucket).await?;
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
     Ok(Page(QueuePage {
         shell: Shell::for_user(state.config(), &viewer, "Active Revisions", current),

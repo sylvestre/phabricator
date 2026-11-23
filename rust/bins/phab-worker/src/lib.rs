@@ -11,6 +11,7 @@ pub mod execute;
 pub mod handler;
 pub mod handlers;
 pub mod lease;
+pub mod repository_command;
 pub mod task;
 
 pub use daemon::{Ran, Worker};
@@ -41,6 +42,34 @@ pub(crate) fn context(
             .to_string_lossy()
             .into_owned(),
     }
+}
+
+/// `PhabricatorEnv`'s stack (defaults, `local.json` in `config_dir`, the
+/// database), then the connection.
+pub async fn connect(
+    config_dir: &std::path::Path,
+) -> Result<(phab_core::Config, phab_db::Database), String> {
+    let mut config = phab_core::Config::default();
+    config
+        .push_local_file(&config_dir.join("local.json"))
+        .map_err(|error| error.to_string())?;
+    let database = phab_db::Database::connect(&config)
+        .await
+        .map_err(|error| error.to_string())?;
+    let entries = database
+        .load_config_entries()
+        .await
+        .map_err(|error| error.to_string())?;
+    config.push_layer("Database", entries);
+    Ok((config, database))
+}
+
+/// `PHAB_CONFIG_DIR`, or the directory of `local.json` in the PHP image.
+pub fn config_dir() -> std::path::PathBuf {
+    std::env::var_os("PHAB_CONFIG_DIR").map_or_else(
+        || std::path::PathBuf::from("/app/phabricator/conf/local"),
+        std::path::PathBuf::from,
+    )
 }
 
 /// PHP's `time()`.

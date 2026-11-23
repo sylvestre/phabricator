@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 8 | 25 | 120 |
-| Web routes | 34 | – | 37 | 7 | 300 | 378 |
+| Web routes | 38 | – | 52 | 7 | 281 | 378 |
 
 Of the 25 methods not ported, 22 write (or depend on a write); the read-only ones left are `auth.querypublickeys`, `conduit.query`, `diffusion.findsymbols`.
 
@@ -260,8 +260,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/applications/[query/{queryKey}/]` | `PhabricatorApplicationsListController` | not ported | admin: application list; read-only |
-| `/applications/view/{application}/` | `PhabricatorApplicationDetailViewController` | not ported | admin: application page; read-only |
+| `/applications/[query/{queryKey}/]` | `PhabricatorApplicationsListController` | partial | builtin queries (Launcher, All); saved queries go to PHP |
+| `/applications/view/{application}/` | `PhabricatorApplicationDetailViewController` | partial | details and policies; the storage panels of Files and Search and applications with policy edits (their timeline) go to PHP |
 | `/applications/edit/{application}/` | `PhabricatorApplicationEditController` | not ported | write (form or action) |
 | `/applications/{application}/{install\|uninstall}/` | `PhabricatorApplicationUninstallController` | not ported | write (form or action) |
 | `/applications/panel/{application}/{panel}/{path...}` | `PhabricatorApplicationPanelController` | not ported | admin: application panels |
@@ -323,8 +323,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/conduit/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorConduitListController` | not ported | method list; needs every method's metadata |
-| `/conduit/method/{method}/` | `PhabricatorConduitConsoleController` | not ported | method console; needs the method's metadata |
+| `/conduit/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorConduitListController` | partial | builtin queries (Modern, All), from the method catalog (`scripts/generate-catalogs.php`); saved queries go to PHP |
+| `/conduit/method/{method}/` | `PhabricatorConduitConsoleController` | partial | properties, description and parameters; methods with documentation pages (search and edit engines) go to PHP, and the "Call Method" form stays PHP's |
 | `/conduit/log/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorConduitLogController` | not ported | admin: call log (search engine) |
 | `/conduit/log/view/{view}/` | `PhabricatorConduitLogController` | not ported | admin: call log (search engine) |
 | `/conduit/token/` | `PhabricatorConduitTokenController` | not ported | shows (and on first use creates) the CLI token |
@@ -337,33 +337,33 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/config/` | `PhabricatorConfigConsoleController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
-| `/config/edit/{key}/` | `PhabricatorConfigEditController` | not ported | write (form or action) |
+| `/config/` | `PhabricatorConfigConsoleController` | Rust | admin: the console menu; the library versions (read from Git) are only in PHP's |
+| `/config/edit/{key}/` | `PhabricatorConfigEditController` | partial | admin, read-only: description, examples and the value of each source; saves (POST), unknown options, custom types and entries with a history go to PHP (or `phab-cli config set`) |
 | `/config/database/[{ref}/[{database}/[{table}/[col/{column}\|key/{key}/]]]]` | `PhabricatorConfigDatabaseStatusController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
 | `/config/dbissue/` | `PhabricatorConfigDatabaseIssueController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
 | `/config/{ignore\|unignore}/{key}/` | `PhabricatorConfigIgnoreController` | not ported | write (form or action) |
-| `/config/issue/` | `PhabricatorConfigIssueListController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
-| `/config/issue/panel/` | `PhabricatorConfigIssuePanelController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
-| `/config/issue/{key}/` | `PhabricatorConfigIssueViewController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
+| `/config/issue/` | `PhabricatorConfigIssueListController` | not ported | admin: the results of PHP's setup checks, which examine PHP's own environment; stays PHP |
+| `/config/issue/panel/` | `PhabricatorConfigIssuePanelController` | not ported | admin: the results of PHP's setup checks; stays PHP |
+| `/config/issue/{key}/` | `PhabricatorConfigIssueViewController` | not ported | admin: the results of PHP's setup checks; stays PHP |
 | `/config/cache/` | `PhabricatorConfigCacheController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
 | `/config/cache/purge/` | `PhabricatorConfigPurgeCacheController` | not ported | write (form or action) |
 | `/config/module/[{module}/]` | `PhabricatorConfigModuleController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
 | `/config/cluster/databases/` | `PhabricatorConfigClusterDatabasesController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
 | `/config/cluster/repositories/` | `PhabricatorConfigClusterRepositoriesController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
 | `/config/cluster/search/` | `PhabricatorConfigClusterSearchController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
-| `/config/settings/` | `PhabricatorConfigSettingsListController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
-| `/config/settings/{advanced\|all}/` | `PhabricatorConfigSettingsListController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
+| `/config/settings/` | `PhabricatorConfigSettingsListController` | Rust | admin: core settings, read-only |
+| `/config/settings/{advanced\|all}/` | `PhabricatorConfigSettingsListController` | Rust | admin: settings lists, read-only |
 | `/config/settings/history/` | `PhabricatorConfigSettingsHistoryController` | not ported | admin: config UI, to be replaced by a CLI (§9.3) |
 
 ### Daemons (`PhabricatorDaemonsApplication`)
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/daemon/` | `PhabricatorDaemonConsoleController` | not ported | admin: daemons (Rust has `phab-worker`) |
-| `/daemon/task/{id}/` | `PhabricatorWorkerTaskDetailController` | not ported | admin: one task |
+| `/daemon/` | `PhabricatorDaemonConsoleController` | Rust | admin: completed, queued, leased and upcoming tasks, live daemons (their status computed, not saved as PHP does) and triggers |
+| `/daemon/task/{id}/` | `PhabricatorWorkerTaskDetailController` | partial | admin: a task and its retries; the tasks of Harbormaster and of the commit parsers, whose data PHP renders, go to PHP |
 | `/daemon/log/` | `PhabricatorDaemonLogListController` | not ported | admin: daemon logs |
 | `/daemon/log/{id}/` | `PhabricatorDaemonLogViewController` | not ported | admin: daemon log |
-| `/daemon/bulk/[query/{queryKey}/]` | `PhabricatorDaemonBulkJobListController` | not ported | admin: bulk jobs |
+| `/daemon/bulk/[query/{queryKey}/]` | `PhabricatorDaemonBulkJobListController` | partial | builtin queries (Authored, All); saved queries go to PHP |
 | `/daemon/bulk/monitor/{id}/` | `PhabricatorDaemonBulkJobMonitorController` | not ported | admin: bulk job monitor |
 | `/daemon/bulk/view/{id}/` | `PhabricatorDaemonBulkJobViewController` | not ported | admin: bulk job |
 
@@ -562,8 +562,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/help/keyboardshortcut/` | `PhabricatorHelpKeyboardShortcutController` | not ported | keyboard shortcut dialog of PHP pages |
-| `/help/documentation/{application}/` | `PhabricatorHelpDocumentationController` | not ported | help links of PHP pages |
+| `/help/keyboardshortcut/` | `PhabricatorHelpKeyboardShortcutController` | partial | as a page (`?keys=`); the dialogs PHP pages request go to PHP |
+| `/help/documentation/{application}/` | `PhabricatorHelpDocumentationController` | Rust | the help articles of an application (from the catalog) |
 
 ### Herald (`PhabricatorHeraldApplication`)
 
@@ -589,7 +589,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/` | `PhabricatorHomeMenuItemController` | Rust | the review queue; the Home menu and dashboards of `/` are not ported |
+| `/` | `PhabricatorHomeMenuItemController` | partial | the home menu and the builtin home page (active revisions, repositories, recent activity); menus with stored items (pinned dashboards, personal items) go to PHP |
 | `/home/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
 | `/home/menu/view/{itemID}/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
 | `/home/menu/hide/{itemID}/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
@@ -606,7 +606,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Route | Controller | Port | Note |
 |---|---|---|---|
 | `/mail/[query/{queryKey}/]` | `PhabricatorMetaMTAMailListController` | not ported | mail search engine page; read-only |
-| `/mail/detail/{id}/` | `PhabricatorMetaMTAMailViewController` | not ported | one mail; read-only |
+| `/mail/detail/{id}/` | `PhabricatorMetaMTAMailViewController` | partial | message, headers, delivery and metadata for the sender and the recipients; mail to projects or lists, encryption reasons and routing rules go to PHP |
 
 ### Notifications (`PhabricatorNotificationsApplication`)
 
@@ -645,7 +645,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/policy/explain/{phid}/{capability}/` | `PhabricatorPolicyExplainController` | not ported | policy dialog; read-only (the policy filter is ported, the explanations are not) |
+| `/policy/explain/{phid}/{capability}/` | `PhabricatorPolicyExplainController` | partial | applications' policies; other objects (special rules, extended policies, spaces) and custom policies go to PHP |
 | `/policy/edit/object/{objectPHID}\|type/{objectType}\|template/{templateType}/[{phid}/]` | `PhabricatorPolicyEditController` | not ported | write (form or action) |
 
 ### Project (`PhabricatorProjectApplication`)
@@ -684,7 +684,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/search/[query/{queryKey}/]` | `PhabricatorSearchController` | not ported | needs the Ferret fulltext engine (`*_fdocument` tables) |
+| `/search/[query/{queryKey}/]` | `PhabricatorSearchController` | partial | the jumps of the search box (`f`, `d`, `r`, `a`, `D123`); fulltext searches go to PHP |
 | `/search/hovercard/` | `PhabricatorSearchHovercardController` | not ported | hovercards of PHP pages |
 | `/search/handle/{phid}/` | `PhabricatorSearchHandleController` | not ported | handle redirect; read-only, small |
 | `/search/edit/key/{queryKey}/` | `PhabricatorSearchEditController` | not ported | write (form or action) |
@@ -712,8 +712,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/S{id}` | `PhabricatorSpacesViewController` | not ported | space page; read-only (Mozilla has no spaces) |
-| `/spaces/[query/{queryKey}/]` | `PhabricatorSpacesListController` | not ported | space list; read-only (Mozilla has no spaces) |
+| `/S{id}` | `PhabricatorSpacesViewController` | partial | space page; spaces with a history (their timeline) go to PHP |
+| `/spaces/[query/{queryKey}/]` | `PhabricatorSpacesListController` | partial | builtin queries (Active, All); saved queries go to PHP |
 | `/spaces/create/` | `PhabricatorSpacesEditController` | not ported | write (form or action) |
 | `/spaces/edit/[{id}/]` | `PhabricatorSpacesEditController` | not ported | write (form or action) |
 | `/spaces/{activate\|archive}/{id}/` | `PhabricatorSpacesArchiveController` | not ported | write (form or action) |
@@ -731,7 +731,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/help/keyboardshortcut/` | `PhabricatorHelpKeyboardShortcutController` | not ported | keyboard shortcut dialog of PHP pages |
+| `/help/keyboardshortcut/` | `PhabricatorHelpKeyboardShortcutController` | partial | as a page (`?keys=`); the dialogs PHP pages request go to PHP |
 
 ### System (`PhabricatorSystemApplication`)
 
