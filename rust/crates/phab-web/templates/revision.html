@@ -13,6 +13,7 @@
     {%- if let Some(uri) = lando_uri %}
     <li class="tag"><a href="{{ uri }}">View Stack in Lando</a></li>
     {%- endif %}
+    <li class="tag"><a href="/differential/revision/edit/{{ self.revision_id() }}/">Edit Revision</a></li>
   </ul>
 </header>
 <dl class="properties">

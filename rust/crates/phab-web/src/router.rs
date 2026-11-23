@@ -8,8 +8,8 @@ use crate::state::WebState;
 use crate::{
     actions, assets, changeset_view, dashboards, datasource, diff_page, diffusion, favorites, feed,
     files, flags, harbormaster, herald, login, notifications, opt_in, people, people_lists,
-    preview, project_edit, projects, queue, revision, settings, subscriptions, transactions,
-    typeahead, web_edit,
+    preview, project_edit, projects, queue, revision, revision_edit, settings, subscriptions,
+    transactions, typeahead, web_edit,
 };
 
 /// The login, registration and account linking pages (W7).
@@ -197,6 +197,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .merge(crate::system::routes::<S>())
         .merge(differential::<S>())
         .merge(web_edit::routes::<S>())
+        .merge(revision_edit::routes::<S>())
         .merge(project_edit::routes::<S>())
         .merge(people_and_activity::<S>())
         .merge(file_routes::<S>())

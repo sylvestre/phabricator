@@ -166,15 +166,15 @@ fn inline_transactions(inlines: &str) -> Result<Vec<Value>, &'static str> {
 
 /// A name typed in the form.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Entered {
+pub(crate) struct Entered {
     /// The username or the project hashtag, without `@`, `#` or `!`.
-    name: String,
-    is_project: bool,
-    is_blocking: bool,
+    pub(crate) name: String,
+    pub(crate) is_project: bool,
+    pub(crate) is_blocking: bool,
 }
 
 /// The names of a field, separated by commas or spaces.
-fn names(field: &str) -> Vec<Entered> {
+pub(crate) fn names(field: &str) -> Vec<Entered> {
     field
         .split(|character: char| character == ',' || character.is_whitespace())
         .filter(|word| !word.is_empty())
@@ -201,7 +201,7 @@ type Resolved = [(Phid, bool)];
 
 /// The PHIDs of `names`, as `viewer` may see them: an unknown or hidden
 /// name is an error naming it, as PHP's datasource refuses it.
-async fn resolve<S: WebState>(
+pub(crate) async fn resolve<S: WebState>(
     state: &S,
     viewer: &WebUser,
     names: &[Entered],
@@ -313,7 +313,7 @@ fn transactions(
 }
 
 /// The PHID in a reviewer token, `PHID` or `blocking(PHID)`.
-fn token_phid(token: &str) -> &str {
+pub(crate) fn token_phid(token: &str) -> &str {
     token
         .strip_prefix("blocking(")
         .and_then(|rest| rest.strip_suffix(')'))

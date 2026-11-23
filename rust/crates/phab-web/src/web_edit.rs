@@ -220,7 +220,10 @@ fn fuse<'a>(items: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
 /// The transaction `getValueForTransaction()` of an edge field makes from
 /// the comment action, as a Conduit one: `+` is `.add`, `-` is `.remove`,
 /// `=` (no initial value) is `.set`.
-fn list_transaction(edit_type: &str, action: &FormAction) -> Result<Value, &'static str> {
+pub(crate) fn list_transaction(
+    edit_type: &str,
+    action: &FormAction,
+) -> Result<Value, &'static str> {
     let unusual = "unusual tokenizer values";
     let new = strings(&action.value).ok_or(unusual)?;
     if action.initial.is_null() {
@@ -354,7 +357,7 @@ async fn load_revision<S: WebState>(
 /// (`loadDefaultEditConfiguration()`), stored or the builtin default,
 /// with field locks or a field order. Defaults only apply to new objects,
 /// and a preamble only adds instructions.
-async fn has_configured_forms<S: WebState>(state: &S) -> Result<bool, PageError> {
+pub(crate) async fn has_configured_forms<S: WebState>(state: &S) -> Result<bool, PageError> {
     let database = state.database();
     let sql = format!(
         "SELECT id, builtinKey, name, properties, isDisabled, isEdit, editOrder FROM {} \

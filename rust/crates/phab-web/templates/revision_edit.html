@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1>{{ heading }}</h1>
+</header>
+{%- if let Some(error) = error %}
+<div class="notice" role="alert">{{ error }}</div>
+{%- endif %}
+<form class="settings-form" method="post" action="/differential/revision/edit/{{ id }}/">
+  {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+  <input type="hidden" name="__form__" value="1">
+  <input type="hidden" name="editEngine" value="true">
+  {%- for author in form.author %}
+  <input type="hidden" name="author[]" value="{{ author }}">
+  {%- endfor %}
+  {%- for repository in form.repository %}
+  <input type="hidden" name="repositoryPHID[]" value="{{ repository }}">
+  {%- endfor %}
+  {%- if let Some(policy) = form.view_policy %}<input type="hidden" name="policy.view" value="{{ policy }}">{% endif %}
+  {%- if let Some(policy) = form.edit_policy %}<input type="hidden" name="policy.edit" value="{{ policy }}">{% endif %}
+  <div class="settings-field">
+    <label for="revision-title">Title</label>
+    <input type="text" id="revision-title" name="title" value="{% if let Some(title) = form.title %}{{ title }}{% endif %}" required>
+  </div>
+  <div class="settings-field">
+    <label for="revision-summary">Summary</label>
+    <textarea id="revision-summary" name="summary" rows="10" data-preview="summary-preview">{% if let Some(summary) = form.summary %}{{ summary }}{% endif %}</textarea>
+    <input type="hidden" name="summary_metadata" value="{}">
+    <div class="remarkup comment-preview" id="summary-preview" aria-live="polite" hidden></div>
+  </div>
+  <div class="settings-field">
+    <label for="revision-test-plan">Test Plan</label>
+    <textarea id="revision-test-plan" name="testPlan" rows="6" data-preview="test-plan-preview">{% if let Some(plan) = form.test_plan %}{{ plan }}{% endif %}</textarea>
+    <input type="hidden" name="testPlan_metadata" value="{}">
+    <div class="remarkup comment-preview" id="test-plan-preview" aria-live="polite" hidden></div>
+  </div>
+  {%- for field in lists %}
+  <fieldset class="settings-field">
+    <legend>{{ field.label }}</legend>
+    {%- for token in field.tokens %}
+    <label><input type="checkbox" name="{{ field.key }}[]" value="{{ token.value }}" checked> {{ token.label }}</label>
+    {%- endfor %}
+    {%- for value in field.initial %}
+    <input type="hidden" name="{{ field.key }}.initial[]" value="{{ value }}">
+    {%- endfor %}
+    <label>Add <input type="text" name="rust.add.{{ field.key }}" value="{{ field.adding }}" placeholder="{% if field.key == "projectPHIDs" %}#tag{% else if field.key == "reviewers" %}alice, #team, bob! (blocking){% else %}alice, #team{% endif %}" autocomplete="off" data-typeahead></label>
+  </fieldset>
+  {%- endfor %}
+  <div class="settings-field">
+    <label for="revision-bug">Bugzilla Bug ID</label>
+    <input type="text" id="revision-bug" name="differential:bugzilla-bug-id" value="{% if let Some(bug) = form.bug_id %}{{ bug }}{% endif %}">
+    <p class="muted">Example: <code>2345</code></p>
+  </div>
+  <p class="muted">Names typed in an "Add" field are added to the form first; save again to write them.</p>
+  <button type="submit">Save Changes</button>
+  <a href="/D{{ id }}">Cancel</a>
+</form>
+{% endblock %}

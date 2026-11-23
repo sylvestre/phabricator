@@ -134,7 +134,12 @@ page's own form (`/DN/action`) is that comment form, which it posts to
 PHP as the user when Rust doesn't write it, and with inline comments a
 `differential.revision.edit` call, which the Rust editor makes (with a
 Conduit content source, as PHP's would) or else PHP's Conduit API as the
-user. So do the project edit form (`/project/edit/N/`: name, icon,
+user. So does the edit form of revisions
+(`/differential/revision/edit/N/`: title, summary, test plan, reviewers,
+tags, subscribers and Bugzilla bug ID, `crates/phab-web/src/revision_edit.rs`),
+with the Rust editor's edit form source; changes to the author, the
+repository or the policies, and the errors PHP shows on the form, go to
+PHP. So do the project edit form (`/project/edit/N/`: name, icon,
 color and hashtags), joining and leaving (`/project/update/N/join|leave/`)
 and watching (`/project/watch|unwatch/N/`), through the Rust project
 editor with a web content source (`crates/phab-web/src/project_edit.rs`);

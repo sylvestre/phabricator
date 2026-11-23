@@ -133,6 +133,11 @@ impl RevisionPage {
     fn test_plan_html(&self) -> &str {
         Self::html(self.test_plan.as_ref())
     }
+
+    /// The ID of the monogram, for the edit form's URI.
+    fn revision_id(&self) -> &str {
+        self.monogram.trim_start_matches('D')
+    }
 }
 
 /// `DifferentialRevisionStatus` names.

@@ -98,6 +98,12 @@ pub enum Source {
     /// A task of the daemons (`PhabricatorDaemonContentSource`), whose
     /// omnipotent actor acts as an application or a user.
     Daemon,
+    /// PHP's edit form (`PhabricatorEditEngine::buildEditResponse()`): a
+    /// web content source, an editor which continues on no effect
+    /// (`setContinueOnNoEffect(true)`), and remarkup fields whose
+    /// transactions carry the form's empty `remarkup.control` metadata
+    /// (`PhabricatorRemarkupEditField::getMetadata()`).
+    EditForm,
 }
 
 impl Source {
@@ -105,7 +111,7 @@ impl Source {
     fn serialized(&self) -> &'static str {
         match self {
             Self::Conduit => CONDUIT_SOURCE,
-            Self::Web { .. } => WEB_SOURCE,
+            Self::Web { .. } | Self::EditForm => WEB_SOURCE,
             Self::Daemon => DAEMON_SOURCE,
         }
     }
@@ -114,7 +120,7 @@ impl Source {
     fn constant(&self) -> &'static str {
         match self {
             Self::Conduit => "conduit",
-            Self::Web { .. } => "web",
+            Self::Web { .. } | Self::EditForm => "web",
             Self::Daemon => "daemon",
         }
     }
@@ -122,7 +128,7 @@ impl Source {
     /// The metadata the comment transaction starts with.
     fn comment_metadata(&self) -> Value {
         match self {
-            Self::Conduit | Self::Daemon => json!({}),
+            Self::Conduit | Self::Daemon | Self::EditForm => json!({}),
             Self::Web { remarkup_control } => json!({"remarkup.control": remarkup_control}),
         }
     }
@@ -3265,6 +3271,11 @@ async fn write_action(
             }
         }
         Action::Text(field) => {
+            // The edit form's remarkup control posts `{}`, which decodes to
+            // an empty list.
+            let form_metadata = matches!(plan.source, Source::EditForm)
+                .then(|| group_metadata(plan, json!({"remarkup.control": []})));
+            let metadata = form_metadata.as_deref().unwrap_or(metadata);
             for text in actions.texts.iter().filter(|(known, ..)| *known == field) {
                 write_text(request, plan, text, metadata, connection).await?;
             }
@@ -3979,6 +3990,15 @@ fn result(plan: &Plan) -> Value {
             .map(|phid| json!({"phid": phid}))
             .collect::<Vec<_>>(),
     })
+}
+
+/// Whether `text` reads as fields of a commit message, which PHP refuses
+/// in a summary or a test plan (`validateMessageCorpus()`), even unchanged.
+pub fn names_commit_message_fields(
+    config: &phab_core::Config,
+    text: &str,
+) -> Result<bool, MethodError> {
+    crate::commit_message::parse::names_fields(config, text)
 }
 
 /// `differential.revision.edit`. Without a [`FileFinder`], references to
