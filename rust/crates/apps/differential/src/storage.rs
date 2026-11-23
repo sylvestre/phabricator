@@ -212,6 +212,33 @@ pub async fn load_open_revisions_reviewed_by(
     with_reviewers(database, &rows).await
 }
 
+/// Up to `limit` revisions `author` wrote (`withAuthors()`), most recently
+/// updated first (the default order, `updated` then `id`), after the
+/// revision whose `(dateModified, id)` is `after`.
+pub async fn load_revisions_by_author(
+    database: &Database,
+    author: &Phid,
+    after: Option<(i64, i64)>,
+    limit: usize,
+) -> Result<Vec<Revision>, DbError> {
+    let cursor = if after.is_some() {
+        " AND (dateModified < ? OR (dateModified = ? AND id < ?))"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT {REVISION_COLUMNS} FROM {} WHERE authorPHID = ?{cursor} \
+         ORDER BY dateModified DESC, id DESC LIMIT {limit}",
+        database.table("differential", "differential_revision"),
+    );
+    let mut query = phab_db::sqlx::query(&sql).bind(author.as_str());
+    if let Some((modified, id)) = after {
+        query = query.bind(modified).bind(modified).bind(id);
+    }
+    let rows = query.fetch_all(database.pool()).await?;
+    with_reviewers(database, &rows).await
+}
+
 /// The open revisions `responsible` users and projects author or review
 /// (`withResponsibleUsers()`, as a union like PHP), most recently updated
 /// first.

@@ -1,7 +1,8 @@
 //! Project pages: `/tag/<slug>/`, `/project/view/<id>/` and
 //! `/project/profile/<id>/` (`PhabricatorProjectViewController` and
-//! `PhabricatorProjectProfileController`). Workboards went with Maniphest,
-//! so every project shows its profile.
+//! `PhabricatorProjectProfileController`), `/project/members/<id>/` and
+//! `/project/subprojects/<id>/`. Workboards went with Maniphest, so every
+//! project shows its profile.
 
 use std::sync::Arc;
 
@@ -36,6 +37,7 @@ pub(crate) struct Item {
 #[derive(Template)]
 #[template(path = "project.html")]
 pub(crate) struct ProjectPage {
+    id: i64,
     shell: Shell,
     name: String,
     icon: String,
@@ -180,6 +182,7 @@ async fn render<S: WebState>(
     });
     let name = project.display_name(graph.parent(&project));
     Ok(Page(ProjectPage {
+        id: project.id,
         shell: Shell::for_user(state.config(), viewer, &name, current_uri),
         name,
         icon: project.icon.clone(),
@@ -243,6 +246,133 @@ fn project_uri(slug: &str) -> String {
     format!("/tag/{encoded}/")
 }
 
+/// A visible project by ID, or why not.
+async fn visible_by_id<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    id: i64,
+) -> Result<(Project, policy::Graph), PageError> {
+    viewer
+        .require_application(state, application::PROJECT)
+        .await?;
+    let project = storage::load_by_id(state.database(), id)
+        .await?
+        .ok_or(PageError::NotFound)?;
+    visible(state, &viewer.user.viewer(), project).await
+}
+
+#[derive(Template)]
+#[template(path = "project_members.html")]
+pub(crate) struct MembersPage {
+    shell: Shell,
+    id: i64,
+    name: String,
+    uri: String,
+    members: Vec<Item>,
+    watchers: Vec<Item>,
+    is_member: bool,
+    is_watcher: bool,
+}
+
+/// `GET /project/members/{id}/` (`PhabricatorProjectMembersViewController`):
+/// every member and watcher. Joining, leaving and watching stay with PHP.
+pub(crate) async fn members<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(id): Path<i64>,
+    uri: Uri,
+) -> Result<Page<MembersPage>, PageError> {
+    let (project, graph) = visible_by_id(state.as_ref(), &viewer, id).await?;
+    let database = state.database();
+    let member_phids =
+        storage::load_edge_destinations(database, &project.phid, edges::PROJECT_HAS_MEMBER).await?;
+    let watcher_phids =
+        storage::load_edge_destinations(database, &project.phid, storage::OBJECT_HAS_WATCHER)
+            .await?;
+    let name = project.display_name(graph.parent(&project));
+    Ok(Page(MembersPage {
+        shell: Shell::for_user(
+            state.config(),
+            &viewer,
+            &format!("{} · Members and Watchers", project.name),
+            current(&uri),
+        ),
+        id: project.id,
+        name,
+        uri: project.uri(),
+        members: user_items(state.as_ref(), &member_phids).await?,
+        watchers: user_items(state.as_ref(), &watcher_phids).await?,
+        is_member: member_phids.contains(&viewer.user.phid),
+        is_watcher: watcher_phids.contains(&viewer.user.phid),
+    }))
+}
+
+#[derive(Template)]
+#[template(path = "project_subprojects.html")]
+pub(crate) struct SubprojectsPage {
+    shell: Shell,
+    name: String,
+    uri: String,
+    /// `None` for a milestone, which has neither.
+    lists: Option<(Vec<Item>, Vec<Item>)>,
+}
+
+/// `GET /project/subprojects/{id}/` (`PhabricatorProjectSubprojectsController`):
+/// the subprojects by name and the milestones by number.
+pub(crate) async fn subprojects<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(id): Path<i64>,
+    uri: Uri,
+) -> Result<Page<SubprojectsPage>, PageError> {
+    let (project, graph) = visible_by_id(state.as_ref(), &viewer, id).await?;
+    let lists = if project.is_milestone() {
+        None
+    } else {
+        let children = storage::load_children(state.database(), &project.phid).await?;
+        let (children, children_graph) = policy::visible_projects(
+            state.database(),
+            state.config(),
+            &viewer.user.viewer(),
+            children,
+            state.now(),
+        )
+        .await
+        .map_err(|error| PageError::Internal(Box::new(error)))?;
+        let item = |child: &Project| Item {
+            name: child.display_name(children_graph.parent(child)),
+            uri: child.uri(),
+            closed: child.is_archived(),
+        };
+        let mut subprojects: Vec<&Project> = children
+            .iter()
+            .filter(|child| !child.is_milestone())
+            .collect();
+        subprojects.sort_by_cached_key(|child| (child.name.to_lowercase(), child.id));
+        let mut milestones: Vec<&Project> = children
+            .iter()
+            .filter(|child| child.is_milestone())
+            .collect();
+        milestones.sort_by_key(|child| (child.milestone_number, child.id));
+        Some((
+            subprojects.into_iter().map(item).collect(),
+            milestones.into_iter().map(item).collect(),
+        ))
+    };
+    let name = project.display_name(graph.parent(&project));
+    Ok(Page(SubprojectsPage {
+        shell: Shell::for_user(
+            state.config(),
+            &viewer,
+            &format!("{} · Subprojects and Milestones", project.name),
+            current(&uri),
+        ),
+        name,
+        uri: project.uri(),
+        lists,
+    }))
+}
+
 /// `GET /project/view/{id}/` and `/project/profile/{id}/`.
 pub(crate) async fn by_id<S: WebState>(
     State(state): State<Arc<S>>,
@@ -250,12 +380,6 @@ pub(crate) async fn by_id<S: WebState>(
     Path(id): Path<i64>,
     uri: Uri,
 ) -> Result<Page<ProjectPage>, PageError> {
-    viewer
-        .require_application(&*state, application::PROJECT)
-        .await?;
-    let project = storage::load_by_id(state.database(), id)
-        .await?
-        .ok_or(PageError::NotFound)?;
-    let visible = visible(state.as_ref(), &viewer.user.viewer(), project).await?;
+    let visible = visible_by_id(state.as_ref(), &viewer, id).await?;
     render(state.as_ref(), &viewer, visible, current(&uri)).await
 }

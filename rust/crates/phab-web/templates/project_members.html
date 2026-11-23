@@ -1,0 +1,41 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><a href="{{ uri }}">{{ name }}</a>: Members and Watchers</h1>
+  <nav class="bucket-switch" aria-label="Project">
+    <a href="{{ uri }}">Profile</a>
+    <strong>Members</strong>
+    <a href="/project/subprojects/{{ id }}/">Subprojects</a>
+  </nav>
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>Members{% if !members.is_empty() %} ({{ members.len() }}){% endif %}</h2>
+    {%- if members.is_empty() %}
+    <p class="muted">This project does not have any members.</p>
+    {%- else %}
+    <ul class="object-list">
+      {%- for member in members %}
+      <li><a href="{{ member.uri }}"{% if member.closed %} class="remarkup-mention-disabled"{% endif %}>{{ member.name }}</a></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <h2>Watchers{% if !watchers.is_empty() %} ({{ watchers.len() }}){% endif %}</h2>
+    {%- if watchers.is_empty() %}
+    <p class="muted">This project does not have any watchers.</p>
+    {%- else %}
+    <ul class="object-list">
+      {%- for watcher in watchers %}
+      <li><a href="{{ watcher.uri }}"{% if watcher.closed %} class="remarkup-mention-disabled"{% endif %}>{{ watcher.name }}</a></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+  </section>
+  <aside class="side-column">
+    <ul class="object-list">
+      <li>{% if is_member %}<a href="/project/update/{{ id }}/leave/">Leave Project</a>{% else %}<a href="/project/update/{{ id }}/join/">Join Project</a>{% endif %}</li>
+      <li>{% if is_watcher %}<a href="/project/unwatch/{{ id }}/">Unwatch Project</a>{% else %}<a href="/project/watch/{{ id }}/">Watch Project</a>{% endif %}</li>
+    </ul>
+  </aside>
+</div>
+{% endblock %}

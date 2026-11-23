@@ -6,9 +6,38 @@ use axum::{Router, routing};
 
 use crate::state::WebState;
 use crate::{
-    actions, assets, dashboards, diffusion, feed, harbormaster, herald, login, opt_in, people,
-    preview, projects, queue, revision, settings, typeahead, web_edit,
+    actions, assets, dashboards, diffusion, feed, harbormaster, herald, login, notifications,
+    opt_in, people, preview, projects, queue, revision, settings, typeahead, web_edit,
 };
+
+/// Profiles, projects, the feed and notifications.
+fn people_and_activity<S: WebState>() -> Router<Arc<S>> {
+    Router::new()
+        .route("/p/{username}/", routing::get(people::show::<S>))
+        .route(
+            "/people/revisions/{id}/",
+            routing::get(people::revisions::<S>),
+        )
+        .route("/tag/{slug}/", routing::get(projects::by_slug::<S>))
+        .route("/project/view/{id}/", routing::get(projects::by_id::<S>))
+        .route("/project/profile/{id}/", routing::get(projects::by_id::<S>))
+        .route(
+            "/project/members/{id}/",
+            routing::get(projects::members::<S>),
+        )
+        .route(
+            "/project/subprojects/{id}/",
+            routing::get(projects::subprojects::<S>),
+        )
+        .route("/feed/", routing::get(feed::show::<S>))
+        .route("/feed/query/{key}/", routing::get(feed::query::<S>))
+        .route("/feed/{key}/", routing::get(feed::detail::<S>))
+        .route("/notification/", routing::get(notifications::show::<S>))
+        .route(
+            "/notification/query/{key}/",
+            routing::get(notifications::query::<S>),
+        )
+}
 
 /// The pages, the static files and the interface switch. nginx decides
 /// which of them reach the service (`rust/nginx/rust-web.conf`).
@@ -19,11 +48,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .route("/{monogram}", routing::get(revision::by_monogram::<S>))
         .route("/{monogram}/action", routing::post(actions::submit::<S>))
         .merge(web_edit::routes::<S>())
-        .route("/p/{username}/", routing::get(people::show::<S>))
-        .route("/tag/{slug}/", routing::get(projects::by_slug::<S>))
-        .route("/project/view/{id}/", routing::get(projects::by_id::<S>))
-        .route("/project/profile/{id}/", routing::get(projects::by_id::<S>))
-        .route("/feed/", routing::get(feed::show::<S>))
+        .merge(people_and_activity::<S>())
         .route(
             "/harbormaster/",
             routing::get(harbormaster::buildable_list::<S>),

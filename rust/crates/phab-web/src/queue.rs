@@ -30,11 +30,11 @@ const BUCKETS: [Bucket; 3] = [
 
 /// A revision in a group.
 pub(crate) struct Item {
-    monogram: String,
-    title: String,
-    author: String,
-    status: &'static str,
-    updated: String,
+    pub(crate) monogram: String,
+    pub(crate) title: String,
+    pub(crate) author: String,
+    pub(crate) status: &'static str,
+    pub(crate) updated: String,
 }
 
 /// A group of the queue.
@@ -90,7 +90,10 @@ fn status_name(status: &str) -> &'static str {
     }
 }
 
-async fn items<S: WebState>(state: &S, revisions: &[Revision]) -> Result<Vec<Item>, PageError> {
+pub(crate) async fn items<S: WebState>(
+    state: &S,
+    revisions: &[Revision],
+) -> Result<Vec<Item>, PageError> {
     let authors: Vec<Phid> = revisions
         .iter()
         .filter_map(|revision| revision.author_phid.clone())

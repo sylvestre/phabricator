@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>{% if !real_name.is_empty() %}{{ real_name }} <span class="muted">({{ user_name }})</span>{% else %}{{ user_name }}{% endif %}</h1>
+  <nav class="bucket-switch" aria-label="Profile">
+    <a href="/p/{{ user_name }}/">Profile</a>
+    <strong>Recent Revisions</strong>
+  </nav>
+</header>
+<section class="queue-group">
+  <h2>Recent Revisions</h2>
+  {%- if revisions.is_empty() %}
+  <p class="muted">No recent revisions.</p>
+  {%- else %}
+  <table class="queue">
+    {%- for item in revisions %}
+    <tr>
+      <td class="queue-monogram"><a href="/{{ item.monogram }}">{{ item.monogram }}</a></td>
+      <td><a href="/{{ item.monogram }}">{{ item.title }}</a></td>
+      <td>{{ item.status }}</td>
+      <td class="muted"><time>{{ item.updated }}</time></td>
+    </tr>
+    {%- endfor %}
+  </table>
+  {%- endif %}
+</section>
+{% endblock %}

@@ -1,6 +1,13 @@
 {% extends "layout.html" %}
 {% block content %}
-<h1>Feed</h1>
+<header class="queue-header">
+  <h1>{{ heading }}</h1>
+  <nav class="bucket-switch" aria-label="Queries">
+    {%- for (name, uri, active) in queries %}
+    {%- if *active %}<strong>{{ name }}</strong>{% else %}<a href="{{ uri }}">{{ name }}</a>{% endif %}
+    {%- endfor %}
+  </nav>
+</header>
 {%- if skipped > 0 %}
 <p class="notice">{{ skipped }} {% if skipped == 1 %}story is{% else %}stories are{% endif %} not shown here yet{% if let Some(uri) = shell.old_ui_uri %}: <a href="{{ uri }}">see all activity in the old interface</a>{% endif %}.</p>
 {%- endif %}

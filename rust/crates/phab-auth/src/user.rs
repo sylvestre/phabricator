@@ -122,6 +122,20 @@ pub async fn load_users_by_phid(database: &Database, phids: &[Phid]) -> Result<V
     rows.iter().map(User::from_row).collect()
 }
 
+/// Loads the user with this ID, if any.
+pub async fn load_user_by_id(database: &Database, id: i64) -> Result<Option<User>, DbError> {
+    let sql = format!(
+        "SELECT {} FROM {} u WHERE u.id = ?",
+        select_columns("u"),
+        database.table("user", "user"),
+    );
+    let row = phab_db::sqlx::query(&sql)
+        .bind(id)
+        .fetch_optional(database.pool())
+        .await?;
+    row.as_ref().map(User::from_row).transpose()
+}
+
 /// `PhabricatorAuthMessage::loadMessageText()` without the default text:
 /// the message an administrator wrote for `key`, if any.
 pub async fn load_message_text(database: &Database, key: &str) -> Result<Option<String>, DbError> {

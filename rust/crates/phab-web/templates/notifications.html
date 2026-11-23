@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>{{ heading }}</h1>
+  <nav class="bucket-switch" aria-label="Queries">
+    {%- for (name, uri, active) in queries %}
+    {%- if *active %}<strong>{{ name }}</strong>{% else %}<a href="{{ uri }}">{{ name }}</a>{% endif %}
+    {%- endfor %}
+  </nav>
+</header>
+{%- if skipped > 0 %}
+<p class="notice">{{ skipped }} {% if skipped == 1 %}notification is{% else %}notifications are{% endif %} not shown here yet{% if let Some(uri) = shell.old_ui_uri %}: <a href="{{ uri }}">see them in the old interface</a>{% endif %}.</p>
+{%- endif %}
+{%- if notifications.is_empty() %}
+<p class="muted">{{ no_data }}</p>
+{%- else %}
+<ul class="feed">
+  {%- for notification in notifications %}
+  <li class="feed-story{% if notification.unread %} notification-unread{% endif %}">{% if notification.unread %}<span class="tag">Unread</span> {% endif %}<span class="feed-title">{{ notification.story.title_html|safe }}</span> <time class="muted">{{ notification.story.date }}</time></li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+<nav class="pager">
+  {%- if let Some(uri) = newer %}<a href="{{ uri }}">Newer</a>{% endif %}
+  {%- if let Some(uri) = older %}<a href="{{ uri }}">Older</a>{% endif %}
+</nav>
+{% endblock %}

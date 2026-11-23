@@ -193,18 +193,71 @@ pub async fn load_page(database: &Database, page: Page<'_>) -> Result<Vec<StoryR
     let rows = phab_db::bind_all(query, page.after)
         .fetch_all(database.pool())
         .await?;
+    rows.iter().map(story_row).collect()
+}
+
+fn story_row(row: &phab_db::sqlx::mysql::MySqlRow) -> Result<StoryRow, DbError> {
+    Ok(StoryRow {
+        id: rows::uint(row, "id")?,
+        phid: rows::text(row, "phid")?,
+        chronological_key: rows::uint(row, "chronologicalKey")?,
+        story_type: rows::text(row, "storyType")?,
+        story_data: rows::json(row, "storyData")?,
+        author_phid: rows::text(row, "authorPHID")?,
+        date_created: rows::int(row, "dateCreated")?,
+    })
+}
+
+/// What a page of `PhabricatorNotificationQuery` selects: a user's
+/// notifications, newest first by default.
+#[derive(Debug, Clone, Copy)]
+pub struct NotificationPage<'a> {
+    /// `withUserPHIDs()`.
+    pub user: &'a Phid,
+    /// `withUnread(true)`: only the notifications not viewed yet.
+    pub unread: bool,
+    /// Only rows past this chronological key, in `order`.
+    pub after: Option<u64>,
+    /// The order of the rows and of `after`.
+    pub order: Order,
+    /// How many rows to load.
+    pub limit: usize,
+}
+
+/// `PhabricatorNotificationQuery::loadPage()`: the stories of the page,
+/// each with whether the user viewed it (`hasViewed`).
+pub async fn load_notification_page(
+    database: &Database,
+    page: NotificationPage<'_>,
+) -> Result<Vec<(StoryRow, bool)>, DbError> {
+    let mut conditions = vec!["notification.userPHID = ?"];
+    if page.unread {
+        conditions.push("notification.hasViewed = 0");
+    }
+    let (comparison, direction) = match page.order {
+        Order::Oldest => ("notification.chronologicalKey > ?", "ASC"),
+        Order::Newest => ("notification.chronologicalKey < ?", "DESC"),
+    };
+    if page.after.is_some() {
+        conditions.push(comparison);
+    }
+    let sql = format!(
+        "SELECT story.id, story.phid, story.chronologicalKey, story.storyType, \
+         story.storyData, story.authorPHID, story.dateCreated, notification.hasViewed \
+         FROM {} notification JOIN {} story \
+         ON notification.chronologicalKey = story.chronologicalKey WHERE {} \
+         ORDER BY notification.chronologicalKey {direction} LIMIT {}",
+        database.table("feed", "feed_storynotification"),
+        database.table("feed", "feed_storydata"),
+        conditions.join(" AND "),
+        page.limit,
+    );
+    let query = phab_db::sqlx::query(&sql).bind(page.user.as_str());
+    let rows = phab_db::bind_all(query, page.after)
+        .fetch_all(database.pool())
+        .await?;
     rows.iter()
-        .map(|row| {
-            Ok(StoryRow {
-                id: rows::uint(row, "id")?,
-                phid: rows::text(row, "phid")?,
-                chronological_key: rows::uint(row, "chronologicalKey")?,
-                story_type: rows::text(row, "storyType")?,
-                story_data: rows::json(row, "storyData")?,
-                author_phid: rows::text(row, "authorPHID")?,
-                date_created: rows::int(row, "dateCreated")?,
-            })
-        })
+        .map(|row| Ok((story_row(row)?, rows::flag(row, "hasViewed")?)))
         .collect()
 }
 

@@ -1,4 +1,5 @@
-//! `/feed/` against a test database.
+//! `/feed/`, its queries and stories, and `/notification/` against a test
+//! database.
 
 use std::sync::Arc;
 
@@ -236,5 +237,133 @@ async fn feed_shows_visible_stories_with_titles() {
     assert!(page.contains("bob</a> accepted"), "{page}");
     assert!(!page.contains("retitled"), "{page}");
     assert!(!page.contains("not shown here yet"), "{page}");
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn builtin_queries_and_single_stories() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    // Without projects, the "projects" query has no filter: every story.
+    let (status, page) = get(&test_db, "/feed/query/projects/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("<h1>Tags</h1>"), "{page}");
+    assert!(page.contains("retitled"), "{page}");
+    assert!(page.contains("accepted"), "{page}");
+
+    // With one, only the stories about it.
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_project`.project (name, phid, authorPHID, dateCreated, \
+               dateModified, status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, \
+               hasWorkboard, hasMilestones, hasSubprojects, projectPath, projectDepth, \
+               projectPathKey, properties, subtype, primarySlug) VALUES \
+             ('Build', 'PHID-PROJ-build', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', \
+               'blue', 'k', 0, 0, 0, 'a', 0, 'k001', '{{}}', 'default', 'build'); \
+             INSERT INTO `{{ns}}_user`.edge (src, type, dst, dateCreated, seq) VALUES \
+               ('PHID-USER-alice', 14, 'PHID-PROJ-build', 1, 0); \
+             INSERT INTO `{{ns}}_project`.edge (src, type, dst, dateCreated, seq) VALUES \
+               ('PHID-PROJ-build', 13, 'PHID-USER-alice', 1, 0); \
+             INSERT INTO `{{ns}}_feed`.feed_storyreference (objectPHID, chronologicalKey) \
+             VALUES ('PHID-PROJ-build', {key})",
+            key = chronological_key(1),
+        ))
+        .await;
+    let (_, page) = get(&test_db, "/feed/query/projects/").await;
+    assert!(page.contains("bob</a> accepted"), "{page}");
+    assert!(!page.contains("retitled"), "{page}");
+    let (_, page) = get(&test_db, "/feed/query/all/").await;
+    assert!(page.contains("<h1>All Stories</h1>"), "{page}");
+    assert!(page.contains("retitled"), "{page}");
+
+    let (status, _) = get(&test_db, "/feed/query/abcdef123456/").await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+
+    // One story, by chronological key.
+    let (status, page) = get(&test_db, &format!("/feed/{}/", chronological_key(3))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        page.contains("<title>Story · Phabricator</title>"),
+        "{page}"
+    );
+    assert!(page.contains("alice</a> retitled"), "{page}");
+    assert!(!page.contains("accepted"), "{page}");
+    // Hidden, unknown, and not ported.
+    for (path, expected) in [
+        (
+            format!("/feed/{}/", chronological_key(2)),
+            StatusCode::NOT_FOUND,
+        ),
+        ("/feed/99/".to_owned(), StatusCode::NOT_FOUND),
+        (
+            format!("/feed/{}/", chronological_key(4)),
+            StatusCode::MISDIRECTED_REQUEST,
+        ),
+        (
+            format!("/feed/{}/?text=1", chronological_key(3)),
+            StatusCode::MISDIRECTED_REQUEST,
+        ),
+    ] {
+        let (status, _) = get(&test_db, &path).await;
+        assert_eq!(status, expected, "{path}");
+    }
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn notifications_mark_the_unread_ones() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    // alice was notified of stories 1 (viewed), 3 and 2 (hidden from her);
+    // bob of story 1.
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_feed`.feed_storynotification (userPHID, primaryObjectPHID, \
+               chronologicalKey, hasViewed) VALUES \
+             ('PHID-USER-alice', 'PHID-DREV-one', {one}, 1), \
+             ('PHID-USER-alice', 'PHID-DREV-one', {three}, 0), \
+             ('PHID-USER-alice', 'PHID-DREV-two', {two}, 0), \
+             ('PHID-USER-bob', 'PHID-DREV-one', {one}, 0)",
+            one = chronological_key(1),
+            two = chronological_key(2),
+            three = chronological_key(3),
+        ))
+        .await;
+    let (status, page) = get(&test_db, "/notification/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("<h1>Notifications</h1>"), "{page}");
+    let retitle = page
+        .find(
+            "<li class=\"feed-story notification-unread\"><span class=\"tag\">Unread</span> \
+             <span class=\"feed-title\"><a href=\"/p/alice/\">alice</a> retitled",
+        )
+        .unwrap_or_else(|| panic!("{page}"));
+    let accept = page
+        .find(
+            "<li class=\"feed-story\"><span class=\"feed-title\"><a href=\"/p/bob/\">bob</a> \
+             accepted",
+        )
+        .unwrap_or_else(|| panic!("{page}"));
+    assert!(retitle < accept, "{page}");
+    assert!(!page.contains("Secret"), "{page}");
+
+    let (status, page) = get(&test_db, "/notification/query/unread/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("<h1>Unread Notifications</h1>"), "{page}");
+    assert!(page.contains("retitled"), "{page}");
+    assert!(!page.contains("accepted"), "{page}");
+
+    test_db
+        .execute("UPDATE `{ns}_feed`.feed_storynotification SET hasViewed = 1")
+        .await;
+    let (_, page) = get(&test_db, "/notification/query/unread/").await;
+    assert!(page.contains("You have no unread notifications."), "{page}");
+
+    for path in ["/notification/?unread=1", "/notification/query/saved123/"] {
+        let (status, _) = get(&test_db, path).await;
+        assert_eq!(status, StatusCode::MISDIRECTED_REQUEST, "{path}");
+    }
     test_db.drop_databases().await;
 }

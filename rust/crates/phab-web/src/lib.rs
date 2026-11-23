@@ -18,6 +18,7 @@ mod harbormaster;
 mod herald;
 mod highlight;
 pub mod login;
+mod notifications;
 pub mod opt_in;
 mod people;
 pub mod php;

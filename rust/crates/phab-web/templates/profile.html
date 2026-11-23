@@ -6,6 +6,10 @@
   {%- if !roles.is_empty() %}
   <ul class="tags">{% for role in roles %}<li class="tag">{{ role }}</li>{% endfor %}</ul>
   {%- endif %}
+  <nav class="bucket-switch" aria-label="Profile">
+    <strong>Profile</strong>
+    <a href="/people/revisions/{{ user_id }}/">Recent Revisions</a>
+  </nav>
 </header>
 <div class="columns">
   <section class="main-column">

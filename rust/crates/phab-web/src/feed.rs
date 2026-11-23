@@ -1,11 +1,13 @@
-//! `/feed/`: recent activity (`PhabricatorFeedListController`), and the
-//! story lists other pages embed (the profile's recent activity).
+//! `/feed/`: recent activity (`PhabricatorFeedListController`), its
+//! builtin queries (`/feed/query/<key>/`), one story (`/feed/<key>/`,
+//! `PhabricatorFeedDetailController`), and the story lists other pages
+//! embed (the profile's recent activity).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use askama::Template;
-use axum::extract::{RawQuery, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::Uri;
 use phab_app_differential::title::{Part, Title};
 use phab_app_feed::handles::Handle;
@@ -83,7 +85,7 @@ pub(crate) fn title_html(title: &Title, handles: &HashMap<Phid, Handle>) -> Stri
     html
 }
 
-fn page_error(error: StoryError) -> PageError {
+pub(crate) fn page_error(error: StoryError) -> PageError {
     match error {
         StoryError::Database(error) => error.into(),
         other => PageError::Internal(Box::new(other)),
@@ -117,6 +119,9 @@ pub(crate) async fn load<S: WebState>(
 #[template(path = "feed.html")]
 pub(crate) struct Feed {
     shell: Shell,
+    heading: &'static str,
+    /// The builtin queries: name, link, and whether the page shows it.
+    queries: Vec<(&'static str, &'static str, bool)>,
     stories: Vec<StoryItem>,
     skipped: usize,
     older: Option<String>,
@@ -157,15 +162,118 @@ fn parameters(query: Option<&str>) -> Parameters {
     parameters
 }
 
-/// The link to another page of the same listing.
-fn page_link(cursor: &str, key: u64, users: &[Phid]) -> String {
-    let mut link = format!("/feed/?{cursor}={key}");
+/// The link to another page of the same listing, at `path`.
+pub(crate) fn page_link(path: &str, cursor: &str, key: u64, users: &[Phid]) -> String {
+    let mut link = format!("{path}?{cursor}={key}");
     if !users.is_empty() {
         let users: Vec<&str> = users.iter().map(Phid::as_str).collect();
         link.push_str("&userPHIDs=");
         link.extend(form_urlencoded::byte_serialize(users.join(",").as_bytes()));
     }
     link
+}
+
+/// The builtin queries of `PhabricatorFeedSearchEngine` for a logged-in
+/// viewer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Builtin {
+    /// `all`: every story.
+    All,
+    /// `projects`: the stories about the viewer's projects.
+    Projects,
+}
+
+impl Builtin {
+    const ALL: [Self; 2] = [Self::All, Self::Projects];
+
+    fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "all" => Some(Self::All),
+            "projects" => Some(Self::Projects),
+            _ => None,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::All => "All Stories",
+            Self::Projects => "Tags",
+        }
+    }
+
+    fn uri(self) -> &'static str {
+        match self {
+            Self::All => "/feed/query/all/",
+            Self::Projects => "/feed/query/projects/",
+        }
+    }
+}
+
+/// The projects the viewer is a member of and may see
+/// (`withMemberPHIDs()`), for the `projects` query.
+async fn viewer_projects<S: WebState>(state: &S, viewer: &WebUser) -> Result<Vec<Phid>, PageError> {
+    let projects =
+        phab_app_project::storage::load_member_projects(state.database(), &viewer.user.phid)
+            .await?;
+    let (projects, _) = phab_app_project::policy::visible_projects(
+        state.database(),
+        state.config(),
+        &viewer.user.viewer(),
+        projects,
+        state.now(),
+    )
+    .await
+    .map_err(|error| PageError::Internal(Box::new(error)))?;
+    Ok(projects.into_iter().map(|project| project.phid).collect())
+}
+
+/// A page of the feed at `path`: the stories referencing `references`
+/// (all of them when empty, as `if ($phids)` is false).
+async fn render<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    (path, builtin): (&str, Option<Builtin>),
+    cursor: Cursor,
+    references: &[Phid],
+    uri: &Uri,
+) -> Result<Page<Feed>, PageError> {
+    let listing = load(
+        state,
+        &viewer.user.viewer(),
+        Query {
+            cursor,
+            limit: PAGE_SIZE,
+            references: (!references.is_empty()).then_some(references),
+        },
+    )
+    .await?;
+    // Only `/feed/` carries the users of its query string to other pages.
+    let users = if builtin.is_some() {
+        &[][..]
+    } else {
+        references
+    };
+    let key = |entry: Option<&listing::Entry>| entry.map(|entry| entry.story.row.chronological_key);
+    let older = key(listing.entries.last())
+        .filter(|_| listing.has_older)
+        .map(|key| page_link(path, "after", key, users));
+    let newer = key(listing.entries.first())
+        .filter(|_| listing.has_newer)
+        .map(|key| page_link(path, "before", key, users));
+
+    let current = uri.path_and_query().map_or("/feed/", |path| path.as_str());
+    Ok(Page(Feed {
+        shell: Shell::for_user(state.config(), viewer, "Feed", current),
+        heading: builtin.map_or("Feed", Builtin::name),
+        queries: Builtin::ALL
+            .iter()
+            .map(|query| (query.name(), query.uri(), builtin == Some(*query)))
+            .collect(),
+        stories: items(&listing),
+        skipped: listing.skipped,
+        older,
+        newer,
+    }))
 }
 
 /// `GET /feed/`.
@@ -179,31 +287,92 @@ pub(crate) async fn show<S: WebState>(
         .require_application(&*state, application::FEED)
         .await?;
     let parameters = parameters(query.as_deref());
-    let listing = load(
+    render(
         state.as_ref(),
-        &viewer.user.viewer(),
-        Query {
-            cursor: parameters.cursor,
-            limit: PAGE_SIZE,
-            references: (!parameters.users.is_empty()).then_some(parameters.users.as_slice()),
-        },
+        &viewer,
+        ("/feed/", None),
+        parameters.cursor,
+        &parameters.users,
+        &uri,
     )
-    .await?;
-    let key = |entry: Option<&listing::Entry>| entry.map(|entry| entry.story.row.chronological_key);
-    let older = key(listing.entries.last())
-        .filter(|_| listing.has_older)
-        .map(|key| page_link("after", key, &parameters.users));
-    let newer = key(listing.entries.first())
-        .filter(|_| listing.has_newer)
-        .map(|key| page_link("before", key, &parameters.users));
+    .await
+}
 
+/// `GET /feed/query/{key}/`: the builtin queries. Saved queries go to PHP.
+pub(crate) async fn query<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(key): Path<String>,
+    RawQuery(query): RawQuery,
+    uri: Uri,
+) -> Result<Page<Feed>, PageError> {
+    viewer
+        .require_application(&*state, application::FEED)
+        .await?;
+    let builtin = Builtin::from_key(&key).ok_or(PageError::Fallback("a saved feed query"))?;
+    let references = match builtin {
+        Builtin::All => Vec::new(),
+        Builtin::Projects => viewer_projects(state.as_ref(), &viewer).await?,
+    };
+    // A saved query ignores the query string, but for the pager.
+    let cursor = parameters(query.as_deref()).cursor;
+    render(
+        state.as_ref(),
+        &viewer,
+        (builtin.uri(), Some(builtin)),
+        cursor,
+        &references,
+        &uri,
+    )
+    .await
+}
+
+#[derive(Template)]
+#[template(path = "feed_story.html")]
+pub(crate) struct FeedStory {
+    shell: Shell,
+    stories: Vec<StoryItem>,
+}
+
+/// `GET /feed/{key}/` (`PhabricatorFeedDetailController`): one story, by
+/// chronological key.
+pub(crate) async fn detail<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(key): Path<String>,
+    RawQuery(query): RawQuery,
+    uri: Uri,
+) -> Result<Page<FeedStory>, PageError> {
+    viewer
+        .require_application(&*state, application::FEED)
+        .await?;
+    // `?text=1` answers the story as plain text.
+    let text = form_urlencoded::parse(query.as_deref().unwrap_or("").as_bytes())
+        .any(|(name, value)| name == "text" && phab_core::php::is_truthy_str(&value));
+    if text {
+        return Err(PageError::Fallback("a feed story as text"));
+    }
+    // `%Ls` quotes the key: anything but digits matches no row.
+    let key: u64 = key.parse().map_err(|_| PageError::NotFound)?;
+    let listing = listing::story(
+        state.database(),
+        state.config(),
+        &viewer.user.viewer(),
+        key,
+        state.now(),
+    )
+    .await
+    .map_err(page_error)?;
+    if listing.skipped > 0 {
+        return Err(PageError::Fallback("a feed story Rust can't show"));
+    }
+    if listing.entries.is_empty() {
+        return Err(PageError::NotFound);
+    }
     let current = uri.path_and_query().map_or("/feed/", |path| path.as_str());
-    Ok(Page(Feed {
-        shell: Shell::for_user(state.config(), &viewer, "Feed", current),
+    Ok(Page(FeedStory {
+        shell: Shell::for_user(state.config(), &viewer, "Story", current),
         stories: items(&listing),
-        skipped: listing.skipped,
-        older,
-        newer,
     }))
 }
 
@@ -256,7 +425,7 @@ mod tests {
         );
         assert_eq!(parameters(Some("before=x")), Parameters::default());
         assert_eq!(
-            page_link("before", 3, &[Phid::new("PHID-USER-a")]),
+            page_link("/feed/", "before", 3, &[Phid::new("PHID-USER-a")]),
             "/feed/?before=3&userPHIDs=PHID-USER-a"
         );
     }

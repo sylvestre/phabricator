@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><a href="{{ uri }}">{{ name }}</a>: Subprojects and Milestones</h1>
+</header>
+{%- if let Some((subprojects, milestones)) = lists %}
+<h2>{{ name }} Subprojects</h2>
+{%- if subprojects.is_empty() %}
+<p class="muted">This project has no subprojects.</p>
+{%- else %}
+<ul class="object-list">
+  {%- for child in subprojects %}
+  <li><a href="{{ child.uri }}"{% if child.closed %} class="remarkup-object-closed"{% endif %}>{{ child.name }}</a></li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+<h2>{{ name }} Milestones</h2>
+{%- if milestones.is_empty() %}
+<p class="muted">This project has no milestones.</p>
+{%- else %}
+<ul class="object-list">
+  {%- for child in milestones %}
+  <li><a href="{{ child.uri }}"{% if child.closed %} class="remarkup-object-closed"{% endif %}>{{ child.name }}</a></li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- else %}
+<p class="notice">Milestone projects do not support subprojects or milestones.</p>
+{%- endif %}
+{% endblock %}

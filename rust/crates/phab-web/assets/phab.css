@@ -206,6 +206,7 @@ a { color: var(--accent); }
 .feed { padding: 0; list-style: none; }
 .feed-story { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .feed-story time { font-size: 13px; }
+.notification-unread { font-weight: 600; }
 .handle-restricted { color: var(--muted); }
 .title-value { font-style: italic; }
 .notice { padding: 8px 12px; background: var(--warning-bg); border-left: 4px solid var(--warning-border); }

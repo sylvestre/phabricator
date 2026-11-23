@@ -584,6 +584,40 @@ async fn profiles_show_what_the_viewer_may_see() {
     )
     .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // The revisions of alice (user 1), and of gone (user 2), who has none.
+    assert!(page.contains("href=\"/people/revisions/2/\""), "{page}");
+    let response = get(
+        &test_db,
+        Config::default(),
+        "/people/revisions/1/",
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    assert!(
+        page.contains("<title>Recent Revisions · alice · Phabricator</title>"),
+        "{page}"
+    );
+    assert!(page.contains("<a href=\"/D1\">One</a>"), "{page}");
+    assert!(page.contains("Needs Review"), "{page}");
+    let response = get(
+        &test_db,
+        Config::default(),
+        "/people/revisions/2/",
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert!(text(response).await.contains("No recent revisions."));
+    let response = get(
+        &test_db,
+        Config::default(),
+        "/people/revisions/99/",
+        Some("phsid=alice-token"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     test_db.drop_databases().await;
 }
 
@@ -667,7 +701,53 @@ async fn project_pages_follow_policy() {
         let response = get(&test_db, Config::default(), path, alice).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
     }
+    project_subpages_follow_policy(&test_db).await;
     test_db.drop_databases().await;
+}
+
+/// The members and subprojects pages of `project_pages_follow_policy()`'s
+/// projects.
+async fn project_subpages_follow_policy(test_db: &TestDatabase) {
+    let alice = Some("phsid=alice-token");
+    // Every member and watcher; alice is a member, and doesn't watch.
+    let response = get(test_db, Config::default(), "/project/members/1/", alice).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    assert!(
+        page.contains("<title>Build · Members and Watchers · Phabricator</title>"),
+        "{page}"
+    );
+    let members = page.find("<h2>Members (1)</h2>").expect("members");
+    let watchers = page.find("<h2>Watchers (1)</h2>").expect("watchers");
+    let alice_link = page.find("<a href=\"/p/alice/\">alice</a>").expect("alice");
+    let mfa_link = page.find("<a href=\"/p/mfa/\">mfa</a>").expect("mfa");
+    assert!(members < alice_link && alice_link < watchers && watchers < mfa_link);
+    assert!(page.contains("/project/update/1/leave/"), "{page}");
+    assert!(page.contains("/project/watch/1/"), "{page}");
+
+    // The milestone, and no subprojects.
+    let response = get(test_db, Config::default(), "/project/subprojects/1/", alice).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = text(response).await;
+    assert!(page.contains("This project has no subprojects."), "{page}");
+    assert!(
+        page.contains("<a href=\"/project/view/3/\">Build (Sprint 1)</a>"),
+        "{page}"
+    );
+    let response = get(test_db, Config::default(), "/project/subprojects/3/", alice).await;
+    assert!(
+        text(response)
+            .await
+            .contains("Milestone projects do not support subprojects or milestones.")
+    );
+    for (path, status) in [
+        ("/project/members/2/", StatusCode::FORBIDDEN),
+        ("/project/subprojects/2/", StatusCode::FORBIDDEN),
+        ("/project/members/9/", StatusCode::NOT_FOUND),
+    ] {
+        let response = get(test_db, Config::default(), path, alice).await;
+        assert_eq!(response.status(), status, "{path}");
+    }
 }
 
 /// D3 with reviewers, a bug, a stack, a timeline and a diff; it is
