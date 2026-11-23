@@ -157,6 +157,9 @@
 </section>
 <section class="diff-section" data-revision="{{ monogram }}"{% if let Some(id) = diff_id %} data-diff="{{ id }}"{% endif %}>
   <h2>Diff{% if let Some(id) = diff_id %} {{ id }}{% endif %}</h2>
+  {%- if let Some(id) = diff_id %}
+  <p><a class="hm-button" href="/{{ monogram }}?id={{ id }}&amp;download=true"><span class="fa fa-download" aria-hidden="true"></span> Download Raw Diff</a></p>
+  {%- endif %}
   {%- for changeset in changesets %}
   {{ changeset|safe }}
   {%- endfor %}

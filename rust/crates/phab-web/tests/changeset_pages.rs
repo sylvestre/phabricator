@@ -222,6 +222,10 @@ async fn revisions_show_one_of_their_diffs() {
     let page = text(get(&test_db, "/D1?id=7").await).await;
     assert!(page.contains("<h2>Diff 7</h2>"), "{page}");
     assert!(
+        page.contains("<a class=\"hm-button\" href=\"/D1?id=7&amp;download=true\">"),
+        "{page}"
+    );
+    assert!(
         page.contains("<span class=\"bright\"><span class=\"hl-number\">2</span>"),
         "{page}"
     );
