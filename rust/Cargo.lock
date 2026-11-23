@@ -2149,6 +2149,7 @@ dependencies = [
  "phab-app-diffusion",
  "phab-app-feed",
  "phab-app-files",
+ "phab-app-flag",
  "phab-app-harbormaster",
  "phab-app-herald",
  "phab-app-people",

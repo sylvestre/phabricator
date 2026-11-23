@@ -1,6 +1,8 @@
 //! The `phabricator_user.user` row and the account checks of
 //! `PhabricatorUser`.
 
+use std::fmt::Write as _;
+
 use phab_core::{Config, Phid};
 use phab_db::sqlx::mysql::MySqlRow;
 use phab_db::{Database, DbError, rows};
@@ -195,6 +197,100 @@ pub async fn search_by_username_prefix(
         .fetch_all(database.pool())
         .await?;
     rows.iter().map(User::from_row).collect()
+}
+
+/// `PhabricatorPeopleQuery` as `PhabricatorPeopleDatasource` runs it:
+/// users whose username starts with `prefix` (`withNamePrefixes()`), or
+/// with a name token starting with each of `tokens` (`withNameTokens()`),
+/// by username, at most `limit` of them. Users are visible to everyone.
+pub async fn search_for_datasource(
+    database: &Database,
+    prefix: Option<&str>,
+    tokens: &[String],
+    limit: u32,
+) -> Result<Vec<User>, DbError> {
+    let mut joins = String::new();
+    let mut binds: Vec<String> = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        write!(
+            joins,
+            " JOIN {table} token_{index} ON token_{index}.userID = u.id \
+             AND token_{index}.token LIKE ?",
+            table = database.table("user", "user_nametoken"),
+        )
+        .expect("writing to a String");
+        binds.push(format!("{}%", phab_db::like_escape(token)));
+    }
+    let mut sql = format!(
+        "SELECT {} FROM {} u{joins}",
+        select_columns("u"),
+        database.table("user", "user"),
+    );
+    if let Some(prefix) = prefix {
+        sql.push_str(" WHERE u.userName LIKE ?");
+        binds.push(format!("{}%", phab_db::like_escape(prefix)));
+    }
+    if !tokens.is_empty() {
+        sql.push_str(" GROUP BY u.id");
+    }
+    sql.push_str(" ORDER BY u.userName LIMIT ?");
+    let rows = phab_db::bind_all(phab_db::sqlx::query(&sql), binds)
+        .bind(limit)
+        .fetch_all(database.pool())
+        .await?;
+    rows.iter().map(User::from_row).collect()
+}
+
+/// Whether any of these users is away (`getAwayUntil()` after
+/// `needAvailability()`): `Some(true)` when one has a valid availability
+/// cache saying so, `None` when a cache must be rebuilt from calendar
+/// events the user is invited to, which only PHP does. Users without a
+/// valid cache and without invitations are available, as the rebuilt
+/// cache would say.
+pub async fn any_away(
+    database: &Database,
+    users: &[Phid],
+    now: i64,
+) -> Result<Option<bool>, DbError> {
+    if users.is_empty() {
+        return Ok(Some(false));
+    }
+    let sql = format!(
+        "SELECT phid, availabilityCache, availabilityCacheTTL FROM {} WHERE phid IN ({})",
+        database.table("user", "user"),
+        phab_db::placeholders(users.len())
+    );
+    let mut rebuild = Vec::new();
+    let mut away = false;
+    for row in phab_db::bind_all(phab_db::sqlx::query(&sql), users.iter().map(Phid::as_str))
+        .fetch_all(database.pool())
+        .await?
+    {
+        let ttl = rows::opt_int(&row, "availabilityCacheTTL")?;
+        let cache = rows::opt_text(&row, "availabilityCache")?
+            .and_then(|cache| serde_json::from_str::<serde_json::Value>(&cache).ok());
+        match cache.filter(|_| ttl.is_some_and(|ttl| ttl > now)) {
+            Some(cache) => {
+                away |= cache.get("until").is_some_and(phab_core::php::is_truthy);
+            }
+            None => rebuild.push(rows::text(&row, "phid")?),
+        }
+    }
+    if !rebuild.is_empty() {
+        let sql = format!(
+            "SELECT 1 FROM {} WHERE inviteePHID IN ({}) LIMIT 1",
+            database.table("calendar", "calendar_eventinvitee"),
+            phab_db::placeholders(rebuild.len())
+        );
+        if phab_db::bind_all(phab_db::sqlx::query(&sql), rebuild)
+            .fetch_optional(database.pool())
+            .await?
+            .is_some()
+        {
+            return Ok(None);
+        }
+    }
+    Ok(Some(away))
 }
 
 /// Loads the users with these usernames, compared without case like

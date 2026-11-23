@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-chevron-circle-right" aria-hidden="true"></span> Build Step {{ id }}: {{ name }}</h1>
+  <p class="muted"><a href="/harbormaster/plan/{{ plan_id }}/">Plan {{ plan_id }}</a></p>
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>Properties</h2>
+    <dl class="properties">
+      <dt>Step Type</dt><dd>{% match step_type %}{% when Ok(name) %}{{ name }}{% when Err(class) %}<em>Invalid Implementation ("{{ class }}")!</em>{% endmatch %}</dd>
+      <dt>Created</dt><dd>{{ created }}</dd>
+      {%- for (label, value) in properties %}
+      <dt>{{ label }}</dt><dd>{{ value }}</dd>
+      {%- endfor %}
+    </dl>
+    {%- if let Some(description) = description_html %}
+    <h3>Description</h3>
+    <div class="remarkup">{{ description|safe }}</div>
+    {%- endif %}
+    {% include "hm_timeline.html" %}
+  </section>
+  {% include "hm_actions.html" %}
+</div>
+{% endblock %}

@@ -528,6 +528,14 @@ impl IconSet {
         (key(&self.icons), key(&self.colors))
     }
 
+    /// A value of `getIconSpec()`: the first specification with this key.
+    pub(crate) fn icon_field(&self, key: &str, field: &str) -> Option<&Value> {
+        self.icons
+            .iter()
+            .find(|icon| icon["key"] == key)
+            .and_then(|icon| icon.get(field))
+    }
+
     /// `getIconSpec()`'s `name` and `icon`.
     fn icon(&self, key: &Value) -> (Value, Value) {
         self.icons

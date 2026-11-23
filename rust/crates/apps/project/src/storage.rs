@@ -9,7 +9,7 @@ const STATUS_ARCHIVED: &str = "100";
 /// `PhabricatorProjectStatus::STATUS_ACTIVE`.
 pub(crate) const STATUS_ACTIVE: &str = "0";
 
-const COLUMNS: &str = "p.id, p.phid, p.name, p.status, p.icon, p.color, p.viewPolicy, p.editPolicy, \
+pub(crate) const COLUMNS: &str = "p.id, p.phid, p.name, p.status, p.icon, p.color, p.viewPolicy, p.editPolicy, \
      p.joinPolicy, p.parentProjectPHID, p.milestoneNumber, p.primarySlug, p.spacePHID";
 
 /// A project row.
@@ -44,7 +44,7 @@ pub struct Project {
 }
 
 impl Project {
-    fn from_row(row: &MySqlRow) -> Result<Self, DbError> {
+    pub(crate) fn from_row(row: &MySqlRow) -> Result<Self, DbError> {
         Ok(Self {
             id: rows::int(row, "id")?,
             phid: Phid::new(rows::text(row, "phid")?),

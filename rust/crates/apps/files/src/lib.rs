@@ -1,9 +1,8 @@
 //! Files (`PhabricatorFile`): what pages show of them, and who may see
 //! them (`PhabricatorFileQuery`).
 //!
-//! The file contents are still served by PHP (`/file/data/...`), but
-//! Conduit uploads them into the MySQL blob storage engine and downloads
-//! them from it.
+//! Conduit uploads file contents into the MySQL blob storage engine and
+//! downloads them from it; `phab-web` serves them (`/file/data/...`).
 
 pub mod allocate;
 pub mod chunks;
@@ -124,6 +123,11 @@ impl File {
         self.metadata.get(key).is_some_and(php::is_truthy)
     }
 
+    /// `getBuiltinName()`, when it is a string.
+    pub fn builtin_name(&self) -> Option<&str> {
+        self.metadata.get("builtin").and_then(Value::as_str)
+    }
+
     /// `isBuiltin()`.
     pub fn is_builtin(&self) -> bool {
         self.metadata
@@ -148,6 +152,29 @@ impl File {
             VIEWABLE_DEFAULT,
             mime_type,
         )
+    }
+
+    /// `getViewableMimeType()`: what `files.viewable-mime-types` maps the
+    /// type, without its parameters, to; `None` for files browsers
+    /// download.
+    pub fn viewable_mime_type(&self, config: &Config) -> Option<String> {
+        let mime_type = self.mime_type.split(';').next().unwrap_or("").trim();
+        match config.object("files.viewable-mime-types") {
+            Some(map) => match map.get(mime_type)? {
+                Value::String(text) => Some(text.clone()),
+                // Other values don't make a header PHP and Rust would
+                // agree on.
+                _ => None,
+            },
+            None => VIEWABLE_DEFAULT
+                .contains(&mime_type)
+                .then(|| viewable_default_type(mime_type).to_owned()),
+        }
+    }
+
+    /// `getCanCDN()`: viewable images uploaded as cacheable.
+    pub fn can_cdn(&self, config: &Config) -> bool {
+        self.is_viewable_image(config) && self.metadata_truthy("canCDN")
     }
 
     /// `isViewableImage()`.
@@ -346,7 +373,7 @@ impl File {
 }
 
 /// `PhutilNumber`: digits grouped by thousands.
-fn group_thousands(value: u64) -> String {
+pub fn group_thousands(value: u64) -> String {
     let digits = value.to_string();
     let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
     for (index, digit) in digits.chars().enumerate() {
@@ -399,6 +426,16 @@ const VIEWABLE_DEFAULT: &[&str] = &[
     "image/x-icon",
     "image/vnd.microsoft.icon",
 ];
+/// The value of a type of [`VIEWABLE_DEFAULT`] in the default
+/// `files.viewable-mime-types`.
+fn viewable_default_type(mime_type: &str) -> &str {
+    match mime_type {
+        "text/plain" | "text/x-diff" => "text/plain; charset=utf-8",
+        "image/x-ico" | "image/x-icon" | "image/vnd.microsoft.icon" => "image/x-icon",
+        other => other,
+    }
+}
+
 /// `files.image-mime-types` by default.
 const IMAGE_DEFAULT: &[&str] = &[
     "image/jpeg",
@@ -480,6 +517,114 @@ pub async fn load_by_phids(database: &Database, phids: &[Phid]) -> Result<Vec<Fi
         phids.iter().map(|phid| phid.as_str().to_owned()).collect(),
     )
     .await
+}
+
+/// `PhabricatorFileQuery::withPHIDs()->withIsDeleted(false)` as the
+/// omnipotent viewer: the file with this PHID, unless it was deleted.
+pub async fn load_undeleted(database: &Database, phid: &str) -> Result<Option<File>, DbError> {
+    let sql = format!(
+        "SELECT {COLUMNS} FROM {} WHERE phid = ? AND isDeleted = 0",
+        database.table("file", "file"),
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(phid)
+        .fetch_optional(database.pool())
+        .await?
+        .as_ref()
+        .map(File::from_row)
+        .transpose()
+}
+
+/// What the file pages show beyond [`File`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Details {
+    /// `ttl`: when the file is deleted, for temporary files.
+    pub ttl: Option<i64>,
+    /// `dateCreated`.
+    pub date_created: i64,
+    /// `isDeleted`.
+    pub is_deleted: bool,
+}
+
+/// The [`Details`] of these files, by PHID.
+pub async fn details(
+    database: &Database,
+    phids: &[Phid],
+) -> Result<HashMap<Phid, Details>, DbError> {
+    if phids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sql = format!(
+        "SELECT phid, ttl, dateCreated, isDeleted FROM {} WHERE phid IN ({})",
+        database.table("file", "file"),
+        phab_db::placeholders(phids.len()),
+    );
+    phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| {
+            Ok((
+                Phid::new(rows::text(row, "phid")?),
+                Details {
+                    ttl: rows::opt_int(row, "ttl")?,
+                    date_created: rows::int(row, "dateCreated")?,
+                    is_deleted: rows::flag(row, "isDeleted")?,
+                },
+            ))
+        })
+        .collect()
+}
+
+/// The builtin files with these keys (`withBuiltinKeys()`), by key.
+pub async fn load_builtins(
+    database: &Database,
+    keys: &[String],
+) -> Result<HashMap<String, File>, DbError> {
+    if keys.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sql = format!(
+        "SELECT builtinKey, {COLUMNS} FROM {} WHERE builtinKey IN ({})",
+        database.table("file", "file"),
+        phab_db::placeholders(keys.len()),
+    );
+    phab_db::bind_all(phab_db::sqlx::query(&sql), keys.iter().map(String::as_str))
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| Ok((rows::text(row, "builtinKey")?, File::from_row(row)?)))
+        .collect()
+}
+
+/// Whether the file has transactions (its page's timeline).
+pub async fn has_transactions(database: &Database, phid: &Phid) -> Result<bool, DbError> {
+    let sql = format!(
+        "SELECT 1 FROM {} WHERE objectPHID = ? LIMIT 1",
+        database.table("file", "file_transaction"),
+    );
+    Ok(phab_db::sqlx::query(&sql)
+        .bind(phid.as_str())
+        .fetch_optional(database.pool())
+        .await?
+        .is_some())
+}
+
+/// Whether each chunk of a chunked file has its data, in byte order.
+pub async fn chunk_completion(database: &Database, handle: &str) -> Result<Vec<bool>, DbError> {
+    let sql = format!(
+        "SELECT dataFilePHID FROM {} WHERE chunkHandle = ? ORDER BY byteStart, id",
+        database.table("file", "file_chunk"),
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(handle)
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| {
+            Ok(rows::opt_text(row, "dataFilePHID")?.is_some_and(|phid| php::is_truthy_str(&phid)))
+        })
+        .collect()
 }
 
 pub(crate) async fn load_where(

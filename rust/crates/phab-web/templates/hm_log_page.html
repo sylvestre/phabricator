@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-file-text-o" aria-hidden="true"></span> Build Log {{ id }}</h1>
+  {%- if let Some(build_id) = build_id %}
+  <p class="muted"><a href="/harbormaster/build/{{ build_id }}/">Build {{ build_id }}</a></p>
+  {%- endif %}
+</header>
+<section class="hm-log">
+  <h3>{{ log.title }} <a class="hm-button" href="/harbormaster/log/download/{{ id }}/"><span class="fa fa-download" aria-hidden="true"></span> Download Log</a></h3>
+  <p class="muted">{% for (label, uri) in log.limits %}{% if !loop.first %} -  {% endif %}{% if let Some(uri) = uri %}<a href="{{ uri }}">{{ label }}</a>{% else %}<strong>{{ label }}</strong>{% endif %}{% endfor %} Lines</p>
+  <table class="hm-log-lines">
+    {%- for (number, line) in log.lines %}<tr id="L{{ number }}"><th>{{ number }}</th><td>{{ line }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

@@ -1,9 +1,11 @@
 {% extends "layout.html" %}
 {% block content %}
 <header class="queue-header">
-  <h1>Active Plans</h1>
+  <h1>{{ title }}</h1>
   <nav class="bucket-switch" aria-label="Harbormaster">
     <a href="/harbormaster/">Buildables</a>
+    {%- if key == "active" %} <strong>Active Plans</strong>{% else %} <a href="/harbormaster/plan/query/active/">Active Plans</a>{% endif %}
+    {%- if key == "all" %} <strong>All Plans</strong>{% else %} <a href="/harbormaster/plan/query/all/">All Plans</a>{% endif %}
   </nav>
 </header>
 {%- if items.is_empty() %}
@@ -24,6 +26,6 @@
 </ul>
 {%- endif %}
 {%- if let Some(next) = next %}
-<nav class="pager"><a href="/harbormaster/plan/?after={{ next }}">Next Page</a></nav>
+<nav class="pager"><a href="?after={{ next }}">Next Page</a></nav>
 {%- endif %}
 {% endblock %}

@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>Comment History</h1>
+  <p class="muted"><a href="{{ revision_uri }}">{{ revision_name }}</a></p>
+</header>
+<section class="timeline">
+  {%- for version in versions %}
+  <article class="timeline-entry">
+    <p class="timeline-title">Version {{ version.number }} <time class="muted">{{ version.date }}</time></p>
+    <div class="remarkup">{{ version.html|safe }}</div>
+  </article>
+  {%- endfor %}
+</section>
+<p><a class="hm-button" href="{{ revision_uri }}">Done</a></p>
+{% endblock %}

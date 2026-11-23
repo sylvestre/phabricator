@@ -101,6 +101,28 @@ pub async fn build(request: &ApiRequest<'_>, id: i64) -> Result<Lookup<Build>, M
     one(request, id).await
 }
 
+/// The build log with this ID (`HarbormasterBuildLogQuery::withIDs()`).
+pub async fn log(request: &ApiRequest<'_>, id: i64) -> Result<Lookup<Log>, MethodError> {
+    one(request, id).await
+}
+
+/// The build step with this ID (`HarbormasterBuildStepQuery::withIDs()`).
+pub async fn step(request: &ApiRequest<'_>, id: i64) -> Result<Lookup<Step>, MethodError> {
+    one(request, id).await
+}
+
+/// The build targets with these PHIDs the viewer can see.
+pub async fn targets_by_phid(
+    request: &ApiRequest<'_>,
+    phids: &[Phid],
+) -> Result<Vec<Target>, MethodError> {
+    if phids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let clauses = in_clause("target.phid", &storage::phid_strings(phids));
+    Query::new(request, clauses, Order::Newest).all().await
+}
+
 /// The buildables with these PHIDs the viewer can see.
 pub async fn buildables_by_phid(
     request: &ApiRequest<'_>,
@@ -187,6 +209,25 @@ pub async fn plans_page(
     let clauses = statuses.map_or_else(Clauses::default, |statuses| {
         in_clause("plan.planStatus", statuses)
     });
+    page(request, clauses, size, after).await
+}
+
+/// The builds with these statuses and initiators (any for `None`),
+/// newest first, `size` at a time (`HarbormasterBuildSearchEngine`).
+pub async fn builds_page(
+    request: &ApiRequest<'_>,
+    statuses: Option<&[String]>,
+    initiators: Option<&[String]>,
+    size: usize,
+    after: Option<i64>,
+) -> Result<Page<Build>, MethodError> {
+    let mut clauses = Clauses::default();
+    if let Some(statuses) = statuses {
+        clauses.in_list("b.buildStatus", search::strings(statuses));
+    }
+    if let Some(initiators) = initiators {
+        clauses.in_list("b.initiatorPHID", search::strings(initiators));
+    }
     page(request, clauses, size, after).await
 }
 
@@ -598,6 +639,8 @@ pub enum TransactionTable {
     Build,
     /// `HarbormasterBuildPlanTransaction`.
     Plan,
+    /// `HarbormasterBuildStepTransaction`.
+    Step,
     /// `HeraldRuleTransaction`, whose rows have the same columns.
     HeraldRule,
 }
@@ -609,6 +652,7 @@ impl TransactionTable {
             Self::Buildable => ("harbormaster", "harbormaster_buildabletransaction"),
             Self::Build => ("harbormaster", "harbormaster_buildtransaction"),
             Self::Plan => ("harbormaster", "harbormaster_buildplantransaction"),
+            Self::Step => ("harbormaster", "harbormaster_buildsteptransaction"),
             Self::HeraldRule => ("herald", "herald_ruletransaction"),
         }
     }

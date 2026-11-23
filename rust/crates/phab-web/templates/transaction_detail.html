@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>Change Details</h1>
+  <p class="muted"><a href="{{ revision_uri }}">{{ revision_name }}</a></p>
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>Before</h2>
+    <pre class="file-text">{{ old_text }}</pre>
+  </section>
+  <section class="main-column">
+    <h2>After</h2>
+    <pre class="file-text">{{ new_text }}</pre>
+  </section>
+</div>
+<p><a class="hm-button" href="{{ revision_uri }}">Continue</a></p>
+{% endblock %}

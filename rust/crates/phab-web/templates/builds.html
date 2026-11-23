@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>{{ title }}</h1>
+  <nav class="bucket-switch" aria-label="Harbormaster">
+    <a href="/harbormaster/">Buildables</a>
+    {%- for (query, name) in [("initiated", "My Builds"), ("all", "All Builds"), ("waiting", "Waiting"), ("active", "Active"), ("completed", "Completed")] %}
+    {%- if key == *query %} <strong>{{ name }}</strong>{% else %} <a href="/harbormaster/build/query/{{ query }}/">{{ name }}</a>{% endif %}
+    {%- endfor %}
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No builds found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for build in items %}
+  <li>
+    <p class="hm-item">{{ build.status.icon_html()|safe }} <span class="muted">Build {{ build.id }}</span> <a href="/harbormaster/build/{{ build.id }}/">{{ build.name }}</a> <time class="muted">{{ build.date }}</time></p>
+    <p class="hm-attribute muted">{{ build.object }}{% if let Some(initiator) = build.initiator_html %} · {{ initiator|safe }}{% endif %}</p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

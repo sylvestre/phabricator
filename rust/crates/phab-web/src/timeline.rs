@@ -70,6 +70,77 @@ fn title_html(title: &Title, handles: &HashMap<Phid, Handle>) -> String {
     html
 }
 
+/// A row of the transactions of a Herald transcript: the ID (the PHID of
+/// a transaction the viewer can't see), the title and the date.
+pub(crate) struct TranscriptRow {
+    pub(crate) id: String,
+    pub(crate) title_html: Option<String>,
+    pub(crate) date: Option<String>,
+}
+
+/// `HeraldTranscriptController::buildTransactionsTranscriptPanel()` of a
+/// revision: the transactions with these PHIDs, in this order.
+pub(crate) async fn transcript_rows<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    revision: &Phid,
+    phids: &[String],
+) -> Result<Vec<TranscriptRow>, PageError> {
+    let database = state.database();
+    let wanted: Vec<Phid> = phids.iter().map(|phid| Phid::new(phid.as_str())).collect();
+    let transactions: Vec<(storage::Transaction, i64)> =
+        storage::load_object_transactions(database, revision)
+            .await?
+            .into_iter()
+            .filter(|(transaction, _)| wanted.contains(&transaction.phid))
+            .collect();
+    let subjects: Vec<_> = transactions
+        .iter()
+        .map(|(transaction, _)| transaction.subject())
+        .collect();
+    let visible =
+        storage::visible_subjects(database, state.config(), viewer, &subjects, state.now())
+            .await
+            .map_err(|error| PageError::Internal(Box::new(error)))?;
+    let ids = storage::load_transaction_ids(database, &wanted).await?;
+    let mut found: HashMap<Phid, (i64, Title)> = HashMap::new();
+    for ((transaction, date), visible) in transactions.iter().zip(visible) {
+        if !visible {
+            continue;
+        }
+        let title = match title::feed_title(transaction) {
+            Ok(Some(title)) if title.handles().iter().all(handles::is_supported) => title,
+            _ => return Err(PageError::Fallback("a transaction title not ported")),
+        };
+        found.insert(transaction.phid.clone(), (*date, title));
+    }
+    let mut handle_phids: Vec<Phid> = found
+        .values()
+        .flat_map(|(_, title)| title.handles())
+        .collect();
+    handle_phids.sort();
+    handle_phids.dedup();
+    let handles =
+        handles::load_handles(database, state.config(), viewer, &handle_phids, state.now())
+            .await
+            .map_err(|error| PageError::Internal(Box::new(error)))?;
+    Ok(wanted
+        .iter()
+        .map(|phid| match (found.get(phid), ids.get(phid)) {
+            (Some((date, title)), Some(id)) => TranscriptRow {
+                id: id.to_string(),
+                title_html: Some(title_html(title, &handles)),
+                date: Some(time::format_utc(*date)),
+            },
+            _ => TranscriptRow {
+                id: phid.as_str().to_owned(),
+                title_html: None,
+                date: None,
+            },
+        })
+        .collect())
+}
+
 /// The timeline of `revision` for `viewer`.
 pub(crate) async fn entries<S: WebState>(
     state: &S,

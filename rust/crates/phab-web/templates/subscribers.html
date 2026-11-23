@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>Subscribers</h1>
+  <p class="muted"><a href="{{ object_uri }}">{{ object_name }}</a></p>
+</header>
+{%- if subscribers.is_empty() %}
+<p class="muted">No subscribers.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for subscriber in subscribers %}<li><p class="hm-item">{{ subscriber|safe }}</p></li>{% endfor %}
+</ul>
+{%- endif %}
+<p><a class="hm-button" href="{{ object_uri }}">Close</a></p>
+{% endblock %}

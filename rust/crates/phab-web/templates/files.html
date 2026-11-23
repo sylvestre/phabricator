@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>{{ title }}</h1>
+  <nav class="bucket-switch" aria-label="Files">
+    {%- if key == "authored" %}<strong>Authored</strong>{% else %}<a href="/file/query/authored/">Authored</a>{% endif %}
+    {%- if key == "all" %}<strong>All</strong>{% else %}<a href="/file/query/all/">All</a>{% endif %}
+    <a href="/file/upload/">Upload File</a>
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No files found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li>
+    <p class="hm-item"><span class="muted">F{{ item.id }}</span> <a href="/file/info/{{ item.phid }}/">{{ item.name }}</a>
+      {%- if item.temporary %} <span class="tag">Temporary</span>{% endif %}
+      {%- if item.partial %} <span class="tag"><span class="fa fa-exclamation-triangle" aria-hidden="true"></span> Partial</span>{% endif %}</p>
+    <p class="hm-attribute muted">{{ item.uploaded_html|safe }} · {{ item.size }}</p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

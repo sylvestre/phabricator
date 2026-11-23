@@ -44,13 +44,13 @@ pub(crate) struct MessageRow {
 
 /// A build log, its last lines and the links choosing how many.
 pub(crate) struct LogView {
-    title: String,
-    uri: String,
+    pub(crate) title: String,
+    pub(crate) uri: String,
     /// The line number and the text of each line.
-    lines: Vec<(i64, String)>,
+    pub(crate) lines: Vec<(i64, String)>,
     /// The label of each line count, and its link unless it is the
     /// current one.
-    limits: Vec<(String, Option<String>)>,
+    pub(crate) limits: Vec<(String, Option<String>)>,
 }
 
 /// A target of the run.
@@ -101,7 +101,7 @@ fn php_int(text: &str) -> i64 {
 }
 
 /// `AphrontRequest::getInt('l', 25)`.
-fn line_limit(query: Option<&str>) -> Result<i64, PageError> {
+pub(crate) fn line_limit(query: Option<&str>) -> Result<i64, PageError> {
     let limit = form_urlencoded::parse(query.unwrap_or("").as_bytes())
         .filter(|(key, _)| key == "l")
         .last()
@@ -291,7 +291,7 @@ fn when(target: &Target, now: i64) -> String {
 
 /// A log as `buildLog()` shows it: its last `limit` lines (all of them
 /// for 0), and whether it is empty.
-async fn log_view<S: WebState>(
+pub(crate) async fn log_view<S: WebState>(
     state: &S,
     log: &Log,
     limit: i64,

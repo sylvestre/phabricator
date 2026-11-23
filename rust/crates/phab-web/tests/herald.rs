@@ -613,10 +613,26 @@ async fn transcripts(test_db: &TestDatabase) {
     assert!(page.contains("<a href=\"/H1\">H1 Tag CI</a>"), "{page}");
     assert!(page.contains("<td>Field</td><td class=\"hm-pri\">Revision title</td>"));
 
-    assert_eq!(
-        fallback(test_db, "/herald/transcript/1/xactions/", ALICE).await,
-        "the transactions of a transcript"
+    // The transaction the edit applied, titled as in the feed.
+    let page = self::page(test_db, "/herald/transcript/1/xactions/", ALICE).await;
+    assert!(page.contains("<h2>Transactions</h2>"), "{page}");
+    assert!(page.contains("<tr><td>PHID-XACT-DREV-1</td>"), "{page}");
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_transaction (id, phid, authorPHID, \
+               objectPHID, viewPolicy, editPolicy, commentPHID, commentVersion, \
+               transactionType, oldValue, newValue, contentSource, metadata, dateCreated, \
+               dateModified) VALUES \
+             (7, 'PHID-XACT-DREV-1', 'PHID-USER-alice', 'PHID-DREV-1', 'users', 'users', NULL, \
+               0, 'differential.revision.title', '\"Draft\"', '\"Open\"', '{}', '{}', 1, 1)",
+        )
+        .await;
+    let page = self::page(test_db, "/herald/transcript/1/xactions/", ALICE).await;
+    assert!(
+        page.contains("<tr><td>7</td><td class=\"hm-pri\">"),
+        "{page}"
     );
+    assert!(page.contains(" retitled "), "{page}");
     assert_eq!(
         status(test_db, "/herald/transcript/1/bogus/", ALICE).await,
         StatusCode::NOT_FOUND

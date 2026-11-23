@@ -136,6 +136,18 @@ a { color: var(--accent); }
 
 .project-list { padding-left: 20px; }
 
+.flag-red { color: #c0392b; }
+.flag-orange { color: #e67e22; }
+.flag-yellow { color: #f1c40f; }
+.flag-green { color: #139543; }
+.flag-blue { color: #2980b9; }
+.flag-pink { color: #da49be; }
+.flag-purple { color: #8e44ad; }
+.flag-checkered { color: #555; }
+
+.file-preview img, .file-preview video { max-width: 100%; }
+.file-text { overflow-x: auto; padding: 8px; background: var(--bg); font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; }
+
 .remarkup-object-closed { text-decoration: line-through; }
 .phabricator-remarkup-mention-unknown { color: var(--muted); }
 

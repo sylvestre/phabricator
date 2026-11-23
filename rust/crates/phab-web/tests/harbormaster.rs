@@ -716,6 +716,70 @@ async fn lists(test_db: &TestDatabase) {
     );
 }
 
+/// The build and plan queries, build logs and build steps.
+async fn more_pages(test_db: &TestDatabase) {
+    // "My Builds": Alice started build 1.
+    let page = page_as(test_db, "/harbormaster/build/", ALICE).await;
+    assert!(page.contains("<h1>My Builds</h1>"), "{page}");
+    assert!(
+        page.contains("Build 1</span> <a href=\"/harbormaster/build/1/\">Try</a>"),
+        "{page}"
+    );
+    assert!(!page.contains("/harbormaster/build/4/"), "{page}");
+    let page = page_as(test_db, "/harbormaster/build/query/all/", ALICE).await;
+    assert!(page.contains("/harbormaster/build/4/"), "{page}");
+    assert!(
+        page.contains("Build 2</span> <a href=\"/harbormaster/build/2/\">Build</a>"),
+        "{page}"
+    );
+    let page = page_as(test_db, "/harbormaster/build/query/completed/", ALICE).await;
+    assert!(page.contains("/harbormaster/build/1/"), "{page}");
+    assert!(!page.contains("/harbormaster/build/4/"), "{page}");
+    assert_eq!(
+        fallback(test_db, "/harbormaster/build/query/abcdef/", Some(ALICE)).await,
+        "a saved build query"
+    );
+    let page = page_as(test_db, "/harbormaster/plan/query/all/", ALICE).await;
+    assert!(page.contains(">Old</a>"), "{page}");
+    assert!(page.contains("<h1>All Plans</h1>"), "{page}");
+
+    // The log of target 1, all of it, then its last lines.
+    let page = page_as(test_db, "/harbormaster/log/view/1/", ALICE).await;
+    assert!(page.contains("Build Log 1 (remote - stdout)"), "{page}");
+    assert!(page.contains("<th>1</th><td>line1</td>"), "{page}");
+    assert!(page.contains("<th>30</th><td>line30</td>"), "{page}");
+    assert!(page.contains("href=\"/harbormaster/build/1/\""), "{page}");
+    let page = page_as(test_db, "/harbormaster/log/view/1/?l=25", ALICE).await;
+    assert!(!page.contains("<td>line1</td>"), "{page}");
+    assert_eq!(
+        status(test_db, "/harbormaster/log/view/99/", ALICE).await,
+        StatusCode::NOT_FOUND
+    );
+
+    // The HTTP step of the Try plan, which only Root edits.
+    let page = page_as(test_db, "/harbormaster/step/view/1/", ALICE).await;
+    assert!(page.contains("Build Step 1: Ping CI</h1>"), "{page}");
+    assert!(
+        page.contains("<dt>Step Type</dt><dd>Make HTTP Request</dd>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("<dt>URI</dt><dd>https://ci.example/run</dd>"),
+        "{page}"
+    );
+    assert!(page.contains("<dt>HTTP Method</dt><dd>GET</dd>"), "{page}");
+    assert!(page.contains("<strong>CI</strong>"), "{page}");
+    assert!(
+        !page.contains("href=\"/harbormaster/step/edit/1/\""),
+        "{page}"
+    );
+    let page = page_as(test_db, "/harbormaster/step/view/1/", ROOT).await;
+    assert!(
+        page.contains("href=\"/harbormaster/step/edit/1/\""),
+        "{page}"
+    );
+}
+
 async fn revision(test_db: &TestDatabase) {
     let page = page_as(test_db, "/D1", ALICE).await;
     assert!(page.contains("<dt>Build Status</dt>"), "{page}");
@@ -839,6 +903,7 @@ async fn harbormaster_pages_show_what_the_viewer_may_see() {
     builds(&test_db).await;
     plans(&test_db).await;
     lists(&test_db).await;
+    more_pages(&test_db).await;
     revision(&test_db).await;
 
     // Buildables of other objects are PHP's, in the list too.

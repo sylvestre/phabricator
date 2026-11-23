@@ -8,7 +8,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::http::Uri;
-use phab_app_harbormaster::web::{self as harbormaster, Lookup, Plan, Step};
+use phab_app_harbormaster::web::{self as harbormaster, Build, Lookup, Plan, Step};
 use phab_core::{Phid, php};
 use phab_policy::application;
 use serde_json::Value;
@@ -207,14 +207,14 @@ pub(crate) struct BehaviorRow {
     description: &'static str,
 }
 
-/// A recent build.
+/// A build in a list (`HarbormasterBuildView`).
 pub(crate) struct BuildItem {
-    id: i64,
-    name: String,
-    object: String,
-    initiator_html: Option<String>,
-    date: String,
-    status: Status,
+    pub(crate) id: i64,
+    pub(crate) name: String,
+    pub(crate) object: String,
+    pub(crate) initiator_html: Option<String>,
+    pub(crate) date: String,
+    pub(crate) status: Status,
 }
 
 /// A Herald rule running the plan.
@@ -551,16 +551,34 @@ async fn recent_builds<S: WebState>(
     scope: &Scope,
     plan: &Plan,
 ) -> Result<(Vec<BuildItem>, bool), PageError> {
-    let request = scope.request();
-    let page = harbormaster::builds_of_plan(&request, &plan.phid, LIST_LIMIT)
+    let page = harbormaster::builds_of_plan(&scope.request(), &plan.phid, LIST_LIMIT)
         .await
         .map_err(method_error)?;
+    let items = build_items(state, scope, &page.items).await?;
+    Ok((items, page.next.is_some()))
+}
+
+/// `HarbormasterBuildView::newObjectList()`.
+pub(crate) async fn build_items<S: WebState>(
+    state: &S,
+    scope: &Scope,
+    builds: &[Build],
+) -> Result<Vec<BuildItem>, PageError> {
+    let request = scope.request();
     let buildables = harbormaster::buildables_by_phid(
         &request,
-        &page
-            .items
+        &builds
             .iter()
             .map(|build| build.buildable_phid.clone())
+            .collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(method_error)?;
+    let plans = harbormaster::plans_by_phid(
+        &request,
+        &builds
+            .iter()
+            .map(|build| build.plan_phid.clone())
             .collect::<Vec<_>>(),
     )
     .await
@@ -570,16 +588,14 @@ async fn recent_builds<S: WebState>(
         .map(|buildable| buildable.object_phid.clone())
         .collect();
     phids.extend(
-        page.items
+        builds
             .iter()
             .filter_map(|build| build.initiator_phid.as_deref())
             .filter(|phid| php::is_truthy_str(phid))
             .map(Phid::new),
     );
     let handles = super::load_handles(state, scope, &phids).await?;
-    let plans = std::collections::HashMap::from([(plan.phid.clone(), plan.clone())]);
-    let items = page
-        .items
+    Ok(builds
         .iter()
         .map(|build| {
             let object = buildables
@@ -601,8 +617,7 @@ async fn recent_builds<S: WebState>(
                 status: status::build(&build.status),
             }
         })
-        .collect();
-    Ok((items, page.next.is_some()))
+        .collect())
 }
 
 /// The display name of a behavior option, or the stored value.

@@ -11,9 +11,11 @@
 mod build;
 mod buildable;
 mod lists;
+mod log;
 mod plan;
 mod revision;
 pub(crate) mod status;
+mod step;
 mod unit;
 
 use std::collections::{HashMap, HashSet};
@@ -30,9 +32,13 @@ use phab_policy::Viewer;
 
 pub(crate) use build::{show as build, show_run as build_run};
 pub(crate) use buildable::{parse_monogram as parse_buildable_monogram, show as buildable};
-pub(crate) use lists::{buildables as buildable_list, plans as plan_list};
+pub(crate) use lists::{
+    build_query, buildables as buildable_list, builds as build_list, plan_query, plans as plan_list,
+};
+pub(crate) use log::show as log;
 pub(crate) use plan::show as plan;
 pub(crate) use revision::{DiffChecks, diff_checks};
+pub(crate) use step::show as step;
 
 use crate::error::PageError;
 use crate::state::WebState;

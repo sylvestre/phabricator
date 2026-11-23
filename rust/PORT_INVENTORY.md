@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 8 | 25 | 120 |
-| Web routes | 26 | – | 23 | 7 | 322 | 378 |
+| Web routes | 27 | – | 35 | 7 | 309 | 378 |
 
 Of the 25 methods not ported, 22 write (or depend on a write); the read-only ones left are `auth.querypublickeys`, `conduit.query`, `diffusion.findsymbols`.
 
@@ -500,10 +500,10 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/F{id}[${lines}]` | `PhabricatorFileViewController` | not ported | file page (`/F1`); read-only, needs the file storage engines Rust reads for `file.download` |
-| `/file/[query/{queryKey}/]` | `PhabricatorFileListController` | not ported | file search engine page; read-only |
-| `/file/view/{id}/[{engineKey}/][${lines}]` | `PhabricatorFileViewController` | not ported | file page (`/F1`); read-only, needs the file storage engines Rust reads for `file.download` |
-| `/file/info/{phid}/` | `PhabricatorFileViewController` | not ported | file page (`/F1`); read-only, needs the file storage engines Rust reads for `file.download` |
+| `/F{id}[${lines}]` | `PhabricatorFileViewController` | partial | file page without `$lines`; files with a timeline, files the viewer can't see (PHP's policy page) and storage outside MySQL 421 |
+| `/file/[query/{queryKey}/]` | `PhabricatorFileListController` | partial | builtin queries (Authored, All); saved queries and filters 421 |
+| `/file/view/{id}/[{engineKey}/][${lines}]` | `PhabricatorFileViewController` | partial | `/file/view/{id}/` as `/F{id}`; engine keys and lines go to PHP |
+| `/file/info/{phid}/` | `PhabricatorFileViewController` | Rust | redirect to `/F{id}` |
 | `/file/upload/` | `PhabricatorFileUploadController` | not ported | write (form or action) |
 | `/file/dropupload/` | `PhabricatorFileDropUploadController` | not ported | write (form or action) |
 | `/file/compose/` | `PhabricatorFileComposeController` | not ported | write (form or action) |
@@ -518,14 +518,14 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/file/ui/detach/{objectPHID}/{filePHID}/` | `PhabricatorFileDetachController` | not ported | write (form or action) |
 | `/file/ui/curtain/list/{phid}/` | `PhabricatorFileUICurtainListController` | not ported | dialog of PHP pages |
 | `/file/ui/curtain/attach/{objectPHID}/{filePHID}/` | `PhabricatorFileUICurtainAttachController` | not ported | write (form or action) |
-| `/file/{data\|download}/[@{instance}/]{key}/{phid}/[{token}/]*` | `PhabricatorFileDataController` | not ported | file data on the CDN domain; read-only, needs the alternate-domain token checks |
+| `/file/{data\|download}/[@{instance}/]{key}/{phid}/[{token}/]*` | `PhabricatorFileDataController` | partial | data from MySQL with PHP's headers (type, disposition, cache, ranges, compression); only with the opt-in cookie, so not on an alternate file domain. Download dialogs, wrong keys, partial uploads, the redirect to the file domain, PDFs shown inline, odd ranges and other storage 421 |
 | `/file/xform/[@{instance}/]{transform}/{phid}/{key}/` | `PhabricatorFileTransformController` | not ported | image thumbnails (writes the transform on first use) |
 
 ### Flags (`PhabricatorFlagsApplication`)
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/flag/[query/{queryKey}/]` | `PhabricatorFlagListController` | not ported | flag list; read-only (`flag.query` is ported) |
+| `/flag/[query/{queryKey}/]` | `PhabricatorFlagListController` | partial | the Flagged query; saved queries, filters and more than a page 421 |
 | `/flag/view/{view}/` | `PhabricatorFlagListController` | not ported | flag list; read-only (`flag.query` is ported) |
 | `/flag/edit/{phid}/` | `PhabricatorFlagEditController` | not ported | write (form or action) |
 | `/flag/delete/{id}/` | `PhabricatorFlagDeleteController` | not ported | write (form or action) |
@@ -538,14 +538,14 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/harbormaster/[query/{queryKey}/]` | `HarbormasterBuildableListController` | partial | the default list only |
 | `/harbormaster/step/add/[{id}/]` | `HarbormasterStepAddController` | not ported | write (form or action) |
 | `/harbormaster/step/new/{plan}/{class}/` | `HarbormasterStepEditController` | not ported | write (form or action) |
-| `/harbormaster/step/view/{id}/` | `HarbormasterStepViewController` | not ported | build step page; read-only |
+| `/harbormaster/step/view/{id}/` | `HarbormasterStepViewController` | partial | steps with credentials and edits in their timeline 421 |
 | `/harbormaster/step/edit/[{id}/]` | `HarbormasterStepEditController` | not ported | write (form or action) |
 | `/harbormaster/step/delete/[{id}/]` | `HarbormasterStepDeleteController` | not ported | write (form or action) |
 | `/harbormaster/buildable/{id}/{pause\|resume\|restart\|abort}/` | `HarbormasterBuildableActionController` | not ported | write (form or action) |
-| `/harbormaster/build/[query/{queryKey}/[{queryAction}/]]` | `HarbormasterBuildListController` | not ported | build search engine page; read-only |
+| `/harbormaster/build/[query/{queryKey}/[{queryAction}/]]` | `HarbormasterBuildListController` | partial | builtin queries; saved queries and filters 421 |
 | `/harbormaster/build/{id}/[{generation}/]` | `HarbormasterBuildViewController` | Rust | build and its older runs |
 | `/harbormaster/build/{pause\|resume\|restart\|abort}/{id}/[{via}/]` | `HarbormasterBuildActionController` | not ported | write (form or action) |
-| `/harbormaster/plan/[query/{queryKey}/[{queryAction}/]]` | `HarbormasterPlanListController` | partial | the default list only |
+| `/harbormaster/plan/[query/{queryKey}/[{queryAction}/]]` | `HarbormasterPlanListController` | partial | builtin queries; saved queries and filters 421 |
 | `/harbormaster/plan/edit/[{id}/][{editAction}/]` | `HarbormasterPlanEditController` | not ported | write (form or action) |
 | `/harbormaster/plan/disable/{id}/` | `HarbormasterPlanDisableController` | not ported | write (form or action) |
 | `/harbormaster/plan/behavior/{id}/{behaviorKey}/` | `HarbormasterPlanBehaviorController` | not ported | write (form or action) |
@@ -554,7 +554,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/harbormaster/unit/{id}/` | `HarbormasterUnitMessageListController` | not ported | unit results of a buildable; read-only |
 | `/harbormaster/unit/view/{id}/` | `HarbormasterUnitMessageViewController` | not ported | one unit result; read-only |
 | `/harbormaster/lint/{id}/` | `HarbormasterLintMessagesController` | not ported | lint results of a buildable; read-only |
-| `/harbormaster/log/view/{id}/[${lines}]` | `HarbormasterBuildLogViewController` | not ported | build log page; read-only (logs are chunked, possibly compressed) |
+| `/harbormaster/log/view/{id}/[${lines}]` | `HarbormasterBuildLogViewController` | partial | without `$lines`; the whole log, or its last lines (`?l=`) |
 | `/harbormaster/log/render/{id}/[${lines}]` | `HarbormasterBuildLogRenderController` | not ported | log rendering of PHP pages |
 | `/harbormaster/log/download/{id}/` | `HarbormasterBuildLogDownloadController` | not ported | log download (writes a file) |
 
@@ -578,7 +578,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/herald/test/` | `HeraldTestConsoleController` | not ported | runs rules against an object (dry run, writes a transcript) |
 | `/herald/transcript/` | `HeraldTranscriptListController` | Rust | default list |
 | `/herald/transcript/[query/{queryKey}/]` | `HeraldTranscriptListController` | partial | builtin queries |
-| `/herald/transcript/{id}/[{view}/]` | `HeraldTranscriptController` | partial | transcript; the transactions view 421 |
+| `/herald/transcript/{id}/[{view}/]` | `HeraldTranscriptController` | partial | transcripts of revisions, every view; transaction titles not ported 421 |
 | `/herald/webhook/[query/{queryKey}/[{queryAction}/]]` | `HeraldWebhookListController` | not ported | webhook list; read-only (admin) |
 | `/herald/webhook/view/{id}/[request/{requestID}/]` | `HeraldWebhookViewController` | not ported | webhook page; read-only (admin) |
 | `/herald/webhook/edit/[{id}/][{editAction}/]` | `HeraldWebhookEditController` | not ported | write (form or action) |
@@ -724,7 +724,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 |---|---|---|---|
 | `/subscriptions/{add\|delete}/{phid}/` | `PhabricatorSubscriptionsEditController` | partial | revisions only (`PHID-DREV-`), written by Rust; other objects stay with PHP |
 | `/subscriptions/mute/{phid}/` | `PhabricatorSubscriptionsMuteController` | not ported | write: mute notifications |
-| `/subscriptions/list/{phid}/` | `PhabricatorSubscriptionsListController` | not ported | subscriber dialog; read-only |
+| `/subscriptions/list/{phid}/` | `PhabricatorSubscriptionsListController` | partial | revisions, as a page; the dialog (Ajax) and other objects 421 |
 | `/subscriptions/transaction/{add\|rem}/{phid}/` | `PhabricatorSubscriptionsTransactionController` | not ported | subscriber change dialog; read-only |
 
 ### Support (`PhabricatorSupportApplication`)
@@ -754,10 +754,10 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 |---|---|---|---|
 | `/transactions/edit/{phid}/` | `PhabricatorApplicationTransactionCommentEditController` | not ported | write (form or action) |
 | `/transactions/remove/{phid}/` | `PhabricatorApplicationTransactionCommentRemoveController` | not ported | write (form or action) |
-| `/transactions/history/{phid}/` | `PhabricatorApplicationTransactionCommentHistoryController` | not ported | comment edit history; read-only |
+| `/transactions/history/{phid}/` | `PhabricatorApplicationTransactionCommentHistoryController` | partial | revision comments, as a page; the dialog (Ajax), removed comments and other objects 421 |
 | `/transactions/quote/{phid}/` | `PhabricatorApplicationTransactionCommentQuoteController` | not ported | quote text for PHP comment forms |
 | `/transactions/raw/{phid}/` | `PhabricatorApplicationTransactionCommentRawController` | not ported | raw comment; read-only |
-| `/transactions/detail/{phid}/` | `PhabricatorApplicationTransactionDetailController` | not ported | transaction details; read-only |
+| `/transactions/detail/{phid}/` | `PhabricatorApplicationTransactionDetailController` | partial | summary and test plan edits of revisions, as a page; the dialog (Ajax) and other transactions 421 |
 | `/transactions/showolder/{phid}/` | `PhabricatorApplicationTransactionShowOlderController` | not ported | timeline paging of PHP pages |
 | `/transactions/{old\|new}/{phid}/` | `PhabricatorApplicationTransactionValueController` | not ported | old/new values dialog; read-only |
 | `/transactions/remarkuppreview/` | `PhabricatorApplicationTransactionRemarkupPreviewController` | not ported | Rust pages use `/rust-ui/preview` |
@@ -779,7 +779,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/typeahead/{browse\|class}/[{class}/]` | `PhabricatorTypeaheadModularDatasourceController` | not ported | PHP typeaheads; Rust pages use `/rust-ui/typeahead` for users and projects |
+| `/typeahead/{browse\|class}/[{class}/]` | `PhabricatorTypeaheadModularDatasourceController` | partial | `class/` of users, projects and (blocking) reviewers, byte for byte; browsing, functions, away users and other datasources 421 |
 | `/typeahead/help/{class}/` | `PhabricatorTypeaheadFunctionHelpController` | not ported | help page of typeahead functions |
 
 ### ReviewHelper (`PhabricatorReviewHelperApplication`)

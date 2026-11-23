@@ -10,12 +10,14 @@ publish.workspace = true
 [dependencies]
 askama.workspace = true
 axum.workspace = true
+flate2.workspace = true
 form_urlencoded.workspace = true
 hex.workspace = true
 phab-app-differential.workspace = true
 phab-app-diffusion.workspace = true
 phab-app-feed.workspace = true
 phab-app-files.workspace = true
+phab-app-flag.workspace = true
 phab-app-dashboard.workspace = true
 phab-app-harbormaster.workspace = true
 phab-app-herald.workspace = true

@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Flagged</h1>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No flags found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li>
+    <p class="hm-item"><span class="fa fa-flag flag-{{ item.color }}" title="{{ item.color_name }}" aria-label="{{ item.color_name }}"></span> <a href="{{ item.uri }}">{{ item.name }}</a>
+      <a class="hm-button" href="/flag/edit/{{ item.object_phid }}/"><span class="fa fa-pencil" aria-hidden="true"></span> Edit</a>
+      <a class="hm-button" href="/flag/delete/{{ item.id }}/"><span class="fa fa-times" aria-hidden="true"></span> Remove</a></p>
+    <p class="hm-attribute muted">{% if !item.note.is_empty() %}{{ item.note }} · {% endif %}{{ item.date }}</p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{% endblock %}

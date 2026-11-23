@@ -9,6 +9,7 @@ pub mod legacy_query;
 pub mod policy;
 pub mod search;
 pub mod storage;
+pub mod typeahead;
 pub mod web;
 
 pub use storage::Project;

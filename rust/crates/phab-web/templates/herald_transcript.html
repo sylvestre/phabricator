@@ -8,7 +8,7 @@
   <a href="/herald/transcript/{{ id }}/"{% if view == "rules" %} aria-current="page"{% endif %}><span class="fa fa-list-ul" aria-hidden="true"></span> Rules</a>
   <a href="/herald/transcript/{{ id }}/fields/"{% if view == "fields" %} aria-current="page"{% endif %}><span class="fa fa-file-text-o" aria-hidden="true"></span> Field Values</a>
   {%- if has_transactions %}
-  <a href="/herald/transcript/{{ id }}/xactions/"><span class="fa fa-forward" aria-hidden="true"></span> Transactions</a>
+  <a href="/herald/transcript/{{ id }}/xactions/"{% if view == "xactions" %} aria-current="page"{% endif %}><span class="fa fa-forward" aria-hidden="true"></span> Transactions</a>
   {%- else %}
   <span class="hm-disabled" aria-disabled="true"><span class="fa fa-forward" aria-hidden="true"></span> Transactions</span>
   {%- endif %}
@@ -67,5 +67,15 @@
   </tbody>
 </table>
 {%- endif %}
+{%- when Content::Transactions(rows) %}
+<h2>Transactions</h2>
+<table class="hm-table">
+  <thead><tr><th>ID</th><th>Transaction</th><th>Date</th></tr></thead>
+  <tbody>
+    {%- for row in rows %}
+    <tr><td>{{ row.id }}</td><td class="hm-pri">{% if let Some(title) = row.title_html %}{{ title|safe }}{% endif %}</td><td>{% if let Some(date) = row.date %}{{ date }}{% endif %}</td></tr>
+    {%- endfor %}
+  </tbody>
+</table>
 {%- endmatch %}
 {% endblock %}

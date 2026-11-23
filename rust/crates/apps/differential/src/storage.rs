@@ -559,6 +559,90 @@ pub async fn load_object_transactions(
         .collect()
 }
 
+/// The revision transaction with this PHID, with when it happened.
+pub async fn load_transaction(
+    database: &Database,
+    phid: &Phid,
+) -> Result<Option<(Transaction, i64)>, DbError> {
+    let sql = format!(
+        "SELECT {TRANSACTION_COLUMNS} FROM {} WHERE phid = ?",
+        database.table("differential", "differential_transaction")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(phid.as_str())
+        .fetch_optional(database.pool())
+        .await?
+        .map(|row| Ok((transaction_from_row(&row)?, rows::int(&row, "dateCreated")?)))
+        .transpose()
+}
+
+/// A version of a transaction's comment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommentVersion {
+    /// `commentVersion`.
+    pub version: i64,
+    /// The comment.
+    pub comment: Comment,
+    /// `isDeleted`: the comment was removed.
+    pub is_deleted: bool,
+    /// `dateCreated`.
+    pub date_created: i64,
+}
+
+/// Every version of the comment of this transaction, oldest first
+/// (`PhabricatorApplicationTransactionTemplatedCommentQuery`).
+pub async fn load_comment_versions(
+    database: &Database,
+    transaction: &Phid,
+) -> Result<Vec<CommentVersion>, DbError> {
+    let sql = format!(
+        "SELECT phid, authorPHID, viewPolicy, editPolicy, content, commentVersion, isDeleted, \
+         dateCreated FROM {} WHERE transactionPHID = ? ORDER BY commentVersion, id",
+        database.table("differential", "differential_transaction_comment")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(transaction.as_str())
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| {
+            Ok(CommentVersion {
+                version: rows::int(row, "commentVersion")?,
+                comment: Comment {
+                    phid: Phid::new(rows::text(row, "phid")?),
+                    author_phid: Phid::new(rows::text(row, "authorPHID")?),
+                    view_policy: rows::text(row, "viewPolicy")?,
+                    edit_policy: rows::text(row, "editPolicy")?,
+                    content: rows::opt_text(row, "content")?.unwrap_or_default(),
+                },
+                is_deleted: rows::flag(row, "isDeleted")?,
+                date_created: rows::int(row, "dateCreated")?,
+            })
+        })
+        .collect()
+}
+
+/// The row IDs of these revision transactions, by PHID.
+pub async fn load_transaction_ids(
+    database: &Database,
+    phids: &[Phid],
+) -> Result<std::collections::HashMap<Phid, i64>, DbError> {
+    if phids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let sql = format!(
+        "SELECT id, phid FROM {} WHERE phid IN ({})",
+        database.table("differential", "differential_transaction"),
+        phab_db::placeholders(phids.len())
+    );
+    phab_db::bind_all(phab_db::sqlx::query(&sql), phids.iter().map(Phid::as_str))
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| Ok((Phid::new(rows::text(row, "phid")?), rows::int(row, "id")?)))
+        .collect()
+}
+
 /// A published inline comment (`DifferentialTransactionComment` with a
 /// changeset).
 #[derive(Debug, Clone, PartialEq, Eq)]

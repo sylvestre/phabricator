@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><span class="fa fa-file-o" aria-hidden="true"></span> <span class="muted">{{ monogram }}</span> {{ name }}</h1>
+  {%- if temporary || partial %}
+  <ul class="tags">
+    {%- if temporary %}<li class="tag">Temporary</li>{% endif %}
+    {%- if partial %}<li class="tag">Partial Upload</li>{% endif %}
+  </ul>
+  {%- endif %}
+</header>
+<div class="columns">
+  <section class="main-column">
+    {%- match content %}
+    {%- when Content::Image with { uri, alt } %}
+    <p class="file-preview"><a href="{{ uri }}"><img src="{{ uri }}" alt="{{ alt }}"></a></p>
+    {%- when Content::Audio with { uri } %}
+    <p class="file-preview"><audio controls src="{{ uri }}"></audio></p>
+    {%- when Content::Video with { uri } %}
+    <p class="file-preview"><video controls src="{{ uri }}"></video></p>
+    {%- when Content::Text with (text) %}
+    <pre class="file-text">{{ text }}</pre>
+    {%- when Content::None %}
+    {%- endmatch %}
+    <h2>File Metadata</h2>
+    <h3>Details</h3>
+    <dl class="properties">
+      {%- for property in properties %}
+      <dt>{{ property.name }}</dt><dd>{{ property.value }}</dd>
+      {%- endfor %}
+    </dl>
+    <h3>Attached</h3>
+    {%- if attached.is_empty() %}
+    <p class="muted">This file is not attached to any objects.</p>
+    {%- else %}
+    <ul class="hm-list">
+      {%- for link in attached %}<li><p class="hm-item">{{ link|safe }}</p></li>{% endfor %}
+    </ul>
+    {%- endif %}
+    {%- if let Some((total, completed)) = chunks %}
+    <h3>Chunks</h3>
+    <dl class="properties">
+      <dt>Total Chunks</dt><dd>{{ total }}</dd>
+      <dt>Completed Chunks</dt><dd>{{ completed }}</dd>
+    </dl>
+    {%- endif %}
+  </section>
+  <aside class="side-column">
+    <h2>Actions</h2>
+    <ul class="hm-actions">
+      {%- for action in actions %}
+      <li>{% if action.enabled %}<a href="{{ action.uri }}"><span class="fa {{ action.icon }}" aria-hidden="true"></span> {{ action.name }}</a>{% else %}<span class="hm-disabled" aria-disabled="true"><span class="fa {{ action.icon }}" aria-hidden="true"></span> {{ action.name }}</span>{% endif %}</li>
+      {%- endfor %}
+    </ul>
+    {%- if let Some(author) = author_html %}
+    <h2>Authored By</h2>
+    <p>{{ author|safe }} <time class="muted">{{ created }}</time></p>
+    {%- endif %}
+    <h2>Size</h2>
+    <p>{{ size }}</p>
+    {%- if let Some(dimensions) = dimensions %}
+    <h2>Dimensions</h2>
+    <p>{{ dimensions }}</p>
+    {%- endif %}
+  </aside>
+</div>
+{% endblock %}

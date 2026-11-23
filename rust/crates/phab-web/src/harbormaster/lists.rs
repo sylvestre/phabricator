@@ -1,12 +1,13 @@
-//! `/harbormaster/` and `/harbormaster/plan/`: the default queries of
-//! `HarbormasterBuildableSearchEngine` ("All Buildables") and
-//! `HarbormasterBuildPlanSearchEngine` ("Active Plans"). Other queries,
-//! filters and saved queries are PHP's.
+//! `/harbormaster/`, `/harbormaster/build/` and `/harbormaster/plan/`:
+//! the default and builtin queries of `HarbormasterBuildableSearchEngine`
+//! ("All Buildables"), `HarbormasterBuildSearchEngine` ("My Builds",
+//! "All Builds"...) and `HarbormasterBuildPlanSearchEngine` ("Active
+//! Plans", "All Plans"). Filters and saved queries are PHP's.
 
 use std::sync::Arc;
 
 use askama::Template;
-use axum::extract::{RawQuery, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::Uri;
 use phab_app_harbormaster::web as harbormaster;
 use phab_core::{Phid, PhidType};
@@ -58,9 +59,38 @@ pub(crate) struct PlanItem {
 #[template(path = "plans.html")]
 pub(crate) struct PlanList {
     shell: Shell,
+    title: &'static str,
+    key: &'static str,
     items: Vec<PlanItem>,
     next: Option<i64>,
 }
+
+#[derive(Template)]
+#[template(path = "builds.html")]
+pub(crate) struct BuildList {
+    shell: Shell,
+    title: &'static str,
+    key: &'static str,
+    items: Vec<super::plan::BuildItem>,
+    next: Option<i64>,
+}
+
+/// The builtin queries of `HarbormasterBuildSearchEngine`: key, name and
+/// statuses.
+const BUILD_QUERIES: &[(&str, &str, &[&str])] = &[
+    ("initiated", "My Builds", &[]),
+    ("all", "All Builds", &[]),
+    ("waiting", "Waiting", &["inactive", "pending"]),
+    ("active", "Active", &["building", "paused"]),
+    (
+        "completed",
+        "Completed",
+        &["passed", "failed", "aborted", "error", "deadlocked"],
+    ),
+];
+
+/// The builtin queries of `HarbormasterBuildPlanSearchEngine`.
+const PLAN_QUERIES: &[(&str, &str)] = &[("active", "Active Plans"), ("all", "All Plans")];
 
 /// The `after` cursor of a list's query string; any other parameter is a
 /// query PHP builds.
@@ -184,12 +214,41 @@ pub(crate) async fn plans<S: WebState>(
     viewer
         .require_application(&*state, super::APPLICATION)
         .await?;
-    let after = cursor(query.as_deref())?;
     require_builtin_default(state.as_ref(), &viewer, "HarbormasterBuildPlanSearchEngine").await?;
+    show_plans(state, viewer, PLAN_QUERIES[0], query, uri).await
+}
+
+/// `GET /harbormaster/plan/query/<key>/`: the builtin queries.
+pub(crate) async fn plan_query<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(key): Path<String>,
+    RawQuery(query): RawQuery,
+    uri: Uri,
+) -> Result<Page<PlanList>, PageError> {
+    viewer
+        .require_application(&*state, super::APPLICATION)
+        .await?;
+    let builtin = PLAN_QUERIES
+        .iter()
+        .find(|(builtin, _)| *builtin == key)
+        .ok_or(PageError::Fallback("a saved plan query"))?;
+    show_plans(state, viewer, *builtin, query, uri).await
+}
+
+async fn show_plans<S: WebState>(
+    state: Arc<S>,
+    viewer: WebUser,
+    (key, title): (&'static str, &'static str),
+    query: Option<String>,
+    uri: Uri,
+) -> Result<Page<PlanList>, PageError> {
+    let after = cursor(query.as_deref())?;
     let scope = Scope::new(state.as_ref(), &viewer);
+    let active = ["active".to_owned()];
     let page = harbormaster::plans_page(
         &scope.request(),
-        Some(&["active".to_owned()]),
+        (key == "active").then_some(&active[..]),
         PAGE_SIZE,
         after,
     )
@@ -230,7 +289,72 @@ pub(crate) async fn plans<S: WebState>(
         .collect();
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
     Ok(Page(PlanList {
-        shell: Shell::for_user(state.config(), &viewer, "Active Plans", current),
+        shell: Shell::for_user(state.config(), &viewer, title, current),
+        title,
+        key,
+        items,
+        next: page.next,
+    }))
+}
+
+/// `GET /harbormaster/build/`: "My Builds".
+pub(crate) async fn builds<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    RawQuery(query): RawQuery,
+    uri: Uri,
+) -> Result<Page<BuildList>, PageError> {
+    viewer
+        .require_application(&*state, super::APPLICATION)
+        .await?;
+    require_builtin_default(state.as_ref(), &viewer, "HarbormasterBuildSearchEngine").await?;
+    show_builds(state, viewer, BUILD_QUERIES[0], query, uri).await
+}
+
+/// `GET /harbormaster/build/query/<key>/`: the builtin queries.
+pub(crate) async fn build_query<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path(key): Path<String>,
+    RawQuery(query): RawQuery,
+    uri: Uri,
+) -> Result<Page<BuildList>, PageError> {
+    viewer
+        .require_application(&*state, super::APPLICATION)
+        .await?;
+    let builtin = BUILD_QUERIES
+        .iter()
+        .find(|(builtin, _, _)| *builtin == key)
+        .ok_or(PageError::Fallback("a saved build query"))?;
+    show_builds(state, viewer, *builtin, query, uri).await
+}
+
+async fn show_builds<S: WebState>(
+    state: Arc<S>,
+    viewer: WebUser,
+    (key, title, statuses): (&'static str, &'static str, &'static [&'static str]),
+    query: Option<String>,
+    uri: Uri,
+) -> Result<Page<BuildList>, PageError> {
+    let after = cursor(query.as_deref())?;
+    let scope = Scope::new(state.as_ref(), &viewer);
+    let statuses: Vec<String> = statuses.iter().map(|status| (*status).to_owned()).collect();
+    let initiators = [viewer.user.phid.as_str().to_owned()];
+    let page = harbormaster::builds_page(
+        &scope.request(),
+        (!statuses.is_empty()).then_some(&statuses[..]),
+        (key == "initiated").then_some(&initiators[..]),
+        PAGE_SIZE,
+        after,
+    )
+    .await
+    .map_err(method_error)?;
+    let items = super::plan::build_items(state.as_ref(), &scope, &page.items).await?;
+    let current = uri.path_and_query().map_or("/", |path| path.as_str());
+    Ok(Page(BuildList {
+        shell: Shell::for_user(state.config(), &viewer, title, current),
+        title,
+        key,
         items,
         next: page.next,
     }))

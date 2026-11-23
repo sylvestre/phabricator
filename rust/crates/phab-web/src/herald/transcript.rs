@@ -68,6 +68,8 @@ pub(crate) enum Content {
     Fields(Vec<(String, String)>),
     /// `None` for older transcripts without profile.
     Profile(Option<Vec<ProfileRow>>),
+    /// The transactions the edit applied.
+    Transactions(Vec<crate::timeline::TranscriptRow>),
 }
 
 #[derive(Template)]
@@ -557,6 +559,11 @@ fn profile_view(
         .map(Some)
 }
 
+/// The object of a transcript.
+fn object_phid_of(transcript: &herald::Transcript) -> Phid {
+    Phid::new(transcript.row.object_phid.as_str())
+}
+
 async fn render<S: WebState>(
     state: Arc<S>,
     viewer: WebUser,
@@ -590,7 +597,7 @@ async fn render<S: WebState>(
         None => "rules",
         Some("fields") => "fields",
         Some("profile") => "profile",
-        Some("xactions") => return Err(PageError::Fallback("the transactions of a transcript")),
+        Some("xactions") => "xactions",
         Some(_) => return Err(PageError::NotFound),
     };
     let has_transactions = transcript
@@ -629,6 +636,18 @@ async fn render<S: WebState>(
             match view {
                 "fields" => Content::Fields(fields_view(&transcript, &handles)?),
                 "profile" => Content::Profile(profile_view(&transcript, &handles)?),
+                "xactions" => {
+                    let phids = object.applied_transaction_phids.clone().unwrap_or_default();
+                    Content::Transactions(
+                        crate::timeline::transcript_rows(
+                            state,
+                            &viewer.user.viewer(),
+                            &object_phid_of(&transcript),
+                            &phids,
+                        )
+                        .await?,
+                    )
+                }
                 _ => Content::Rules(rules_view(&transcript, &handles)?),
             }
         }

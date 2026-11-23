@@ -6,9 +6,10 @@ use axum::{Router, routing};
 
 use crate::state::WebState;
 use crate::{
-    actions, assets, dashboards, diffusion, favorites, feed, harbormaster, herald, login,
-    notifications, opt_in, people, people_lists, preview, project_edit, projects, queue, revision,
-    settings, typeahead, web_edit,
+    actions, assets, dashboards, datasource, diffusion, favorites, feed, files, flags,
+    harbormaster, herald, login, notifications, opt_in, people, people_lists, preview,
+    project_edit, projects, queue, revision, settings, subscriptions, transactions, typeahead,
+    web_edit,
 };
 
 /// Profiles, projects, the feed and notifications.
@@ -75,17 +76,9 @@ fn dashboards<S: WebState>() -> Router<Arc<S>> {
         )
 }
 
-/// The pages, the static files and the interface switch. nginx decides
-/// which of them reach the service (`rust/nginx/rust-web.conf`).
-pub fn router<S: WebState>() -> Router<Arc<S>> {
+/// Harbormaster: lists, builds, plans, steps and logs.
+fn harbormaster_routes<S: WebState>() -> Router<Arc<S>> {
     Router::new()
-        .route("/", routing::get(queue::show::<S>))
-        .route("/differential/", routing::get(queue::show::<S>))
-        .route("/{monogram}", routing::get(revision::by_monogram::<S>))
-        .route("/{monogram}/action", routing::post(actions::submit::<S>))
-        .merge(web_edit::routes::<S>())
-        .merge(project_edit::routes::<S>())
-        .merge(people_and_activity::<S>())
         .route(
             "/harbormaster/",
             routing::get(harbormaster::buildable_list::<S>),
@@ -103,9 +96,69 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
             routing::get(harbormaster::plan_list::<S>),
         )
         .route(
+            "/harbormaster/plan/query/{key}/",
+            routing::get(harbormaster::plan_query::<S>),
+        )
+        .route(
+            "/harbormaster/build/",
+            routing::get(harbormaster::build_list::<S>),
+        )
+        .route(
+            "/harbormaster/build/query/{key}/",
+            routing::get(harbormaster::build_query::<S>),
+        )
+        .route(
+            "/harbormaster/log/view/{id}/",
+            routing::get(harbormaster::log::<S>),
+        )
+        .route(
+            "/harbormaster/step/view/{id}/",
+            routing::get(harbormaster::step::<S>),
+        )
+        .route(
             "/harbormaster/plan/{id}/",
             routing::get(harbormaster::plan::<S>),
         )
+}
+
+/// Files: pages, lists and data.
+fn file_routes<S: WebState>() -> Router<Arc<S>> {
+    Router::new()
+        .route("/file/", routing::get(files::list::<S>))
+        .route("/file/query/{key}/", routing::get(files::query::<S>))
+        .route("/file/info/{phid}/", routing::get(files::info::<S>))
+        .route("/file/view/{id}/", routing::get(files::view::<S>))
+        .route("/file/data/{*rest}", routing::any(files::data::<S>))
+        .route("/file/download/{*rest}", routing::any(files::download::<S>))
+}
+
+/// The pages, the static files and the interface switch. nginx decides
+/// which of them reach the service (`rust/nginx/rust-web.conf`).
+pub fn router<S: WebState>() -> Router<Arc<S>> {
+    Router::new()
+        .route("/", routing::get(queue::show::<S>))
+        .route("/differential/", routing::get(queue::show::<S>))
+        .route("/{monogram}", routing::get(revision::by_monogram::<S>))
+        .route("/{monogram}/action", routing::post(actions::submit::<S>))
+        .merge(web_edit::routes::<S>())
+        .merge(project_edit::routes::<S>())
+        .merge(people_and_activity::<S>())
+        .merge(file_routes::<S>())
+        .route("/flag/", routing::get(flags::list::<S>))
+        .route("/flag/query/{key}/", routing::get(flags::query::<S>))
+        .route(
+            "/subscriptions/list/{phid}/",
+            routing::get(subscriptions::list::<S>),
+        )
+        .route(
+            "/transactions/detail/{phid}/",
+            routing::get(transactions::detail::<S>),
+        )
+        .route(
+            "/transactions/history/{phid}/",
+            routing::get(transactions::history::<S>),
+        )
+        .merge(harbormaster_routes::<S>())
         .route("/herald/", routing::get(herald::rule_list::<S>))
         .route(
             "/herald/query/{key}/",
@@ -164,7 +217,15 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .route("/rust-ui/preview", routing::post(preview::render::<S>))
         .route("/rust-ui/typeahead", routing::get(typeahead::suggest::<S>))
         .route(
+            "/typeahead/class/{class}/",
+            routing::get(datasource::class::<S>).post(datasource::class::<S>),
+        )
+        .route(
             &format!("{}/{{hash}}/{{name}}", assets::PREFIX),
             routing::get(assets::serve),
         )
+        // PHP's workflows post to pages Rust only shows: PHP answers them.
+        .method_not_allowed_fallback(|| async {
+            crate::fallback_response("a request method not ported")
+        })
 }
