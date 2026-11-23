@@ -41,9 +41,14 @@ importing. Then:
   repository (whose update installs hooks, so it is not run);
 - for each of the five commits, recorded as discovery leaves them (with
   fixed PHIDs), the message parser, the change parser, and the publish
-  step, held (importing) and not (left to PHP); plus the message parser of
-  an unreachable commit, of one already parsed, and of a commit which does
-  not exist.
+  step, held (importing) and not; plus the message parser of an
+  unreachable commit, of one already parsed, and of a commit which does
+  not exist;
+- the publish step of C2 with a message naming D1 (`closing_scenarios()`):
+  D1 moved into the repository (by URI and as "D1"), left in R2 (left to
+  PHP), in rVCT mapped by `diffusion.legacy-repos-mapping`, and open and
+  touching a file C2 changes while merge conflict detection checks the
+  repository.
 
 The commands change the working copy (`git fetch`, `git config`), which the
 script doesn't restore: give it one which already has the origin's refs, as
@@ -385,7 +390,7 @@ def repository_scenarios(repository, path, origin):
                 ("message", MESSAGE_PARSER, 1024, observed),
                 ("changes", CHANGE_PARSER, 1025, observed),
                 ("publish, held (importing)", PUBLISHER, 1027, observed),
-                ("publish, not held (left to PHP)", PUBLISHER, 1027,
+                ("publish, not held", PUBLISHER, 1027,
                  details(**{"remote-uri": origin}))):
             scenarios.append({
                 "name": f"{label} of {name} {identifier[:12]}",
@@ -406,7 +411,97 @@ def repository_scenarios(repository, path, origin):
     scenarios.append({
         "name": "message of a commit which does not exist",
         "class": MESSAGE_PARSER, "data": {"commitPHID": "PHID-CMIT-nope"}})
+    scenarios.extend(closing_scenarios(
+        repository, phid, callsign, name, reset,
+        details(**{"remote-uri": origin}), commits(1027)))
     return scenarios
+
+
+def base_uri():
+    """The stack's `phabricator.base-uri`, as `bin/config get` gives it."""
+    out = WP.sh(["docker", "exec", WP.PHP, "/app/phabricator/bin/config",
+                 "get", "phabricator.base-uri"])
+    for entry in json.loads(out.decode()).get("config", []):
+        if entry.get("value"):
+            return entry["value"]
+    return "http://phabricator.test/"
+
+
+def closing_scenarios(repository, phid, callsign, name, reset, publishing,
+                      commits):
+    """The publish step of C2 (`PHID-CMIT-parityfab00001`) with a message,
+    as the message parser leaves its data, naming D1: a revision of the
+    repository (by URI, or as "D1"), one of R2 (no callsign: not closed,
+    and the message mentions it: left to PHP), one of the Mercurial rVCT
+    which `diffusion.legacy-repos-mapping` maps to the repository, and one
+    of the repository touching a file the commit changed, which merge
+    conflict detection checks there."""
+    db = "phabricator_repository"
+    commit = "PHID-CMIT-parityfab00001"
+    identifier = SEED_COMMITS[1][0]
+
+    def message(text):
+        alice = {"authorName": "alice", "authorEmail": "alice@example.com"}
+        ref = {"authorEpoch": 1794600100, **alice,
+               "committerName": "alice", "committerEmail": "alice@example.com",
+               "message": text,
+               "hashes": [{"type": "gtcm", "value": identifier}]}
+        data = {"ref": ref, "authorEpoch": 1794600100, **alice,
+                "committer": "alice <alice@example.com>",
+                "committerName": "alice",
+                "committerEmail": "alice@example.com"}
+        return (f"UPDATE {db}.repository_commitdata SET authorName = "
+                f"'alice <alice@example.com>', commitMessage = {quote(text)}, "
+                f"commitDetails = {quote(php_json(data))} WHERE commitID = 901")
+
+    def move_d1(repository_phid):
+        return ("UPDATE phabricator_differential.differential_revision SET "
+                f"repositoryPHID = {quote(repository_phid)} WHERE id = 1")
+
+    summary = "Add a.txt and a link\n\n"
+    by_uri = message(f"{summary}Differential Revision: {base_uri()}D1\n")
+    by_id = message(f"{summary}Differential Revision: D1\n")
+    base = reset + [publishing] + commits
+    cases = [
+        ("closing D1 (by URI)", [by_uri, move_d1(phid)]),
+        ("closing D1 (as D1)", [by_id, move_d1(phid)]),
+        ("naming D1 of R2 (left to PHP)", [by_uri]),
+    ]
+    vct = query("SELECT phid FROM phabricator_repository.repository "
+                "WHERE callsign = 'VCT'")
+    if vct and callsign:
+        mapping = config_entry("diffusion.legacy-repos-mapping",
+                               {"VCT": callsign})
+        cases.append(("closing D1 of rVCT through "
+                      "diffusion.legacy-repos-mapping",
+                      [by_uri, move_d1(vct[0][0]), mapping]))
+    # C2 changes README; D1, open, touches it.
+    path = ("INSERT IGNORE INTO phabricator_repository.repository_path "
+            "(path, pathHash) VALUES ('/README', MD5('/README'))")
+    change = (
+        f"INSERT INTO {db}.repository_pathchange (repositoryID, pathID, "
+        "commitID, targetPathID, targetCommitID, changeType, fileType, "
+        f"isDirect, commitSequence) SELECT {repository}, id, 901, NULL, "
+        "NULL, 2, 1, 1, 1794600100 FROM phabricator_repository.repository_path "
+        "WHERE pathHash = MD5('/README')")
+    affected = (
+        "INSERT INTO phabricator_differential.differential_affectedpath "
+        f"(repositoryID, pathID, revisionID) SELECT {repository}, id, 1 FROM "
+        "phabricator_repository.repository_path WHERE pathHash = MD5('/README')")
+    reopen = ("UPDATE phabricator_differential.differential_revision SET "
+              "status = 'needs-review' WHERE id = 1")
+    checked = ("UPDATE phabricator_config.config_entry SET value = "
+               f"{quote(php_json(['PHID-REPO-paritygit000000', phid]))} "
+               "WHERE namespace = 'default' AND "
+               "configKey = 'merge.conflict.repository-phids'")
+    cases.append(("closing D1, which merge conflict detection rechecks",
+                  [by_uri, move_d1(phid), reopen, path, change, affected,
+                   checked]))
+    return [{
+        "name": f"publish of {name} {identifier[:12]} {label}",
+        "class": PUBLISHER, "data": {"commitPHID": commit, "via": "discovery"},
+        "priority": 2000, "objectPHID": commit, "setup": base + setup}
+        for label, setup in cases]
 
 
 def feed_scenarios(count):

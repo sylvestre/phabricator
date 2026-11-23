@@ -7,12 +7,17 @@
 //!
 //! The observed repository R3 starts as an empty bare repository whose
 //! remote is R2's working copy, as on the dev stack.
+//!
+//! Publishing a commit which isn't held needs a MIME command for its patch
+//! (`file --brief --mime`, which the dev stack's `PHAB_MIME_COMMAND` is);
+//! the tests which publish are skipped without `file`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use phab_app_diffusion::import::repository::ImportRepository;
 use phab_app_diffusion::import::{ImportError, update};
+use phab_app_files::mime::MimeCommand;
 use phab_core::Config;
 use phab_db::testing::TestDatabase;
 use phab_db::{Database, rows};
@@ -32,6 +37,22 @@ const MESSAGE: &str = "PhabricatorRepositoryGitCommitMessageParserWorker";
 const CHANGE: &str = "PhabricatorRepositoryGitCommitChangeParserWorker";
 const PUBLISH: &str = "PhabricatorRepositoryCommitPublishWorker";
 const SEARCH: &str = "PhabricatorSearchWorker";
+const UPDATE: &str = "DiffusionUpdateObjectAfterCommitWorker";
+const TRANSACTION_PUBLISH: &str = "PhabricatorApplicationTransactionPublishWorker";
+/// The HMAC key of file integrity hashes, which PHP makes.
+const INTEGRITY_KEY: &str = "00112233445566778899aabbccddeeff";
+/// The databases the pipeline reads and writes.
+const DATABASES: &[&str] = &[
+    "repository",
+    "worker",
+    "user",
+    "herald",
+    "file",
+    "differential",
+    "audit",
+    "auth",
+    "harbormaster",
+];
 
 type Row = Map<String, Value>;
 
@@ -63,7 +84,7 @@ fn git(directory: &Path, args: &[&str]) -> String {
 }
 
 async fn fixture(details: &str) -> Option<Fixture> {
-    let test_db = TestDatabase::create(&["repository", "worker", "user"]).await?;
+    let test_db = TestDatabase::create(DATABASES).await?;
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/seed-dev-git-repo.sh");
     let origin = directory.path().join("2");
@@ -91,6 +112,8 @@ async fn fixture(details: &str) -> Option<Fixture> {
              INSERT INTO `{{ns}}_user`.user_email (phid, userPHID, address, isVerified, \
                isPrimary, dateCreated, dateModified) VALUES \
              ('PHID-EADR-alice', 'PHID-USER-alice', 'alice@example.com', 1, 1, 1, 1); \
+             INSERT INTO `{{ns}}_auth`.auth_hmackey (keyName, keyValue, dateCreated, \
+               dateModified) VALUES ('file.integrity', '{INTEGRITY_KEY}', 1, 1); \
              INSERT INTO `{{ns}}_repository`.repository (id, phid, name, callsign, \
                versionControlSystem, details, dateCreated, dateModified, viewPolicy, editPolicy, \
                pushPolicy, localPath) VALUES \
@@ -191,14 +214,19 @@ impl Fixture {
         .await
     }
 
+    /// A worker without a MIME command: publishing is left to PHP.
     fn worker(&self) -> Worker {
+        self.worker_with(Config::default(), PublishWorker::default())
+    }
+
+    fn worker_with(&self, config: Config, publish: PublishWorker) -> Worker {
         let mut registry = Registry::default();
         registry.register(MessageParserWorker);
         registry.register(ChangeParserWorker);
-        registry.register(PublishWorker);
+        registry.register(publish);
         Worker::new(
             self.database().clone(),
-            Config::default(),
+            config,
             registry,
             LeaseOwner::new("rust-test"),
         )
@@ -206,23 +234,27 @@ impl Fixture {
 
     /// Runs the ported tasks until none is left; returns their classes.
     async fn run_all(&self) -> Vec<String> {
-        let worker = self.worker();
-        let mut ran = Vec::new();
-        while let Some(task) = worker.work_on(None).await.unwrap() {
-            assert!(
-                matches!(task.outcome, Ok(Executed::Succeeded(_))),
-                "{} {:?}",
-                task.class,
-                task.outcome
-            );
-            ran.push(task.class);
-        }
-        ran
+        run_all_with(&self.worker()).await
     }
 
     async fn finish(self) {
         self.test_db.drop_databases().await;
     }
+}
+
+/// Runs the tasks `worker` takes until none is left; returns their classes.
+async fn run_all_with(worker: &Worker) -> Vec<String> {
+    let mut ran = Vec::new();
+    while let Some(task) = worker.work_on(None).await.unwrap() {
+        assert!(
+            matches!(task.outcome, Ok(Executed::Succeeded(_))),
+            "{} {:?}",
+            task.class,
+            task.outcome
+        );
+        ran.push(task.class);
+    }
+    ran
 }
 
 const IMPORTING: &str = r#"{"remote-uri":"{origin}","importing":true}"#;
@@ -644,7 +676,7 @@ async fn marks_the_commits_of_deleted_branches_unreachable() {
 /// What the pipeline leaves to PHP, before writing anything: a hosted
 /// repository's update (PHP installs its hooks), a repository with a
 /// branch filter which is a regular expression, Mercurial, and the
-/// publishing of a commit the publisher doesn't hold.
+/// publishing of a commit the publisher doesn't hold without a MIME command.
 #[tokio::test]
 async fn leaves_what_is_not_ported_to_php() {
     let Some(fixture) = fixture(r#"{"remote-uri":"{origin}","hosting-enabled":true}"#).await else {
@@ -675,7 +707,8 @@ async fn leaves_what_is_not_ported_to_php() {
     .await
     .unwrap();
     assert_eq!(fixture.commits().await.len(), 5);
-    // Not importing (5 commits are no import), not held: published by PHP.
+    // Not importing (5 commits are no import), not held: published by PHP
+    // without a MIME command for the patches.
     let worker = fixture.worker();
     let mut classes = Vec::new();
     while let Some(task) = worker.work_on(None).await.unwrap() {
@@ -724,5 +757,333 @@ async fn leaves_what_is_not_ported_to_php() {
         .await,
         Err(ImportError::Unsupported(_))
     ));
+    fixture.finish().await;
+}
+
+/// `file --brief --mime`, if this host has `file`.
+fn mime_command() -> Option<MimeCommand> {
+    let found = Command::new("file")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if !found {
+        eprintln!("skipping: no file command");
+        return None;
+    }
+    MimeCommand::parse("file --brief --mime")
+}
+
+/// The configuration of the publishing tests: an install at
+/// `https://phab.test/`.
+fn publish_config() -> Config {
+    let mut config = Config::default();
+    if let Value::Object(map) = json!({"phabricator.base-uri": "https://phab.test/"}) {
+        config.push_layer("test", map);
+    }
+    config
+}
+
+/// D7, an accepted revision of R3.
+const REVISION: &str = "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, \
+     status, summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+     viewPolicy, editPolicy, properties, activeDiffPHID, repositoryPHID) VALUES (7, 'Fix', \
+     'PHID-DREV-seven', 'accepted', '', '', 'PHID-USER-alice', 1, 1, '{}', 'k', 'users', 'users', \
+     '{}', '', 'PHID-REPO-fab')";
+
+/// Adds a commit changing `c.txt` on the origin's master; returns its hash.
+fn commit_on_origin(fixture: &Fixture, message: &str) -> String {
+    let origin = fixture.origin();
+    std::fs::write(origin.join("c.txt"), "sea\n").unwrap();
+    git(&origin, &["add", "c.txt"]);
+    git(
+        &origin,
+        &["commit", "--quiet", "--no-gpg-sign", "-m", message],
+    );
+    git(&origin, &["rev-parse", "HEAD"])
+}
+
+/// A repository which publishes (6 commits are no import): each commit gets
+/// its hold reasons cleared, its patch as a temporary file attached to the
+/// repository, the `audit:commit` transaction acting as its committer, a
+/// Herald transcript without rules, the "none" header, and the transaction
+/// publish task with the editor's state. The commit naming D7, a revision
+/// of its repository, records it and queues
+/// `DiffusionUpdateObjectAfterCommitWorker`, after the step.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn publishes_commits_and_closes_the_revision_they_name() {
+    let Some(mime) = mime_command() else {
+        return;
+    };
+    let Some(fixture) = fixture(r#"{"remote-uri":"{origin}"}"#).await else {
+        return;
+    };
+    fixture.test_db.execute(REVISION).await;
+    let fix = commit_on_origin(
+        &fixture,
+        "Fix the README\n\nDifferential Revision: https://phab.test/D7",
+    );
+    fixture.update().await.unwrap();
+    let worker = fixture.worker_with(publish_config(), PublishWorker::with_mime(Some(mime)));
+    let ran = run_all_with(&worker).await;
+    assert_eq!(ran.len(), 18);
+    assert!(
+        fixture
+            .commits()
+            .await
+            .iter()
+            .all(|row| row.ends_with(" 1035"))
+    );
+    let commit = fixture.commit_phid(&fix).await;
+    let identity = fixture
+        .column(
+            "SELECT CAST(phid AS CHAR) FROM `{ns}_repository`.repository_identity WHERE \
+             identityNameRaw = 'bob <bob@example.com>'",
+        )
+        .await
+        .remove(0);
+
+    // closeRevisions(): the details, after the hold reasons.
+    let details = fixture
+        .column(&format!(
+            "SELECT CAST(d.commitDetails AS CHAR) FROM `{{ns}}_repository`.repository_commitdata \
+             d JOIN `{{ns}}_repository`.repository_commit c ON c.id = d.commitID WHERE \
+             c.phid = '{commit}'"
+        ))
+        .await
+        .remove(0);
+    let match_data = "{\"usedURI\":true,\"foundURI\":7,\"validDomain\":\"https:\\/\\/phab.test\",\
+                      \"matchHashType\":null,\"matchHashValue\":null}";
+    assert!(
+        details.ends_with(&format!(
+            ",\"holdReasons\":[],\"differential.revisionID\":7,\"revisionMatchData\":{match_data}}}"
+        )),
+        "{details}"
+    );
+    // The other commits name no revision.
+    assert_eq!(
+        fixture
+            .column(
+                "SELECT CAST(id AS CHAR) FROM `{ns}_repository`.repository_commitdata WHERE commitDetails \
+                 LIKE '%revisionMatchData%'"
+            )
+            .await
+            .len(),
+        1
+    );
+    assert_eq!(
+        fixture.tasks(UPDATE).await,
+        [format!(
+            "2000 NULL NULL {{\"commitPHID\":\"{commit}\",\"objectPHID\":\"PHID-DREV-seven\",\
+             \"properties\":{{\"revisionMatchData\":{match_data}}}}}"
+        )]
+    );
+
+    // The transaction, acting as bob's identity (no user), dated as the
+    // commit.
+    let xactions = fixture
+        .rows(&format!(
+            "SELECT CAST(phid AS CHAR) phid, CAST(authorPHID AS CHAR) a, \
+               CAST(viewPolicy AS CHAR) v, CAST(editPolicy AS CHAR) e, \
+               CAST(transactionType AS CHAR) t, CAST(oldValue AS CHAR) o, \
+               CAST(newValue AS CHAR) n, CAST(contentSource AS CHAR) s, \
+               CAST(metadata AS CHAR) m, CAST(dateCreated AS CHAR) d \
+             FROM `{{ns}}_audit`.audit_transaction WHERE objectPHID = '{commit}'"
+        ))
+        .await;
+    assert_eq!(xactions.len(), 1);
+    let xaction = &xactions[0];
+    let xaction_phid = xaction["phid"].as_str().unwrap().to_owned();
+    assert!(xaction_phid.starts_with("PHID-XACT-CMIT-"));
+    assert_eq!(xaction["a"], json!(identity));
+    assert_eq!(xaction["v"], json!("public"));
+    assert_eq!(xaction["e"], json!("no-one"));
+    assert_eq!(xaction["t"], json!("audit:commit"));
+    assert_eq!(xaction["o"], json!("null"));
+    assert_eq!(
+        xaction["n"],
+        json!(
+            "{\"description\":\"Fix the README\\n\\nDifferential Revision: \
+             https:\\/\\/phab.test\\/D7\\n\",\"summary\":\"Fix the README\",\"authorName\":\
+             \"bob <bob@example.com>\",\"authorPHID\":null,\"committerName\":\
+             \"bob <bob@example.com>\",\"committerPHID\":null}"
+        )
+    );
+    assert_eq!(xaction["s"], json!("{\"source\":\"daemon\",\"params\":[]}"));
+    let metadata: Value = serde_json::from_str(xaction["m"].as_str().unwrap()).unwrap();
+    assert_eq!(metadata["core.groupID"].as_str().unwrap().len(), 32);
+    assert_eq!(xaction["d"], json!("1794600500"));
+    assert_eq!(
+        fixture
+            .column("SELECT CAST(id AS CHAR) FROM `{ns}_audit`.audit_transaction")
+            .await
+            .len(),
+        6
+    );
+
+    // Herald, without rules.
+    let transcripts = fixture
+        .rows(&format!(
+            "SELECT CAST(objectTranscript AS CHAR) o, CAST(applyTranscripts AS CHAR) a \
+             FROM `{{ns}}_herald`.herald_transcript WHERE objectPHID = '{commit}'"
+        ))
+        .await;
+    assert_eq!(transcripts.len(), 1);
+    let object = transcripts[0]["o"].as_str().unwrap();
+    assert!(object.contains(&format!("\"rFAB{fix}\"")), "{object}");
+    assert!(object.contains(&format!("\"{xaction_phid}\"")), "{object}");
+    assert!(object.contains("s:6:\"commit\""), "{object}");
+    assert_eq!(transcripts[0]["a"], json!("a:0:{}"));
+    assert_eq!(
+        fixture
+            .column(&format!(
+                "SELECT CAST(header AS CHAR) FROM `{{ns}}_herald`.herald_savedheader WHERE \
+                 phid = '{commit}'"
+            ))
+            .await,
+        ["none"]
+    );
+
+    // The patch: a file no one sees for 48 hours, attached to R3.
+    let files = fixture
+        .rows(
+            "SELECT CAST(f.phid AS CHAR) phid, CAST(f.name AS CHAR) n, \
+               CAST(f.mimeType AS CHAR) m, CAST(f.viewPolicy AS CHAR) v, \
+               CAST(f.ttl - f.dateCreated AS CHAR) t, CAST(f.isExplicitUpload AS CHAR) x, \
+               CAST(f.storageEngine AS CHAR) e, CAST(b.data AS CHAR) d \
+             FROM `{ns}_file`.file f JOIN `{ns}_file`.file_storageblob b ON \
+               b.id = f.storageHandle ORDER BY f.id",
+        )
+        .await;
+    assert_eq!(files.len(), 6);
+    let patch = files
+        .iter()
+        .find(|file| file["d"].as_str().unwrap().contains("+++ b/c.txt"))
+        .unwrap();
+    assert_eq!(patch["n"], json!(""));
+    assert_eq!(patch["m"], json!("text/x-diff"));
+    assert_eq!(patch["v"], json!("no-one"));
+    assert_eq!(patch["t"], json!("172800"));
+    assert_eq!(patch["x"], json!("0"));
+    assert_eq!(patch["e"], json!("blob"));
+    let file_phid = patch["phid"].as_str().unwrap();
+    assert_eq!(
+        fixture
+            .column(&format!(
+                "SELECT CAST(objectPHID AS CHAR) o, CAST(attachmentMode AS CHAR) m, \
+                 CAST(attacherPHID AS CHAR) a FROM `{{ns}}_file`.file_attachment WHERE \
+                 filePHID = '{file_phid}'"
+            ))
+            .await,
+        [format!("{REPOSITORY} attach NULL")]
+    );
+    // C3 and the merge add the same file: one blob for both patches.
+    assert_eq!(
+        fixture
+            .column("SELECT CAST(id AS CHAR) FROM `{ns}_file`.file_storageblob")
+            .await
+            .len(),
+        5
+    );
+    // A search task per commit, then per file.
+    assert_eq!(fixture.tasks(SEARCH).await.len(), 12);
+
+    // The publish task, at PRIORITY_ALERTS.
+    let published = fixture
+        .rows(&format!(
+            "SELECT CAST(task.priority AS CHAR) p, CAST(data.data AS CHAR) d FROM \
+             `{{ns}}_worker`.worker_activetask task JOIN `{{ns}}_worker`.worker_taskdata data \
+             ON data.id = task.dataID WHERE task.taskClass = '{TRANSACTION_PUBLISH}' AND \
+             task.objectPHID = '{commit}'"
+        ))
+        .await;
+    assert_eq!(published.len(), 1);
+    assert_eq!(published[0]["p"], json!("1000"));
+    let data: Value = serde_json::from_str(published[0]["d"].as_str().unwrap()).unwrap();
+    assert_eq!(data["objectPHID"], json!(commit));
+    assert_eq!(data["actorPHID"], json!(identity));
+    assert_eq!(data["xactionPHIDs"], json!([xaction_phid]));
+    let state = &data["state"];
+    assert_eq!(state["mailToPHIDs"], json!([identity]));
+    assert_eq!(state["mailCCPHIDs"], json!([]));
+    assert_eq!(state["feedNotifyPHIDs"], json!([identity]));
+    assert_eq!(state["feedRelatedPHIDs"], json!([commit, identity]));
+    assert_eq!(state["heraldHeader"], json!("none"));
+    assert_eq!(state["custom"]["affectedFiles"], json!("/c.txt"));
+    assert_eq!(state["custom"]["auditorPHIDs"], json!([]));
+    assert_eq!(state["custom.encoding"], json!({"rawPatch": "binary"}));
+    let raw = {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD
+            .decode(state["custom"]["rawPatch"].as_str().unwrap())
+            .unwrap()
+    };
+    let patch_text = patch["d"].as_str().unwrap();
+    assert_eq!(
+        String::from_utf8(raw).unwrap(),
+        format!("s:{}:\"{patch_text}\";", patch_text.len())
+    );
+    let stamps = state["mailStamps"].as_array().unwrap();
+    assert_eq!(stamps[1]["value"], json!(format!("rFAB{fix}")));
+    assert_eq!(
+        stamps[5],
+        json!({"type": "string", "key": "via", "value": "daemon"})
+    );
+    fixture.finish().await;
+}
+
+/// What publishing leaves to PHP before the lease: everything while an
+/// enabled Herald rule on commits exists, then a commit mentioning a user.
+#[tokio::test]
+async fn leaves_publishing_with_herald_rules_or_mentions_to_php() {
+    let Some(mime) = mime_command() else {
+        return;
+    };
+    let Some(fixture) = fixture(r#"{"remote-uri":"{origin}"}"#).await else {
+        return;
+    };
+    let thanks = commit_on_origin(&fixture, "Thanks @alice-phab");
+    fixture.update().await.unwrap();
+    fixture
+        .test_db
+        .execute(
+            "INSERT INTO `{ns}_herald`.herald_rule (id, name, authorPHID, contentType, \
+               mustMatchAll, configVersion, dateCreated, dateModified, repetitionPolicy, \
+               ruleType, phid, isDisabled, triggerObjectPHID) VALUES \
+             (1, 'Audit', 'PHID-USER-alice', 'commit', 1, 38, 1, 1, 'every', 'global', \
+               'PHID-HRUL-1', 0, NULL)",
+        )
+        .await;
+    let worker = fixture.worker_with(
+        publish_config(),
+        PublishWorker::with_mime(Some(mime.clone())),
+    );
+    assert_eq!(run_all_with(&worker).await.len(), 12);
+    assert_eq!(fixture.tasks(PUBLISH).await.len(), 6);
+    assert_eq!(
+        fixture
+            .column("SELECT CAST(id AS CHAR) FROM `{ns}_audit`.audit_transaction")
+            .await,
+        Vec::<String>::new()
+    );
+
+    fixture
+        .test_db
+        .execute("UPDATE `{ns}_herald`.herald_rule SET isDisabled = 1")
+        .await;
+    let worker = fixture.worker_with(publish_config(), PublishWorker::with_mime(Some(mime)));
+    assert_eq!(run_all_with(&worker).await.len(), 5);
+    let thanks = fixture.commit_phid(&thanks).await;
+    let left = fixture.tasks(PUBLISH).await;
+    assert_eq!(left.len(), 1);
+    assert!(left[0].contains(&thanks), "{left:?}");
+    assert_eq!(
+        fixture
+            .column(&format!(
+                "SELECT CAST(id AS CHAR) FROM `{{ns}}_audit`.audit_transaction WHERE objectPHID = '{thanks}'"
+            ))
+            .await,
+        Vec::<String>::new()
+    );
     fixture.finish().await;
 }

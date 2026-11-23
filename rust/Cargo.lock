@@ -1718,6 +1718,7 @@ dependencies = [
 name = "phab-app-diffusion"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "flate2",
  "form_urlencoded",
  "hex",
@@ -1725,6 +1726,9 @@ dependencies = [
  "md-5",
  "pcre2",
  "phab-app-differential",
+ "phab-app-files",
+ "phab-app-herald",
+ "phab-auth",
  "phab-conduit",
  "phab-core",
  "phab-db",
@@ -2165,8 +2169,10 @@ dependencies = [
  "md-5",
  "phab-app-diffusion",
  "phab-app-feed",
+ "phab-app-files",
  "phab-app-metamta",
  "phab-app-transactions",
+ "phab-conduit",
  "phab-core",
  "phab-db",
  "rustix",

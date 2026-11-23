@@ -8,12 +8,16 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64.workspace = true
 flate2.workspace = true
 hex.workspace = true
 indexmap.workspace = true
 md-5.workspace = true
 pcre2.workspace = true
 phab-app-differential.workspace = true
+phab-app-files.workspace = true
+phab-app-herald.workspace = true
+phab-auth.workspace = true
 phab-conduit.workspace = true
 phab-core.workspace = true
 phab-db.workspace = true

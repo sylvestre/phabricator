@@ -11,8 +11,8 @@
 //! anything when it needs code which is not ported: Mercurial and
 //! Subversion, repositories served by a cluster, hosted repositories (whose
 //! hooks PHP installs), mirrors, branch filters with regular expressions,
-//! event listeners, lock logs, and the publishing of a commit (Herald,
-//! audits, feed, mail and the closing of revisions).
+//! event listeners, lock logs, and what publishing a commit needs which is
+//! not ported ([`publish`]).
 
 pub mod change;
 pub mod commit;

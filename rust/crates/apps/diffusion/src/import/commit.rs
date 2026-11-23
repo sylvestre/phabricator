@@ -326,10 +326,10 @@ pub struct FollowUp {
     pub data: Value,
     /// The priority.
     pub priority: i64,
-    /// `objectPHID`: the commit.
-    pub object_phid: String,
-    /// `containerPHID`: the repository.
-    pub container_phid: String,
+    /// `objectPHID`: the commit, for the import steps.
+    pub object_phid: Option<String>,
+    /// `containerPHID`: the repository, for the import steps.
+    pub container_phid: Option<String>,
 }
 
 impl ParserTask {
@@ -427,8 +427,8 @@ impl ParserTask {
             class,
             data: Value::Object(data),
             priority: PRIORITY_DEFAULT,
-            object_phid: self.commit.phid.clone(),
-            container_phid: self.repository.phid.clone(),
+            object_phid: Some(self.commit.phid.clone()),
+            container_phid: Some(self.repository.phid.clone()),
         })
     }
 }

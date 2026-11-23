@@ -8,14 +8,16 @@
 //! Git's output); a task it can't do as PHP does is declined before the
 //! lease when possible: Mercurial and Subversion, repositories served by a
 //! cluster or whose working copy this host doesn't have, output which is
-//! not UTF-8, commits with an encoding header, and the publishing of a
-//! commit the publisher doesn't hold (Herald, audits, feed, mail, closing
-//! revisions).
+//! not UTF-8, commits with an encoding header, and what the publishing of
+//! a commit needs which is not ported ([`publish`]).
 
 use phab_app_diffusion::import::commit::{FollowUp, ParserTask};
 use phab_app_diffusion::import::{
     CHANGE_PARSER, ImportError, MESSAGE_PARSER, PUBLISHER, change, message, publish,
 };
+use phab_app_files::mime::MimeCommand;
+use phab_conduit::Context;
+use phab_core::Config;
 use phab_db::Database;
 use serde_json::Value;
 
@@ -32,9 +34,24 @@ pub struct MessageParserWorker;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChangeParserWorker;
 
-/// `PhabricatorRepositoryCommitPublishWorker`.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct PublishWorker;
+/// `PhabricatorRepositoryCommitPublishWorker`, which detects the MIME type
+/// of patches with its command (without one, publishing is left to PHP).
+#[derive(Debug, Clone, Default)]
+pub struct PublishWorker {
+    mime: Option<MimeCommand>,
+}
+
+impl PublishWorker {
+    /// The worker, detecting MIME types with `PHAB_MIME_COMMAND`.
+    pub fn from_env() -> Self {
+        Self::with_mime(MimeCommand::from_env())
+    }
+
+    /// The worker, detecting MIME types with `mime`.
+    pub fn with_mime(mime: Option<MimeCommand>) -> Self {
+        Self { mime }
+    }
+}
 
 /// How an error of a step ends the task: before anything is written,
 /// what PHP might do differently is left to it.
@@ -74,8 +91,8 @@ fn queue(work: &Work<'_>, followup: Option<FollowUp>) {
             class: followup.class.to_owned(),
             data: followup.data,
             priority: Some(followup.priority),
-            object_phid: Some(followup.object_phid),
-            container_phid: Some(followup.container_phid),
+            object_phid: followup.object_phid,
+            container_phid: followup.container_phid,
         });
     }
 }
@@ -155,6 +172,19 @@ impl Handler for ChangeParserWorker {
     }
 }
 
+/// The context of the publish step's Conduit calls and Herald transcripts:
+/// the host name is `php_uname('n')`.
+fn context(database: &Database, config: &Config) -> Context {
+    Context {
+        database: database.clone(),
+        config: config.clone(),
+        hostname: rustix::system::uname()
+            .nodename()
+            .to_string_lossy()
+            .into_owned(),
+    }
+}
+
 impl Handler for PublishWorker {
     fn class(&self) -> &'static str {
         PUBLISHER
@@ -170,7 +200,8 @@ impl Handler for PublishWorker {
             claim(
                 async {
                     let parser = load(task.database, task.data).await?;
-                    publish::prepare(task.database, &parser)
+                    let context = context(task.database, task.config);
+                    publish::prepare(&context, &parser, self.mime.as_ref())
                         .await
                         .map_err(before_writes)?;
                     Ok(())
@@ -183,13 +214,16 @@ impl Handler for PublishWorker {
     fn do_work<'a>(&'a self, work: &'a Work<'a>) -> WorkFuture<'a> {
         Box::pin(async move {
             let mut parser = load(work.database, work.data()).await?;
-            let prepared = publish::prepare(work.database, &parser)
+            let context = context(work.database, work.config);
+            let prepared = publish::prepare(&context, &parser, self.mime.as_ref())
                 .await
                 .map_err(before_writes)?;
-            // The last step: nothing is queued after it.
-            publish::parse(work.database, &mut parser, prepared)
+            // The last step: only the closing of a revision is queued.
+            let followup = publish::parse(work.database, &mut parser, prepared)
                 .await
-                .map_err(after_writes)
+                .map_err(after_writes)?;
+            queue(work, followup);
+            Ok(())
         })
     }
 }

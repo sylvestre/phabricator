@@ -16,7 +16,7 @@ pub fn registry() -> Registry {
     registry.register(publish::PublishWorker);
     registry.register(repository::MessageParserWorker);
     registry.register(repository::ChangeParserWorker);
-    registry.register(repository::PublishWorker);
+    registry.register(repository::PublishWorker::from_env());
     registry.register(test_worker::TestWorker);
     registry
 }

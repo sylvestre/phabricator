@@ -188,11 +188,22 @@ three steps discovery queues for each commit:
 `PhabricatorRepositoryGitCommitMessageParserWorker` (author, committer,
 message, identities), `PhabricatorRepositoryGitCommitChangeParserWorker`
 (paths, then a `PhabricatorSearchWorker` task for PHP) and
-`PhabricatorRepositoryCommitPublishWorker` for commits the publisher holds
+`PhabricatorRepositoryCommitPublishWorker`. A commit the publisher holds
 (the repository is importing or doesn't publish, or the commit is on no
-permanent ref). Publishing a commit (Herald, audits, feed, mail, closing
-revisions), Mercurial and Subversion, repositories served by a cluster and
-working copies this host doesn't have are left to PHP.
+permanent ref) only gets its hold reasons. A commit which publishes gets
+the revision its message names recorded (with Mozilla's
+`diffusion.legacy-repos-mapping`) and a `DiffusionUpdateObjectAfterCommitWorker`
+task, which PHP runs to close it; its patch as a temporary file (the
+MIME type comes from `PHAB_MIME_COMMAND`: without it, publishing is left
+to PHP); the `audit:commit` transaction, Herald's transcript and the
+transaction publish task whose feed and mail PHP sends; and Mozilla's
+merge conflict rechecks. Left to PHP: commits with audits, projects or
+buildables, enabled Herald rules on commits, messages naming auditors,
+mentioning users or objects (but the revision they close), reverting or
+depending on objects, revisions found by commit hash, patches too large
+or slow for the `metamta.diffusion.*` limits, Mercurial and Subversion,
+repositories served by a cluster and working copies this host doesn't
+have.
 
 `phab-worker repository discover|refs|update <repository>` is
 `bin/repository`'s workflow for one Git repository (what
