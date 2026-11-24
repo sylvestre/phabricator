@@ -7,17 +7,20 @@
 //! build no field of their own, and the only extension which applies to
 //! builds and buildables is `PhabricatorAuthMFAEditEngineExtension`: the
 //! one edit type is `mfa`. Ported: the errors of unknown objects and
-//! types, and edits without transactions, which save the object (Lisk
-//! writes `dateModified`) and queue the publish task. Left to PHP:
-//! creations, `mfa` transactions, and objects the viewer can't see.
+//! types, and edits without transactions, which need `CAN_EDIT`, save the
+//! object (Lisk writes `dateModified`) and queue the publish task. Left to
+//! PHP: creations, `mfa` transactions, and objects the viewer can't see or
+//! edit.
 
 use phab_conduit::edit::{self, Identifier, Publication};
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
-use phab_core::php;
+use phab_core::{Phid, php};
 use phab_db::sqlx::MySqlConnection;
+use phab_policy::loader::NoExtendedObjects;
+use phab_policy::{Capability, ObjectKind, PolicySubject};
 use serde_json::Value;
 
-use crate::storage::{self, Build, Buildable, Object};
+use crate::storage::{self, Build, Buildable, Object, Policies};
 
 fn unsupported(what: &'static str) -> MethodError {
     MethodError::Unsupported(what)
@@ -44,6 +47,40 @@ pub(crate) async fn load_object<T: Object>(
         .into_iter()
         .next()
         .ok_or_else(|| unsupported("objects the viewer can't see"))
+}
+
+/// Whether the viewer has `CAN_EDIT` on an object with these (inherited)
+/// policies, as `applyCapabilityChecks()` requires of every edit, even
+/// one without transactions. Automatic capabilities (like those of a
+/// diff's author) are not considered: a refusal is left to PHP, which
+/// may grant them, or raises a policy exception.
+pub(crate) async fn can_edit(
+    request: &ApiRequest<'_>,
+    phid: &Phid,
+    policies: Option<&Policies>,
+) -> Result<bool, MethodError> {
+    let Some(policies) = policies else {
+        return Ok(false);
+    };
+    let context = request.context;
+    let subject = PolicySubject::new(Some(phid.clone()), ObjectKind::Other)
+        .with_policy(Capability::VIEW, policies.view.clone())
+        .with_policy(Capability::EDIT, policies.edit.clone());
+    let facts = phab_policy::loader::load_facts(
+        &context.database,
+        &context.config,
+        &request.viewer,
+        &[&subject],
+        &NoExtendedObjects,
+        request.now,
+    )
+    .await?;
+    Ok(phab_policy::has_capability(
+        &request.viewer,
+        &subject,
+        Capability::EDIT,
+        &facts,
+    )?)
 }
 
 /// Whether a JSON column as Lisk stores it (`json_encode()` of the
@@ -95,6 +132,8 @@ struct Edited {
     phid: String,
     table: &'static str,
     json_columns: &'static [&'static str],
+    /// Whether the viewer can edit it.
+    can_edit: bool,
 }
 
 /// What both methods do once the object is loaded: check the types, then
@@ -107,6 +146,9 @@ async fn save_without_transactions(
     edit::check_types(raw, &["mfa"])?;
     if !raw.is_empty() {
         return Err(unsupported("MFA transactions"));
+    }
+    if !edited.can_edit {
+        return Err(unsupported("objects the viewer can't edit"));
     }
     let actor = crate::writes::actor(request)?;
     let database = &request.context.database;
@@ -142,6 +184,7 @@ impl BuildEdit {
             phid: build.phid.as_str().to_owned(),
             table: "harbormaster_build",
             json_columns: &["buildParameters"],
+            can_edit: can_edit(request, &build.phid, build.policies.as_ref()).await?,
         };
         save_without_transactions(request, &raw, edited).await
     }
@@ -180,6 +223,7 @@ impl BuildableEdit {
             phid: buildable.phid.as_str().to_owned(),
             table: "harbormaster_buildable",
             json_columns: &[],
+            can_edit: can_edit(request, &buildable.phid, buildable.policies.as_ref()).await?,
         };
         save_without_transactions(request, &raw, edited).await
     }

@@ -136,8 +136,9 @@ impl StepEdit {
         edit::check_types(&raw, &types.iter().map(String::as_str).collect::<Vec<_>>())?;
         let (transactions, details) = plan_changes(fields, &step.details, &raw)?;
         let actor = crate::writes::actor(request)?;
-        // Field transactions need `CAN_EDIT` (`applyCapabilityChecks()`).
-        if !transactions.is_empty() && !can_edit(request, &step).await? {
+        // Field transactions need `CAN_EDIT`, and so do edits without
+        // transactions (`applyCapabilityChecks()`).
+        if !can_edit(request, &step).await? {
             return Err(unsupported("steps the viewer can't edit"));
         }
 
