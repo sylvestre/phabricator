@@ -18,7 +18,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 17 | 70 | – | 18 | 15 | 120 |
+| Conduit methods | 25 | 75 | – | 5 | 15 | 120 |
 | Web routes | 44 | – | 54 | 7 | 273 | 378 |
 
 Of the 15 methods not ported, 14 write; the read-only one left is `diffusion.findsymbols`.
@@ -38,7 +38,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Method | PHP status | Port | Note |
 |---|---|---|---|
 | `auth.logout` | stable | ported, not routed | write (terminates sessions); registered only with `PHAB_RUST_LOGIN=1`. |
-| `auth.querypublickeys` | stable | ported, not routed | read-only; keys of users (whom anyone sees). Left to PHP: pages with keys of other objects (Almanac devices), empty lists. Registered without `PHAB_RUST_LOGIN` (`register_queries()`). |
+| `auth.querypublickeys` | stable | shadowed | read-only; keys of users (whom anyone sees). Left to PHP: pages with keys of other objects (Almanac devices), empty lists. Registered without `PHAB_RUST_LOGIN` (`register_queries()`). |
 
 ### Conduit
 
@@ -48,14 +48,14 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `conduit.getcapabilities` | stable | shadowed |  |
 | `conduit.getcertificate` | stable | not ported | legacy `arc install-certificate` token exchange (writes). |
 | `conduit.ping` | stable | Rust |  |
-| `conduit.query` | stable | ported, not routed | from the method catalog (`crates/phab-web/catalog/conduit.json`, regenerate it when PHP's methods change), filtered by installed applications the viewer can see. |
+| `conduit.query` | stable | shadowed | from the method catalog (`crates/phab-web/catalog/conduit.json`, regenerate it when PHP's methods change), filtered by installed applications the viewer can see. |
 
 ### Dashboards
 
 | Method | PHP status | Port | Note |
 |---|---|---|---|
-| `dashboard.panel.edit` | stable | ported, not routed | write: `name` of existing panels. Left to PHP: creations, policies, the fields of panel types (`text`, query, tabs), edits without effect. |
-| `portal.edit` | stable | ported, not routed | write: `name` of existing portals. Left to PHP: creations, policies, projects, edits without effect. |
+| `dashboard.panel.edit` | stable | Rust | write: `name` of existing panels. Left to PHP: creations, policies, the fields of panel types (`text`, query, tabs), edits without effect. |
+| `portal.edit` | stable | Rust | write: `name` of existing portals. Left to PHP: creations, policies, projects, edits without effect. |
 | `portal.search` | stable | shadowed |  |
 
 ### Differential
@@ -67,7 +67,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `differential.createcomment` | frozen | not ported | write (frozen; `differential.revision.edit` replaces it). |
 | `differential.creatediff` | stable | Rust |  |
 | `differential.createinline` | stable | not ported | write: draft inline comments (Lando, moz-phab). |
-| `differential.createrawdiff` | stable | ported, not routed | write; waits for a write-parity run. |
+| `differential.createrawdiff` | stable | Rust | write. |
 | `differential.createrevision` | frozen | not ported | write (frozen; `differential.revision.edit` replaces it). |
 | `differential.diff.search` | stable | shadowed |  |
 | `differential.getalldiffs` | deprecated | shadowed |  |
@@ -95,23 +95,23 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.commit.edit` | stable | not ported | write (EditEngine): auditors, audit actions, comments, projects and subscribers through `PhabricatorAuditEditor`, which sends mail, publishes feed stories and runs Herald on commits: not ported. |
 | `diffusion.commit.search` | stable | shadowed |  |
 | `diffusion.commitparentsquery` | stable | shadowed |  |
-| `diffusion.diffquery` | stable | ported, not routed | read-only for Git (the diff is read inline, not stored); with `ArcanistDiffParser`'s dictionaries. Left to PHP: diffs which are not UTF-8 or the Rust parser leaves to PHP. |
+| `diffusion.diffquery` | stable | shadowed | read-only for Git (the diff is read inline, not stored); with `ArcanistDiffParser`'s dictionaries. Left to PHP: diffs which are not UTF-8 or the Rust parser leaves to PHP. |
 | `diffusion.existsquery` | stable | shadowed |  |
-| `diffusion.filecontentquery` | stable | ported, not routed | write: stores the content as a temporary file attached to the repository (Git). Left to PHP: Git failures, timeouts (`tooSlow`), chunked output, the files `file.upload` leaves to PHP, shadow calls (they would write). |
+| `diffusion.filecontentquery` | stable | Rust | write: stores the content as a temporary file attached to the repository (Git). Left to PHP: Git failures, timeouts (`tooSlow`), chunked output, the files `file.upload` leaves to PHP, shadow calls (they would write). |
 | `diffusion.findsymbols` | stable | not ported | read-only; `DiffusionSymbolQuery` over `repository_symbol`, which Mozilla doesn't fill (no symbol import). Easy to port. |
 | `diffusion.getlintmessages` | unstable | shadowed |  |
 | `diffusion.getrecentcommitsbypath` | deprecated | shadowed |  |
 | `diffusion.historyquery` | stable | shadowed |  |
-| `diffusion.internal.ancestors` | stable | ported, not routed | new: read-only, Git. |
+| `diffusion.internal.ancestors` | stable | shadowed | new: read-only, Git. |
 | `diffusion.internal.gitrawdiffquery` | stable | shadowed |  |
 | `diffusion.lastmodifiedquery` | stable | shadowed | with `PhabricatorRepositoryGraphCache` (read from `cache_general` or rebuilt, never written). |
-| `diffusion.looksoon` | unstable | ported, not routed | write: a `needs-update` status message per visible repository. Left to PHP: identifiers which are not lists of strings, shadow calls. |
+| `diffusion.looksoon` | unstable | Rust | write: a `needs-update` status message per visible repository. Left to PHP: identifiers which are not lists of strings, shadow calls. |
 | `diffusion.mergedcommitsquery` | stable | shadowed |  |
 | `diffusion.querycommits` | frozen | shadowed |  |
 | `diffusion.querypaths` | stable | shadowed |  |
-| `diffusion.rawdiffquery` | stable | ported, not routed | write: stores the diff as a temporary file attached to the repository (Git). Left to PHP: as `diffusion.filecontentquery`. |
+| `diffusion.rawdiffquery` | stable | Rust | write: stores the diff as a temporary file attached to the repository (Git). Left to PHP: as `diffusion.filecontentquery`. |
 | `diffusion.refsquery` | stable | shadowed |  |
-| `diffusion.repository.edit` | stable | ported, not routed | write: `name`, `callsign`, `shortName`, `description` (without mentions, references or files), `status` and `publish` of existing repositories; clears the `needs-update` message. Left to PHP: creations, the other types (policies, projects, refs, limits, symbols, encoding...), cluster repositories, empty names, edits without effect. |
+| `diffusion.repository.edit` | stable | Rust | write: `name`, `callsign`, `shortName`, `description` (without mentions, references or files), `status` and `publish` of existing repositories; clears the `needs-update` message. Left to PHP: creations, the other types (policies, projects, refs, limits, symbols, encoding...), cluster repositories, empty names, edits without effect. |
 | `diffusion.repository.search` | stable | shadowed |  |
 | `diffusion.resolverefs` | stable | shadowed |  |
 | `diffusion.searchquery` | stable | shadowed |  |
@@ -124,7 +124,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Method | PHP status | Port | Note |
 |---|---|---|---|
-| `feed.query` | unstable | ported, not routed | new: read-only, the `data` view (rendered views go to PHP). |
+| `feed.query` | unstable | shadowed | new: read-only, the `data` view (rendered views go to PHP). |
 
 ### Files
 
@@ -156,7 +156,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `harbormaster.build.search` | stable | shadowed |  |
 | `harbormaster.buildable.edit` | stable | not ported | write (EditEngine). |
 | `harbormaster.buildable.search` | stable | shadowed |  |
-| `harbormaster.buildplan.edit` | stable | ported, not routed | write: `name` and `behavior.*` of existing plans the actor can edit (no mail, feed or Herald). Left to PHP: creations, policies, projects, subscribers, empty names, edits without effect. |
+| `harbormaster.buildplan.edit` | stable | Rust | write: `name` and `behavior.*` of existing plans the actor can edit (no mail, feed or Herald). Left to PHP: creations, policies, projects, subscribers, empty names, edits without effect. |
 | `harbormaster.buildplan.search` | stable | shadowed |  |
 | `harbormaster.createartifact` | stable | ported, not routed | write; waits for a CI or Lando contract run. |
 | `harbormaster.log.search` | stable | shadowed |  |
@@ -791,6 +791,6 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 ## Routing what is ported
 
-Read-only methods ported but not routed, to add to the first `location` of `rust/nginx/rust-routes.conf` *and* to `PHAB_SHADOW_METHODS` (AGENTS.md, "Rolling out a Conduit method"): `feed.query`, `diffusion.internal.ancestors`. The other "ported, not routed" methods write, and wait for their parity runs.
+Every read-only method ported is routed. The "ported, not routed" methods write and wait for a contract run (`differential.revision.edit` with moz-phab and Lando, the Harbormaster methods CI and Lando call) or the login review (`auth.logout`).
 
 Rebuild this file's tables when routes or methods change: the counts come from the code, not from usage. Usage counts (nginx logs, `conduit_methodcalllog`, RUST_PORT_PLAN.md §2) should order what is ported next.
