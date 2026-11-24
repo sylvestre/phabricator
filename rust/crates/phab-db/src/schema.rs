@@ -547,6 +547,30 @@ pub const CONTRACT: &[TableContract] = &[
             "dateCreated",
         ],
     },
+    // harbormaster.step.edit.
+    TableContract {
+        database: "harbormaster",
+        table: "harbormaster_buildsteptransaction",
+        columns: &[
+            "id",
+            "phid",
+            "authorPHID",
+            "objectPHID",
+            "viewPolicy",
+            "editPolicy",
+            "commentPHID",
+            "transactionType",
+            "oldValue",
+            "newValue",
+            "metadata",
+            "dateCreated",
+        ],
+    },
+    TableContract {
+        database: "harbormaster",
+        table: "harbormaster_buildstep",
+        columns: &["dateModified"],
+    },
     TableContract {
         database: "harbormaster",
         table: "harbormaster_buildplantransaction",

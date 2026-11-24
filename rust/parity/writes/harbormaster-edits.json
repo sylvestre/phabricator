@@ -1,0 +1,23 @@
+[
+  {"name": "save build 1 without transactions", "method": "harbormaster.build.edit", "params": {"objectIdentifier": 1, "transactions": []}},
+  {"name": "save build 2 by PHID without transactions", "method": "harbormaster.build.edit", "params": {"objectIdentifier": "PHID-HMBD-ydql7c3zjaufyfcrodli", "transactions": []}},
+  {"name": "edit a build with an unknown type", "method": "harbormaster.build.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "restart", "value": true}]}},
+  {"name": "edit an unknown build", "method": "harbormaster.build.edit", "params": {"objectIdentifier": 99999, "transactions": []}},
+  {"name": "edit an unknown build by PHID", "method": "harbormaster.build.edit", "params": {"objectIdentifier": "PHID-HMBD-doesnotexist00000000", "transactions": []}},
+  {"name": "sign a build edit with MFA", "method": "harbormaster.build.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "mfa", "value": true}]}},
+  {"name": "create a build", "method": "harbormaster.build.edit", "params": {"transactions": []}},
+  {"name": "save buildable B1 without transactions", "method": "harbormaster.buildable.edit", "params": {"objectIdentifier": "1", "transactions": []}},
+  {"name": "edit a buildable with an unknown type", "method": "harbormaster.buildable.edit", "params": {"objectIdentifier": "PHID-HMBB-gb3hmgwxms3gclfmnwml", "transactions": [{"type": "name", "value": "B1"}]}},
+  {"name": "edit an unknown buildable", "method": "harbormaster.buildable.edit", "params": {"objectIdentifier": 99999, "transactions": []}},
+  {"name": "set the URI of step 1", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "custom.uri", "value": "https://ci.example.test/run?tree=try"}]}},
+  {"name": "set the method, body and wait of step 2", "method": "harbormaster.step.edit", "params": {"objectIdentifier": "PHID-HMCS-5tlniq3vq3veyvhowntg", "transactions": [{"type": "custom.method", "value": "PUT"}, {"type": "custom.http_body", "value": "{\"tree\": \"try\"}"}, {"type": "custom.content_type", "value": "application/json"}, {"type": "custom.builtin.wait-for-message", "value": "wait"}]}},
+  {"name": "set the URI of step 1 to its value", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "custom.uri", "value": "https://ci.example.test/run"}]}},
+  {"name": "clear the required URI of step 1", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "custom.uri", "value": ""}]}},
+  {"name": "set the URI of step 1 twice", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "custom.uri", "value": "https://a.test/"}, {"type": "custom.uri", "value": "https://b.test/"}]}},
+  {"name": "save step 1 without transactions", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 1, "transactions": []}},
+  {"name": "rename a step", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "name", "value": "Run"}]}},
+  {"name": "set the URI of a step with a number", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "custom.uri", "value": 5}]}},
+  {"name": "set the credential of a step", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "custom.credential", "value": "PHID-CDTL-doesnotexist00000000"}]}},
+  {"name": "edit an unknown step", "method": "harbormaster.step.edit", "params": {"objectIdentifier": 99999, "transactions": []}},
+  {"name": "create a step", "method": "harbormaster.step.edit", "params": {"transactions": [{"type": "custom.uri", "value": "https://ci.example.test/"}]}}
+]

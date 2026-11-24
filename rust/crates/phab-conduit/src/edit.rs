@@ -78,6 +78,39 @@ pub fn identifier(request: &ApiRequest<'_>) -> Result<Option<Identifier>, Method
     ))
 }
 
+/// The exception of `newObjectFromIdentifier()` when no object has the
+/// ID or the PHID, quoting the `objectIdentifier` as given.
+pub fn missing_object(request: &ApiRequest<'_>, identifier: &Identifier) -> MethodError {
+    let text = match request.value("objectIdentifier") {
+        Some(Value::String(text)) => text.clone(),
+        Some(value) => value.to_string(),
+        None => String::new(),
+    };
+    let what = match identifier {
+        Identifier::Id(_) => "ID",
+        Identifier::Phid(_) => "PHID",
+    };
+    pager::core_error(format!("No object exists with {what} \"{text}\"."))
+}
+
+/// `getConduitTransactions()`: every transaction must be of one of the
+/// engine's edit types, `valid` in the order of its fields.
+pub fn check_types(raw: &[RawTransaction], valid: &[&str]) -> Result<(), MethodError> {
+    match raw
+        .iter()
+        .enumerate()
+        .find(|(_, xaction)| !valid.contains(&xaction.kind.as_str()))
+    {
+        Some((key, xaction)) => Err(pager::core_error(format!(
+            "Transaction with key \"{key}\" has invalid type \"{}\". This type is not \
+             recognized. Valid types are: {}.",
+            xaction.kind,
+            valid.join(", ")
+        ))),
+        None => Ok(()),
+    }
+}
+
 /// Edit forms configured in the web UI may change the fields of a
 /// configurable engine.
 pub async fn check_configuration(
@@ -402,6 +435,23 @@ mod tests {
         assert_eq!(
             validation_error(&["A.".to_owned(), "B.".to_owned()]),
             pager::core_error("Validation errors:\n  - A.\n  - B.".to_owned())
+        );
+    }
+
+    #[test]
+    fn refuses_unknown_types() {
+        let raw = |kind: &str| RawTransaction {
+            kind: kind.to_owned(),
+            value: Value::Null,
+        };
+        assert!(check_types(&[raw("mfa")], &["mfa"]).is_ok());
+        assert_eq!(
+            check_types(&[raw("mfa"), raw("name")], &["a", "mfa"]),
+            Err(pager::core_error(
+                "Transaction with key \"1\" has invalid type \"name\". This type is not \
+                 recognized. Valid types are: a, mfa."
+                    .to_owned()
+            ))
         );
     }
 

@@ -8,12 +8,11 @@
 //! from the object it builds (a diff or a commit), a build from its
 //! buildable, a target from its build, artifacts and logs from their
 //! target; a step from its build plan, which has policies of its own.
-//! `harbormaster.buildplan.edit` edits plans ([`plan_edit`]); the other
-//! `*.edit` methods stay in PHP: `harbormaster.build.edit` and
-//! `harbormaster.buildable.edit` have no field but `mfa` (their commands
-//! are messages, sent by `sendmessage`), and the fields of
-//! `harbormaster.step.edit` are the custom fields of the step
-//! implementations (`core:customfield`). The write methods queue the
+//! `harbormaster.buildplan.edit` edits plans ([`plan_edit`]),
+//! `harbormaster.step.edit` the custom fields of steps ([`step_edit`]);
+//! `harbormaster.build.edit` and `harbormaster.buildable.edit` have no
+//! field but `mfa` (their commands are messages, sent by `sendmessage`)
+//! and only save their object ([`object_edit`]). The write methods queue the
 //! build workers' tasks, which [`engine`] runs. [`web`] is what the web
 //! pages read.
 
@@ -24,9 +23,11 @@ pub mod buildable;
 mod constraints;
 pub mod engine;
 pub mod message;
+pub mod object_edit;
 pub mod plan;
 pub mod plan_edit;
 mod query;
+pub mod step_edit;
 mod storage;
 pub mod target;
 mod visibility;
@@ -54,6 +55,9 @@ pub fn register(registry: &mut Registry) {
     registry.register(plan::BuildPlanSearch);
     registry.register(plan::StepSearch);
     registry.register(plan_edit::BuildPlanEdit);
+    registry.register(step_edit::StepEdit);
+    registry.register(object_edit::BuildEdit);
+    registry.register(object_edit::BuildableEdit);
     registry.register(target::TargetSearch);
     registry.register(target::ArtifactSearch);
     registry.register(target::LogSearch);
