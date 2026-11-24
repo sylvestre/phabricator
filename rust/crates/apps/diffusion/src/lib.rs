@@ -34,12 +34,14 @@ pub mod raw_diff_query;
 pub mod recent_commits_by_path;
 pub mod refs;
 pub mod refs_query;
+pub mod remote_uri;
 pub mod repository_edit;
 pub mod repository_search;
 pub mod resolve_refs;
 pub mod search_query;
 pub mod tags_query;
 pub mod update_coverage;
+pub mod uri_edit;
 
 use std::sync::Arc;
 
@@ -77,6 +79,7 @@ pub fn register_with(registry: &mut Registry, mime: Option<MimeCommand>) {
     registry.register(look_soon::LookSoon);
     registry.register(recent_commits_by_path::GetRecentCommitsByPath);
     registry.register(update_coverage::UpdateCoverage);
+    registry.register(uri_edit::UriEdit);
     registry.register(Query(blame::Blame));
     registry.register(Query(branch_query::BranchQuery));
     registry.register(Query(browse_query::BrowseQuery));

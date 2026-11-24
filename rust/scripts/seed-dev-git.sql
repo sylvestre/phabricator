@@ -35,6 +35,18 @@ INSERT IGNORE INTO phabricator_repository.repository_commitdata (commitID,
 UPDATE phabricator_differential.differential_revision
   SET repositoryPHID = 'PHID-REPO-paritygit000000' WHERE id = 1;
 
+-- R2 observes its GitHub remote and mirrors to another (no credential),
+-- for the diffusion.uri.edit scenarios; it has no builtin URIs.
+INSERT IGNORE INTO phabricator_repository.repository_uri (id, phid, repositoryPHID,
+  uri, builtinProtocol, builtinIdentifier, ioType, displayType, isDisabled,
+  dateCreated, dateModified, credentialPHID) VALUES
+(101, 'PHID-RURI-paritygit000001', 'PHID-REPO-paritygit000000',
+  'https://github.com/mozilla/parity.git', NULL, NULL, 'observe', 'default', 0,
+  1525784108, 1525784108, NULL),
+(102, 'PHID-RURI-paritygit000002', 'PHID-REPO-paritygit000000',
+  'git@github.com:mozilla/parity-mirror.git', NULL, NULL, 'mirror', 'default', 0,
+  1525784108, 1525784108, NULL);
+
 -- Paths of R2, and symbols in them, for diffusion.findsymbols and
 -- diffusion.updatecoverage.
 INSERT IGNORE INTO phabricator_repository.repository_path (path, pathHash) VALUES

@@ -18,10 +18,10 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 25 | 75 | – | 10 | 10 | 120 |
+| Conduit methods | 25 | 75 | – | 11 | 9 | 120 |
 | Web routes | 47 | – | 54 | 11 | 266 | 378 |
 
-Of the 10 methods not ported, 9 write; the read-only one left is `diffusion.findsymbols`.
+Of the 9 methods not ported, 8 write; the read-only one left is `diffusion.findsymbols`.
 
 Web routes count each PHP route once; a Diffusion route stands for its three spellings (`/source/<name>/`, `/diffusion/<CALLSIGN>/`, `/diffusion/<id>/`), written `/{repo}`. Routes PHP registers twice (Celerity, `/status/`) count once.
 
@@ -117,7 +117,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.searchquery` | stable | shadowed |  |
 | `diffusion.tagsquery` | stable | shadowed |  |
 | `diffusion.updatecoverage` | unstable | ported, not routed | write: `repository_coverage`, and the branch's row when it has none. Left to PHP: repositories other than Git or the viewer can't see, commits named with a monogram, paths not in `repository_path`, an empty coverage map, values of unusual types, shadow calls. |
-| `diffusion.uri.edit` | stable | not ported | write (EditEngine). Every edit ends with `applyFinalEffects()`, which saves the repository from its Observe URI and rebuilds `repository_uriindex` from the effective and normalized URIs of all its URIs (builtin ones from `diffusion.ssh-*` and the base URI): not ported. |
+| `diffusion.uri.edit` | stable | ported, not routed | write (EditEngine): `uri`, `io`, `display` and `disable` of existing URIs which are not builtin, in Git repositories, with `applyFinalEffects()` (the repository saved from its Observe URI, `repository_uriindex` rebuilt, `needs-update` cleared). Left to PHP: creations, `repository` and `credential`, builtin URIs and repositories with builtin URIs in use (from `diffusion.ssh-*` and the base URI), URIs `PhutilURI` may read differently (passwords, queries, unusual characters), cluster repositories, edits without effect, several validation errors. |
 | `internal.commit.search` | stable | shadowed |  |
 
 ### Feed

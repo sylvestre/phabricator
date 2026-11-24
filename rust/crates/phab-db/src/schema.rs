@@ -1419,6 +1419,39 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_commit",
         columns: &["id", "repositoryID", "commitIdentifier"],
     },
+    // diffusion.uri.edit.
+    TableContract {
+        database: "repository",
+        table: "repository",
+        columns: &["versionControlSystem", "credentialPHID"],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_uri",
+        columns: &[
+            "id",
+            "phid",
+            "repositoryPHID",
+            "uri",
+            "builtinProtocol",
+            "builtinIdentifier",
+            "ioType",
+            "displayType",
+            "isDisabled",
+            "credentialPHID",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_uriindex",
+        columns: &["repositoryPHID", "repositoryURI"],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_uritransaction",
+        columns: &TRANSACTION_COLUMNS,
+    },
 ];
 
 /// The columns `phab_db::editor::insert_transaction()` writes.
