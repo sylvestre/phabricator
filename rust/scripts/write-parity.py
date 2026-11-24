@@ -208,10 +208,12 @@ def normalize(changes, known, started, finished):
         value = int(match.group(0))
         if started - 5 <= value <= finished + 5:
             return "<now>"
-        # Temporary files expire a day or two after they're made.
-        for days in (1, 2):
-            if started - 5 <= value - days * 86400 <= finished + 5:
-                return f"<now+{days}d>"
+        # Offsets from now PHP uses: expired tokens (-60), high security
+        # (+900, or +600 in scenario setups), temporary files (1 or 2 days).
+        for offset, label in ((-60, "-60s"), (600, "+600s"), (900, "+900s"),
+                              (86400, "+1d"), (172800, "+2d")):
+            if started - 5 <= value - offset <= finished + 5:
+                return f"<now{label}>"
         return match.group(0)
 
     # Name the PHIDs of new rows first, by table and row ID, so a row's name

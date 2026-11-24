@@ -69,7 +69,8 @@ WP.IGNORED.discard("phabricator_conduit.conduit_token")
 
 # `phabricator_session` rows: (id, userPHID, type, sessionKey,
 # sessionStart, sessionExpires, ...).
-SESSION_EXPIRES = re.compile(r"^(\(\d+,'[^']*','[^']*','[^']*',\d+,)\d+")
+SESSION_EXPIRES = re.compile(
+    r"^(\(\d+,(?:_binary )?'[^']*',(?:_binary )?'[^']*',(?:_binary )?'[^']*',\d+,)\d+")
 # A new token's secret (`api-` and 28 random characters).
 TOKEN_SECRET = re.compile(r"'(api|cli|clr)-[a-z2-7]{28}'")
 # A new address's verification code, and the link mail carries it in.
@@ -79,7 +80,7 @@ VERIFICATION_LINK = re.compile(r"(emailverify\\*/)[a-z2-7]{24}")
 # PHP behind nginx and the Rust service called directly: the host, the
 # user agent and the remote address (the column after the dates).
 LOG_HOST = re.compile(r'(\\"host\\":\\")[^\\"]*')
-LOG_AGENT = re.compile(r'(\\"user_agent\\":)(?:null|\\"[^\\"]*\\")')
+LOG_AGENT = re.compile(r'(\\"user_agent\\":)(?:null|\\".*?\\")(?=[,}])')
 LOG_ADDRESS = re.compile(r"(,\d+,\d+,)'[^']*'(,(?:'[^']*'|NULL)\);?$)")
 
 
