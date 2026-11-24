@@ -256,6 +256,9 @@ pub struct Publication {
     pub group_id: String,
     /// `loadXHeraldRulesHeader()`.
     pub herald_header: Option<String>,
+    /// The serialized content source of the transactions: Conduit's,
+    /// unless the edit comes from a web form.
+    pub content_source: &'static str,
 }
 
 impl Publication {
@@ -283,6 +286,7 @@ impl Publication {
             transactions,
             group_id: random::random_characters(32),
             herald_header,
+            content_source: CONDUIT_SOURCE,
         })
     }
 
@@ -318,7 +322,7 @@ impl Publication {
                 old: &old,
                 new: &new,
                 metadata: &metadata,
-                content_source: CONDUIT_SOURCE,
+                content_source: self.content_source,
             };
             db_editor::insert_transaction(connection, table, row, now).await?;
         }

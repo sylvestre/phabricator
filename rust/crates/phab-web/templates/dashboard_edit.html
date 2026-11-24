@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1>{{ title }}</h1>
+</header>
+<form class="settings-form" method="post" action="{{ action }}">
+  {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+  <input type="hidden" name="__form__" value="1">
+  <input type="hidden" name="editEngine" value="true">
+  <div class="settings-field">
+    <label for="dashboard-name">Name</label>
+    <input type="text" id="dashboard-name" name="name" value="{{ name }}" required>
+  </div>
+  {%- if let Some(text) = text %}
+  <div class="settings-field">
+    <label for="dashboard-text">Text</label>
+    <textarea id="dashboard-text" name="text" rows="10">{{ text }}</textarea>
+    <input type="hidden" name="text_metadata" value="{}">
+  </div>
+  {%- endif %}
+  {%- for field in policies %}
+  <div class="settings-field">
+    <label for="dashboard-{{ field.key }}">{{ field.label }}</label>
+    <select id="dashboard-{{ field.key }}" name="{{ field.key }}">
+      {%- for option in field.options %}
+      <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  {%- endfor %}
+  {%- if let Some(tags) = tags %}
+  <div class="settings-field">
+    <p>Tags: {% if tags.names.is_empty() %}<span class="muted">None</span>{% else %}{{ tags.names.join(", ") }}{% endif %}</p>
+    {%- for phid in tags.phids %}
+    <input type="hidden" name="projectPHIDs[]" value="{{ phid }}">
+    <input type="hidden" name="projectPHIDs.initial[]" value="{{ phid }}">
+    {%- endfor %}
+    <p class="muted">Tags are changed in the old interface.</p>
+  </div>
+  {%- endif %}
+  <button type="submit">Save Changes</button>
+  <a href="{{ cancel }}">Cancel</a>
+</form>
+{% endblock %}

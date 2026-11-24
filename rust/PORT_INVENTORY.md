@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 18 | 15 | 120 |
-| Web routes | 44 | – | 54 | 7 | 273 | 378 |
+| Web routes | 48 | – | 57 | 11 | 262 | 378 |
 
 Of the 15 methods not ported, 14 write; the read-only one left is `diffusion.findsymbols`.
 
@@ -374,24 +374,24 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/W{id}` | `PhabricatorDashboardPanelViewController` | partial | panel page with its usage and timeline; query panels, panels used by other objects and timelines with text, tab or query changes 421 |
 | `/dashboard/[query/{queryKey}/]` | `PhabricatorDashboardListController` | partial | the builtin queries (`authored`, the default, `open`, `all`); saved queries and search parameters 421 |
 | `/dashboard/view/{id}/` | `PhabricatorDashboardViewController` | Rust | dashboard with its panels |
-| `/dashboard/archive/{id}/` | `PhabricatorDashboardArchiveController` | not ported | write (form or action) |
+| `/dashboard/archive/{id}/` | `PhabricatorDashboardArchiveController` | ported, not routed | write: the dialog, and archiving or activating with the Rust dashboard editor and a web content source; workflow posts and invalid CSRF tokens 421 |
 | `/dashboard/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardEditController` | not ported | write (form or action) |
 | `/dashboard/install/{id}/[{workflowKey}/[{modeKey}/]]` | `PhabricatorDashboardInstallController` | not ported | write (form or action) |
-| `/dashboard/console/` | `PhabricatorDashboardConsoleController` | not ported | console; read-only, static |
+| `/dashboard/console/` | `PhabricatorDashboardConsoleController` | Rust | console; read-only, static |
 | `/dashboard/adjust/{remove\|add\|move}/` | `PhabricatorDashboardAdjustController` | not ported | write (form or action) |
 | `/dashboard/panel/install/{engineKey}/[{queryKey}/]` | `PhabricatorDashboardQueryPanelInstallController` | not ported | write (form or action) |
 | `/dashboard/panel/[query/{queryKey}/]` | `PhabricatorDashboardPanelListController` | partial | the builtin queries (`authored`, the default, `active`, `all`); saved queries and search parameters 421 |
-| `/dashboard/panel/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPanelEditController` | not ported | write (form or action) |
+| `/dashboard/panel/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPanelEditController` | ported, not routed | write: `/dashboard/panel/edit/{id}/` of text and tab panels, the form and its posts which rename the panel (`dashboard.panel.edit`'s core with a web content source); text, policy changes, `?contextPHID=`, new panels, query panels and validation errors 421 before writing |
 | `/dashboard/panel/render/{id}/` | `PhabricatorDashboardPanelRenderController` | not ported | async panel rendering of PHP pages |
-| `/dashboard/panel/archive/{id}/` | `PhabricatorDashboardPanelArchiveController` | not ported | write (form or action) |
+| `/dashboard/panel/archive/{id}/` | `PhabricatorDashboardPanelArchiveController` | ported, not routed | write: the dialog, and archiving or activating with the Rust panel editor and a web content source |
 | `/dashboard/panel/tabs/{id}/{add\|move\|remove\|rename}/` | `PhabricatorDashboardPanelTabsController` | not ported | write (form or action) |
-| `/portal/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorDashboardPortalListController` | not ported | portal search engine page; read-only |
-| `/portal/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPortalEditController` | not ported | write (form or action) |
+| `/portal/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorDashboardPortalListController` | partial | the builtin query (`all`); saved queries and query actions go to PHP |
+| `/portal/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPortalEditController` | ported, not routed | write: `/portal/edit/{id}/`, the form and its posts which rename the portal (`portal.edit`'s core with a web content source); policy and tag changes, new portals and validation errors 421 before writing |
 | `/portal/view/{portalID}/` | `PhabricatorDashboardPortalViewController` | Rust | portal with its menu and default dashboard |
-| `/portal/view/{portalID}/view/{itemID}/` | `PhabricatorDashboardPortalViewController` | not ported | portal menu items (configure/edit write) |
+| `/portal/view/{portalID}/view/{itemID}/` | `PhabricatorDashboardPortalViewController` | partial | dashboard items (and identifiers no item has); the "Manage Portal" page and other items go to PHP |
 | `/portal/view/{portalID}/hide/{itemID}/` | `PhabricatorDashboardPortalViewController` | not ported | portal menu items (configure/edit write) |
 | `/portal/view/{portalID}/default/{itemID}/` | `PhabricatorDashboardPortalViewController` | not ported | portal menu items (configure/edit write) |
-| `/portal/view/{portalID}/configure/` | `PhabricatorDashboardPortalViewController` | not ported | portal menu items (configure/edit write) |
+| `/portal/view/{portalID}/configure/` | `PhabricatorDashboardPortalViewController` | Rust | redirects editors to the global items, 404 for others |
 | `/portal/view/{portalID}/configure/{global\|custom}/` | `PhabricatorDashboardPortalViewController` | not ported | portal menu items (configure/edit write) |
 | `/portal/view/{portalID}/reorder/{global\|custom}/` | `PhabricatorDashboardPortalViewController` | not ported | portal menu items (configure/edit write) |
 | `/portal/view/{portalID}/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPortalViewController` | not ported | portal menu items (configure/edit write) |
@@ -481,7 +481,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/favorites/menu/view/{itemID}/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
 | `/favorites/menu/hide/{itemID}/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
 | `/favorites/menu/default/{itemID}/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
-| `/favorites/menu/configure/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
+| `/favorites/menu/configure/` | `PhabricatorFavoritesMenuItemController` | Rust | the edit modes: redirects to the personal items, or lists both for viewers who can edit the Favorites application |
 | `/favorites/menu/configure/{global\|custom}/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
 | `/favorites/menu/reorder/{global\|custom}/` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
 | `/favorites/menu/edit/[{id}/][{editAction}/]` | `PhabricatorFavoritesMenuItemController` | not ported | favorites menu (configure/edit write) |
@@ -590,11 +590,11 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Route | Controller | Port | Note |
 |---|---|---|---|
 | `/` | `PhabricatorHomeMenuItemController` | partial | the home menu and the builtin home page (active revisions, repositories, recent activity); menus with stored items (pinned dashboards, personal items) go to PHP |
-| `/home/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
+| `/home/` | `PhabricatorHomeMenuItemController` | partial | as `/` |
 | `/home/menu/view/{itemID}/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
 | `/home/menu/hide/{itemID}/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
 | `/home/menu/default/{itemID}/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
-| `/home/menu/configure/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
+| `/home/menu/configure/` | `PhabricatorHomeMenuItemController` | Rust | the edit modes: redirects to the personal items, or lists both for viewers who can edit the Home application |
 | `/home/menu/configure/{global\|custom}/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
 | `/home/menu/reorder/{global\|custom}/` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |
 | `/home/menu/edit/[{id}/][{editAction}/]` | `PhabricatorHomeMenuItemController` | not ported | home menu items (configure/edit write) |

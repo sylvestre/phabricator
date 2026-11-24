@@ -429,6 +429,16 @@ async fn the_home_page_and_its_menu(test_db: &TestDatabase) {
         admin_home.contains("<a href=\"/config/\">Config</a>"),
         "{admin_home}"
     );
+    // `/home/` is the same page.
+    let other = page(test_db, "/home/", ALICE).await;
+    assert!(other.contains("<h2>Recent Activity</h2>"), "{other}");
+    // Administrators may edit the global menu: both modes are listed.
+    let modes = page(test_db, "/home/menu/configure/", ROOT).await;
+    assert!(modes.contains("Personal Menu Items"), "{modes}");
+    assert!(
+        modes.contains("<a href=\"/home/menu/configure/global/\">Global Menu Items</a>"),
+        "{modes}"
+    );
 
     test_db
         .execute(

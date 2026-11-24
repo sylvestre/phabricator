@@ -81,7 +81,7 @@ pub(crate) struct FavoritesPage {
 
 /// Whether `viewer` has the application capability `capability` of
 /// `class`, whose default is `default`.
-async fn has_application_capability<S: WebState>(
+pub(crate) async fn has_application_capability<S: WebState>(
     state: &S,
     viewer: &Viewer,
     class: &str,
