@@ -18,10 +18,10 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 25 | 75 | – | 12 | 8 | 120 |
+| Conduit methods | 25 | 75 | – | 17 | 3 | 120 |
 | Web routes | 52 | – | 64 | 20 | 242 | 378 |
 
-All 8 methods not ported write.
+All 3 methods not ported write.
 
 Web routes count each PHP route once; a Diffusion route stands for its three spellings (`/source/<name>/`, `/diffusion/<CALLSIGN>/`, `/diffusion/<id>/`), written `/{repo}`. Routes PHP registers twice (Celerity, `/status/`) count once.
 
@@ -63,12 +63,12 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Method | PHP status | Port | Note |
 |---|---|---|---|
 | `differential.changeset.search` | stable | shadowed |  |
-| `differential.close` | frozen | not ported | write (frozen; `differential.revision.edit` replaces it). |
-| `differential.createcomment` | frozen | not ported | write (frozen; `differential.revision.edit` replaces it). |
+| `differential.close` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the `close` action through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
+| `differential.createcomment` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the action and comment through the Rust editor (`legacy_edit.rs`); left to PHP: `attach_inlines` with draft inline comments, revisions the caller can't edit, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 | `differential.creatediff` | stable | Rust |  |
-| `differential.createinline` | stable | not ported | write: draft inline comments (Lando, moz-phab). |
+| `differential.createinline` | stable | ported, not routed | write: draft inline comments (Lando, moz-phab), the comment's row as PHP saves it. Left to PHP: values PHP casts or compares loosely, paths several files of the diff have, revisions the caller can't see. Scenarios in `parity/writes/inline.json`. |
 | `differential.createrawdiff` | stable | Rust | write. |
-| `differential.createrevision` | frozen | not ported | write (frozen; `differential.revision.edit` replaces it). |
+| `differential.createrevision` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the commit message field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 | `differential.diff.search` | stable | shadowed |  |
 | `differential.getalldiffs` | deprecated | shadowed |  |
 | `differential.getcommitmessage` | stable | shadowed |  |
@@ -83,7 +83,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `differential.revision.edit` | stable | ported, not routed | write; ported for the actions `parity/writes/` covers, waits for the user's go-ahead (moz-phab, Lando). |
 | `differential.revision.search` | stable | shadowed |  |
 | `differential.setdiffproperty` | stable | Rust |  |
-| `differential.updaterevision` | frozen | not ported | write (frozen; `differential.revision.edit` replaces it). |
+| `differential.updaterevision` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the update and field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: revisions the caller doesn't own, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 
 ### Diffusion
 
