@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>{{ name }}</h1>
+  <ul class="tags"><li class="tag">{{ status.html()|safe }}</li></ul>
+  <p class="muted"><a href="/B{{ buildable_id }}">Buildable {{ buildable_id }}</a> · <a href="/harbormaster/unit/{{ buildable_id }}/">Unit Tests</a> · Unit {{ id }}</p>
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>Test Result</h2>
+    <dl class="properties">
+      <dt>Run At</dt><dd>{{ run_at }}</dd>
+    </dl>
+    <h3>Details</h3>
+    <div class="hm-unit-details{% if is_text %} hm-unit-text{% else %} remarkup{% endif %}">{{ details_html|safe }}</div>
+  </section>
+  {% include "hm_actions.html" %}
+</div>
+{% endblock %}

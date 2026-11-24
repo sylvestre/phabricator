@@ -154,6 +154,8 @@ check "the buildable list goes to Rust with the opt-in" "rust /harbormaster/" -b
 check "build queries go to Rust with the opt-in" "rust /harbormaster/build/query/all/" -b "$optin" "$site/harbormaster/build/query/all/"
 check "build logs go to Rust with the opt-in" "rust /harbormaster/log/view/7/" -b "$optin" "$site/harbormaster/log/view/7/"
 check "log downloads go to PHP" "php /harbormaster/log/download/7/ " -b "$optin" "$site/harbormaster/log/download/7/"
+check "lint messages go to Rust with the opt-in" "rust /harbormaster/lint/1/" -b "$optin" "$site/harbormaster/lint/1/"
+check "unit test results go to Rust with the opt-in" "rust /harbormaster/unit/view/3/" -b "$optin" "$site/harbormaster/unit/view/3/"
 check "file pages go to Rust with the opt-in" "rust /F12" -b "$optin" "$site/F12"
 check "file data goes to Rust with the opt-in" "rust /file/data/key/PHID-FILE-abc/a.png" -b "$optin" "$site/file/data/key/PHID-FILE-abc/a.png"
 check "file data goes to PHP without the opt-in" "php /file/data/key/PHID-FILE-abc/a.png " "$site/file/data/key/PHID-FILE-abc/a.png"

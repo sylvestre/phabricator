@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>B{{ id }} Unit Tests</h1>
+  <p class="muted"><a href="/B{{ id }}">Buildable {{ id }}</a></p>
+</header>
+{% include "hm_unit.html" %}
+{%- if unit.rows.is_empty() %}
+<p class="muted">No data available.</p>
+{%- endif %}
+{% endblock %}

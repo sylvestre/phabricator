@@ -33,7 +33,9 @@ pub(crate) struct UnitRow {
 pub(crate) struct UnitSummary {
     /// The status of the worst result.
     pub(crate) status: Status,
-    pub(crate) view_all_uri: String,
+    /// The page of all results (`setShowViewAll()`), linked from the
+    /// header and from the counts of the hidden ones.
+    pub(crate) view_all_uri: Option<String>,
     pub(crate) rows: Vec<UnitRow>,
     pub(crate) any_duration: bool,
     /// The link to all results, with their counts, when some are hidden.
@@ -60,7 +62,7 @@ fn result_spec(result: &str) -> (String, &'static str, &'static str, &'static st
     (label.to_owned(), icon, color, sort)
 }
 
-fn result_status(result: &str) -> Status {
+pub(crate) fn result_status(result: &str) -> Status {
     let (label, icon, color, _) = result_spec(result);
     Status {
         name: label,
@@ -109,7 +111,7 @@ fn raw_name(message: &UnitMessage) -> Result<String, PageError> {
 }
 
 /// `getUnitMessageDisplayName()`.
-fn display_name(message: &UnitMessage) -> Result<String, PageError> {
+pub(crate) fn display_name(message: &UnitMessage) -> Result<String, PageError> {
     let mut name = raw_name(message)?;
     if !message.namespace.is_empty() {
         name = format!("{}::{name}", message.namespace);
@@ -155,6 +157,28 @@ fn string_property<'a>(message: &'a UnitMessage, key: &str) -> Result<Option<&'a
     }
 }
 
+/// `newUnitMessageDetailsView($viewer)`: all the details, and whether they
+/// are text (monospaced) rather than Remarkup or a message.
+pub(crate) async fn full_details<S: WebState>(
+    state: &S,
+    viewer: &phab_policy::Viewer,
+    message: &UnitMessage,
+) -> Result<(String, bool), PageError> {
+    let details = string_property(message, "details")?.unwrap_or("");
+    let is_remarkup = string_property(message, "format")? == Some("remarkup");
+    if details.is_empty() {
+        return Ok(("<em>No details provided.</em>".to_owned(), false));
+    }
+    if !is_remarkup {
+        return Ok((diff_html::escape(details), true));
+    }
+    let markup = remarkup::render(state, viewer, details, Mode::Html).await?;
+    Ok((
+        String::from_utf8_lossy(markup.as_bytes()).into_owned(),
+        false,
+    ))
+}
+
 /// `newUnitMessageDetailsView($viewer, true)`: the details, shortened.
 async fn details<S: WebState>(
     state: &S,
@@ -191,14 +215,15 @@ async fn details<S: WebState>(
     ))
 }
 
-/// The "Unit Tests" box of the buildable `buildable_id`: the first
-/// `limit` results, worst first, and a link to all of them.
+/// The "Unit Tests" box of the buildable `buildable_id`: the results,
+/// worst first. With a `limit`, the first ones and a link to all of them;
+/// without, all of them.
 pub(crate) async fn summary<S: WebState>(
     state: &S,
     viewer: &phab_policy::Viewer,
     buildable_id: i64,
     mut messages: Vec<UnitMessage>,
-    limit: usize,
+    limit: Option<usize>,
 ) -> Result<UnitSummary, PageError> {
     sort(&mut messages)?;
     let status = messages.first().map_or_else(
@@ -211,7 +236,7 @@ pub(crate) async fn summary<S: WebState>(
     );
     let mut rows = Vec::new();
     let mut any_duration = false;
-    for message in messages.iter().take(limit) {
+    for message in messages.iter().take(limit.unwrap_or(usize::MAX)) {
         let duration = message.duration.map(|duration| {
             // `(int)(1000 * $duration)` truncates.
             #[allow(clippy::cast_possible_truncation)]
@@ -234,8 +259,8 @@ pub(crate) async fn summary<S: WebState>(
             is_text,
         });
     }
-    let view_all_uri = format!("/harbormaster/unit/{buildable_id}/");
-    let full_results = (messages.len() > limit).then(|| {
+    let view_all_uri = limit.map(|_| format!("/harbormaster/unit/{buildable_id}/"));
+    let full_results = limit.filter(|limit| messages.len() > *limit).map(|_| {
         // `mgroup()`: the results in their first sorted position.
         let mut groups: Vec<(&str, usize)> = Vec::new();
         for message in &messages {
@@ -279,6 +304,7 @@ mod tests {
             result: result.to_owned(),
             duration: None,
             properties: Map::new(),
+            date_created: 1,
         }
     }
 

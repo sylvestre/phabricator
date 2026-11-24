@@ -29,7 +29,8 @@ PAGES = [
     "/diffusion/", "/diffusion/2/", "/diffusion/2/browse/master/",
     "/diffusion/2/history/master/", "/diffusion/2/branches/", "/diffusion/2/tags/",
     "/harbormaster/", "/harbormaster/build/1/", "/harbormaster/plan/1/",
-    "/B1", "/settings/user/alice/", "/settings/user/alice/page/datetime/",
+    "/B1", "/harbormaster/lint/1/", "/harbormaster/unit/1/", "/harbormaster/unit/view/1/",
+    "/settings/user/alice/", "/settings/user/alice/page/datetime/",
     "/dashboard/", "/applications/", "/file/", "/flag/", "/conduit/",
 ]
 

@@ -40,10 +40,10 @@ pub(crate) struct BuildItem {
 
 /// A row of the lint table.
 pub(crate) struct LintRow {
-    severity: String,
-    location: String,
-    code: String,
-    name: String,
+    pub(crate) severity: String,
+    pub(crate) location: String,
+    pub(crate) code: String,
+    pub(crate) name: String,
 }
 
 #[derive(Template)]
@@ -76,7 +76,7 @@ pub(crate) fn parse_monogram(monogram: &str) -> Option<i64> {
 
 /// `PhabricatorPolicyFilter::hasCapability()` with `CAN_EDIT` on the
 /// buildable, whose policies are those of the object built.
-async fn can_edit<S: WebState>(
+pub(crate) async fn can_edit<S: WebState>(
     state: &S,
     scope: &Scope,
     buildable: &Buildable,
@@ -108,8 +108,13 @@ async fn can_edit<S: WebState>(
     Ok(can_edit)
 }
 
-/// The lint messages of the targets, as the table shows them.
-async fn lint<S: WebState>(state: &S, targets: &[Phid]) -> Result<Vec<LintRow>, PageError> {
+/// The lint messages of the targets, as the table shows them: the first
+/// `limit`, or all of them.
+pub(crate) async fn lint<S: WebState>(
+    state: &S,
+    targets: &[Phid],
+    limit: Option<usize>,
+) -> Result<Vec<LintRow>, PageError> {
     let mut messages = harbormaster::lint_messages(state.database(), targets).await?;
     // `msort()` keeps the order of equal keys.
     messages.sort_by_cached_key(|message| {
@@ -120,7 +125,9 @@ async fn lint<S: WebState>(state: &S, targets: &[Phid]) -> Result<Vec<LintRow>, 
             &message.code,
         )
     });
-    messages.truncate(LINT_LIMIT);
+    if let Some(limit) = limit {
+        messages.truncate(limit);
+    }
     Ok(messages
         .into_iter()
         .map(|message| LintRow {
@@ -173,7 +180,7 @@ async fn unit_tests<S: WebState>(
         return Ok(None);
     }
     Ok(Some(
-        super::unit::summary(state, &scope.viewer(), id, messages, UNIT_LIMIT).await?,
+        super::unit::summary(state, &scope.viewer(), id, messages, Some(UNIT_LIMIT)).await?,
     ))
 }
 
@@ -191,6 +198,29 @@ fn title(
         .and_then(Command::from_key)
         .ok_or(PageError::Fallback("a buildable command not ported"))?;
     Ok(Some(super::command_title(command, author, "buildable")))
+}
+
+/// The builds of a buildable the viewer sees and the targets of their
+/// current runs, chronological (`needBuilds()` and `needTargets()`).
+pub(crate) async fn builds_and_targets(
+    request: &phab_conduit::ApiRequest<'_>,
+    buildable: &Buildable,
+) -> Result<(Vec<harbormaster::Build>, Vec<Target>), PageError> {
+    let builds = harbormaster::builds_of_buildables(request, std::slice::from_ref(&buildable.phid))
+        .await
+        .map_err(method_error)?;
+    let build_phids: Vec<Phid> = builds.iter().map(|build| build.phid.clone()).collect();
+    // `needBuildTargets()`: chronological, of each build's generation.
+    let mut targets: Vec<Target> = harbormaster::targets_of_builds(request, &build_phids, None)
+        .await
+        .map_err(method_error)?;
+    targets.reverse();
+    targets.retain(|target| {
+        builds
+            .iter()
+            .any(|build| build.phid == target.build_phid && build.generation == target.generation)
+    });
+    Ok((builds, targets))
 }
 
 /// `GET /B{id}`, from the route of monograms.
@@ -213,23 +243,9 @@ pub(crate) async fn show<S: WebState>(
         Lookup::Missing | Lookup::Denied => return Err(PageError::NotFound),
     };
 
-    let builds =
-        harbormaster::builds_of_buildables(&request, std::slice::from_ref(&buildable.phid))
-            .await
-            .map_err(method_error)?;
-    let build_phids: Vec<Phid> = builds.iter().map(|build| build.phid.clone()).collect();
-    // `needBuildTargets()`: chronological, of each build's generation.
-    let mut targets: Vec<Target> = harbormaster::targets_of_builds(&request, &build_phids, None)
-        .await
-        .map_err(method_error)?;
-    targets.reverse();
-    targets.retain(|target| {
-        builds
-            .iter()
-            .any(|build| build.phid == target.build_phid && build.generation == target.generation)
-    });
+    let (builds, targets) = builds_and_targets(&request, &buildable).await?;
     let target_phids: Vec<Phid> = targets.iter().map(|target| target.phid.clone()).collect();
-    let lint = lint(state.as_ref(), &target_phids).await?;
+    let lint = lint(state.as_ref(), &target_phids, Some(LINT_LIMIT)).await?;
     let unit = unit_tests(state.as_ref(), &scope, id, &target_phids).await?;
 
     let plans = harbormaster::plans_by_phid(

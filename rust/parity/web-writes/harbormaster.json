@@ -1,0 +1,8 @@
+[
+  {"name": "web: restart build 1", "path": "/harbormaster/build/restart/1/", "fields": {"__dialog__": "1"}},
+  {"name": "web: restart build 2 from its buildable", "path": "/harbormaster/build/restart/2/buildable/", "fields": {"__dialog__": "1"}},
+  {"name": "web: abort build 1, which is complete", "path": "/harbormaster/build/abort/1/", "fields": {"__dialog__": "1"}},
+  {"name": "web: pause build 2, which is complete", "path": "/harbormaster/build/pause/2/", "fields": {"__dialog__": "1"}},
+  {"name": "web: restart build 1 without the dialog", "path": "/harbormaster/build/restart/1/", "fields": {}},
+  {"name": "web: restart an unknown build", "path": "/harbormaster/build/restart/99999/", "fields": {"__dialog__": "1"}}
+]

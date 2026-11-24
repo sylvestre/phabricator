@@ -38,6 +38,7 @@ Pages ported so far:
 | `/harbormaster/build/<id>/`, `/harbormaster/build/<id>/<run>/` | Build: runs, targets with their artifacts, messages and logs, timeline |
 | `/harbormaster/plan/<id>/` | Build plan: steps, behaviors, Herald rules, recent builds, timeline |
 | `/harbormaster/`, `/harbormaster/plan/` | The default lists of buildables and of active plans |
+| `/harbormaster/lint/<id>/`, `/harbormaster/unit/<id>/`, `/harbormaster/unit/view/<id>/` | All the lint messages and unit test results of a buildable, and one test result |
 | `/settings/user/<user>/page/<panel>/` | Own settings: Date and Time, Language, Diff and Display Preferences, Email Delivery, Format and Preferences (saved in Rust, as PHP's editor writes them), and the lists of email addresses, MFA factors, Conduit API tokens and sessions |
 
 Stories, transactions and parts of a page that aren't ported are left out

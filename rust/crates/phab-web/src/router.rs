@@ -120,8 +120,14 @@ fn harbormaster_routes<S: WebState>() -> Router<Arc<S>> {
             routing::get(harbormaster::build::<S>),
         )
         .route(
-            "/harbormaster/build/{id}/{generation}/",
-            routing::get(harbormaster::build_run::<S>),
+            "/harbormaster/build/{first}/{second}/",
+            routing::get(harbormaster::build_run_or_command::<S>)
+                .post(harbormaster::build_run_or_command::<S>),
+        )
+        .route(
+            "/harbormaster/build/{command}/{id}/{via}/",
+            routing::get(harbormaster::build_command_via::<S>)
+                .post(harbormaster::build_command_via::<S>),
         )
         .route(
             "/harbormaster/plan/",
@@ -146,6 +152,18 @@ fn harbormaster_routes<S: WebState>() -> Router<Arc<S>> {
         .route(
             "/harbormaster/step/view/{id}/",
             routing::get(harbormaster::step::<S>),
+        )
+        .route(
+            "/harbormaster/lint/{id}/",
+            routing::get(harbormaster::lint_messages::<S>),
+        )
+        .route(
+            "/harbormaster/unit/{id}/",
+            routing::get(harbormaster::unit_messages::<S>),
+        )
+        .route(
+            "/harbormaster/unit/view/{id}/",
+            routing::get(harbormaster::unit_message::<S>),
         )
         .route(
             "/harbormaster/plan/{id}/",

@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>B{{ id }} Lint</h1>
+  <p class="muted"><a href="/B{{ id }}">Buildable {{ id }}</a></p>
+</header>
+<section class="hm-lint">
+  <h2>Lint Messages</h2>
+  <table class="hm-table">
+    <thead><tr><th>Severity</th><th>Location</th><th>Code</th><th>Message</th></tr></thead>
+    <tbody>
+      {%- for row in lint %}
+      <tr><td>{{ row.severity }}</td><td class="hm-pri">{{ row.location }}</td><td>{{ row.code }}</td><td>{{ row.name }}</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- if lint.is_empty() %}
+  <p class="muted">No data available.</p>
+  {%- endif %}
+</section>
+{% endblock %}

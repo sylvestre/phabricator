@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 25 | 75 | – | 8 | 12 | 120 |
-| Web routes | 44 | – | 54 | 10 | 270 | 378 |
+| Web routes | 47 | – | 54 | 11 | 266 | 378 |
 
 Of the 12 methods not ported, 11 write; the read-only one left is `diffusion.findsymbols`.
 
@@ -544,16 +544,16 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/harbormaster/buildable/{id}/{pause\|resume\|restart\|abort}/` | `HarbormasterBuildableActionController` | not ported | write (form or action) |
 | `/harbormaster/build/[query/{queryKey}/[{queryAction}/]]` | `HarbormasterBuildListController` | partial | builtin queries; saved queries and filters 421 |
 | `/harbormaster/build/{id}/[{generation}/]` | `HarbormasterBuildViewController` | Rust | build and its older runs |
-| `/harbormaster/build/{pause\|resume\|restart\|abort}/{id}/[{via}/]` | `HarbormasterBuildActionController` | not ported | write (form or action) |
+| `/harbormaster/build/{pause\|resume\|restart\|abort}/{id}/[{via}/]` | `HarbormasterBuildActionController` | ported, not routed | write: the confirmation dialog and its post (`sendMessage()`); builds the viewer can't edit and commands the build can't take (PHP explains why) 421 |
 | `/harbormaster/plan/[query/{queryKey}/[{queryAction}/]]` | `HarbormasterPlanListController` | partial | builtin queries; saved queries and filters 421 |
 | `/harbormaster/plan/edit/[{id}/][{editAction}/]` | `HarbormasterPlanEditController` | not ported | write (form or action) |
 | `/harbormaster/plan/disable/{id}/` | `HarbormasterPlanDisableController` | not ported | write (form or action) |
 | `/harbormaster/plan/behavior/{id}/{behaviorKey}/` | `HarbormasterPlanBehaviorController` | not ported | write (form or action) |
 | `/harbormaster/plan/run/{id}/` | `HarbormasterPlanRunController` | not ported | write (form or action) |
 | `/harbormaster/plan/{id}/` | `HarbormasterPlanViewController` | Rust | build plan |
-| `/harbormaster/unit/{id}/` | `HarbormasterUnitMessageListController` | not ported | unit results of a buildable; read-only |
-| `/harbormaster/unit/view/{id}/` | `HarbormasterUnitMessageViewController` | not ported | one unit result; read-only |
-| `/harbormaster/lint/{id}/` | `HarbormasterLintMessagesController` | not ported | lint results of a buildable; read-only |
+| `/harbormaster/unit/{id}/` | `HarbormasterUnitMessageListController` | Rust | all the unit results of a buildable |
+| `/harbormaster/unit/view/{id}/` | `HarbormasterUnitMessageViewController` | Rust | one unit result, with all its details |
+| `/harbormaster/lint/{id}/` | `HarbormasterLintMessagesController` | Rust | all the lint messages of a buildable |
 | `/harbormaster/log/view/{id}/[${lines}]` | `HarbormasterBuildLogViewController` | partial | without `$lines`; the whole log, or its last lines (`?l=`) |
 | `/harbormaster/log/render/{id}/[${lines}]` | `HarbormasterBuildLogRenderController` | not ported | log rendering of PHP pages |
 | `/harbormaster/log/download/{id}/` | `HarbormasterBuildLogDownloadController` | not ported | log download (writes a file) |

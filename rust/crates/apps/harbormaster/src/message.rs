@@ -464,7 +464,7 @@ async fn build_states(
 }
 
 /// `HarbormasterBuild::sendMessage()` of each build, in one transaction.
-async fn send_to_builds(
+pub(crate) async fn send_to_builds(
     request: &ApiRequest<'_>,
     command: &str,
     builds: &[&Build],

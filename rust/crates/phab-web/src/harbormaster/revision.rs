@@ -329,7 +329,14 @@ async fn unit_tests<S: WebState>(
         return Ok(None);
     }
     Ok(Some(
-        unit::summary(state, &scope.viewer(), buildable.id, messages, UNIT_LIMIT).await?,
+        unit::summary(
+            state,
+            &scope.viewer(),
+            buildable.id,
+            messages,
+            Some(UNIT_LIMIT),
+        )
+        .await?,
     ))
 }
 

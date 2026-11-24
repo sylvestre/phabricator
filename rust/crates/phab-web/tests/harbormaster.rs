@@ -90,6 +90,7 @@ async fn setup() -> Option<TestDatabase> {
         "harbormaster",
         "herald",
         "search",
+        "worker",
     ])
     .await?;
     let (first_chunk, gzip_chunk) = log_chunks();
@@ -860,6 +861,206 @@ async fn unit_tests(test_db: &TestDatabase) {
     assert!(page.contains("href=\"/harbormaster/unit/1/\""), "{page}");
 }
 
+async fn results(test_db: &TestDatabase) {
+    // All the lint messages of B1, worst first.
+    let page = page_as(test_db, "/harbormaster/lint/1/", ALICE).await;
+    assert!(page.contains("<h1>B1 Lint</h1>"), "{page}");
+    let error = page.find("Bad &#60;thing&#62;").expect("the error");
+    let warning = page.find("Meh").expect("the warning");
+    assert!(error < warning, "{page}");
+    assert_eq!(
+        status(test_db, "/harbormaster/lint/2/", BOB).await,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        status(test_db, "/harbormaster/lint/99/", ALICE).await,
+        StatusCode::NOT_FOUND
+    );
+
+    // All six unit results, without links to more.
+    let page = page_as(test_db, "/harbormaster/unit/1/", ALICE).await;
+    assert!(page.contains("<h1>B1 Unit Tests</h1>"), "{page}");
+    assert!(page.contains(">test_skips<"), "{page}");
+    assert_eq!(
+        page.matches("href=\"/harbormaster/unit/view/").count(),
+        6,
+        "{page}"
+    );
+    assert!(!page.contains("View All"), "{page}");
+    assert!(!page.contains("View Full Test Results"), "{page}");
+    assert_eq!(
+        status(test_db, "/harbormaster/unit/2/", BOB).await,
+        StatusCode::NOT_FOUND
+    );
+
+    // One result, with all its details.
+    let page = page_as(test_db, "/harbormaster/unit/view/11/", ALICE).await;
+    assert!(
+        page.contains("<h1>py &#62; Suite::test_fails</h1>"),
+        "{page}"
+    );
+    assert!(page.contains("Failed"), "{page}");
+    assert!(
+        page.contains("one\ntwo &lt;b&gt;\nthree\nfour</div>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("<a href=\"/harbormaster/build/1/\"><span class=\"fa fa-wrench\""),
+        "{page}"
+    );
+    assert!(
+        page.contains("<a href=\"/harbormaster/unit/1/\">Unit Tests</a>"),
+        "{page}"
+    );
+    let page = page_as(test_db, "/harbormaster/unit/view/12/", ALICE).await;
+    assert!(page.contains("<em>No details provided.</em>"), "{page}");
+    let page = page_as(test_db, "/harbormaster/unit/view/13/", ALICE).await;
+    assert!(page.contains("<strong>loud</strong>"), "{page}");
+    assert_eq!(
+        status(test_db, "/harbormaster/unit/view/99/", ALICE).await,
+        StatusCode::NOT_FOUND
+    );
+    // A result of B2, which Bob doesn't see.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_harbormaster`.harbormaster_buildtarget (id, phid, buildPHID, \
+               buildStepPHID, className, details, variables, dateCreated, dateModified, \
+               targetStatus, name, dateStarted, dateCompleted, buildGeneration) VALUES \
+             (5, 'PHID-HMBT-5', 'PHID-HMBD-3', 'PHID-HMCS-1', \
+               'HarbormasterHTTPRequestBuildStepImplementation', '{}', '{}', 1, 2, \
+               'target/failed', 'Ping CI', NULL, NULL, 0); \
+             INSERT INTO `{ns}_harbormaster`.harbormaster_buildunitmessage (id, \
+               buildTargetPHID, engine, namespace, name, result, duration, properties, \
+               dateCreated, dateModified, nameIndex) VALUES \
+             (20, 'PHID-HMBT-5', '', '', 'x', 'fail', NULL, '{}', 1, 1, 'nnnnnnnnnnn1')",
+        )
+        .await;
+    page_as(test_db, "/harbormaster/unit/view/20/", ALICE).await;
+    assert_eq!(
+        status(test_db, "/harbormaster/unit/view/20/", BOB).await,
+        StatusCode::NOT_FOUND
+    );
+}
+
+/// A form posted as Root, with `__form__` and the CSRF token of the
+/// dialog's form.
+async fn post_as_root(test_db: &TestDatabase, path: &str, pairs: &[(&str, &str)]) -> Response {
+    let dialog = page_as(test_db, path, ROOT).await;
+    let token = dialog
+        .split("name=\"__csrf__\" value=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("a CSRF token")
+        .to_owned();
+    let mut all = vec![("__form__", "1"), ("__csrf__", token.as_str())];
+    all.extend_from_slice(pairs);
+    let body = form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(&all)
+        .finish();
+    let config = Config::default();
+    let state = Arc::new(State {
+        database: test_db.database().clone(),
+        remarkup: phab_web::remarkup::new_engine(&config),
+        config,
+    });
+    let request = Request::post(path)
+        .header(header::COOKIE, ROOT)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(body))
+        .unwrap();
+    phab_web::router::<State>()
+        .with_state(state)
+        .oneshot(request)
+        .await
+        .unwrap()
+}
+
+async fn commands(test_db: &TestDatabase) {
+    // Root edits the plan of build 1, which passed: it may restart.
+    let page = page_as(test_db, "/harbormaster/build/restart/1/", ROOT).await;
+    assert!(
+        page.contains("<h1 id=\"dialog-title\">Really restart build?</h1>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("<button type=\"submit\">Restart Build</button>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("<a href=\"/harbormaster/build/1/\">Cancel</a>"),
+        "{page}"
+    );
+    let page = page_as(test_db, "/harbormaster/build/restart/1/buildable/", ROOT).await;
+    assert!(page.contains("<a href=\"/B1\">Cancel</a>"), "{page}");
+    // Builds can't pause once complete; Alice can't run the plan; PHP
+    // explains both.
+    assert_eq!(
+        fallback(test_db, "/harbormaster/build/pause/1/", Some(ROOT)).await,
+        "commands the build can't take"
+    );
+    assert_eq!(
+        fallback(test_db, "/harbormaster/build/restart/1/", Some(ALICE)).await,
+        "commands the build can't take"
+    );
+    assert_eq!(
+        status(test_db, "/harbormaster/build/restart/99/", ROOT).await,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        status(test_db, "/harbormaster/build/restart/x/", ROOT).await,
+        StatusCode::NOT_FOUND
+    );
+    // The run pages still answer.
+    page_as(test_db, "/harbormaster/build/1/2/", ALICE).await;
+
+    // A post which isn't the dialog's shows it again, in PHP.
+    let response = post_as_root(test_db, "/harbormaster/build/restart/1/", &[]).await;
+    assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
+    let response = post_as_root(
+        test_db,
+        "/harbormaster/build/restart/1/buildable/",
+        &[("__dialog__", "1")],
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::FOUND,
+        "{:?}",
+        response.headers().get(FALLBACK_HEADER)
+    );
+    assert!(
+        response.headers()[header::LOCATION]
+            .to_str()
+            .unwrap()
+            .ends_with("/B1")
+    );
+    let rows = phab_db::sqlx::query(&format!(
+        "SELECT CONCAT_WS(' ', m.authorPHID, m.receiverPHID, m.type, m.isConsumed, \
+           t.taskClass, t.objectPHID, t.containerPHID) AS line \
+         FROM {} m JOIN {} t ON t.objectPHID = m.receiverPHID WHERE m.type = 'restart'",
+        test_db
+            .database()
+            .table("harbormaster", "harbormaster_buildmessage"),
+        test_db.database().table("worker", "worker_activetask"),
+    ))
+    .fetch_all(test_db.database().pool())
+    .await
+    .unwrap();
+    let lines: Vec<String> = rows
+        .iter()
+        .map(|row| phab_db::rows::text(row, "line").unwrap())
+        .collect();
+    assert_eq!(
+        lines,
+        ["PHID-USER-root PHID-HMBD-1 restart 0 HarbormasterBuildWorker PHID-HMBD-1 PHID-HMBB-1"]
+    );
+    // Restarting now, the build can't restart again.
+    assert_eq!(
+        fallback(test_db, "/harbormaster/build/restart/1/", Some(ROOT)).await,
+        "commands the build can't take"
+    );
+}
+
 async fn checks(test_db: &TestDatabase) {
     // File artifacts show the file, or that it is restricted.
     let page = page_as(test_db, "/harbormaster/build/1/", ALICE).await;
@@ -905,6 +1106,9 @@ async fn harbormaster_pages_show_what_the_viewer_may_see() {
     lists(&test_db).await;
     more_pages(&test_db).await;
     revision(&test_db).await;
+    // Adds a target to build 3, and a command to build 1.
+    results(&test_db).await;
+    commands(&test_db).await;
 
     // Buildables of other objects are PHP's, in the list too.
     test_db

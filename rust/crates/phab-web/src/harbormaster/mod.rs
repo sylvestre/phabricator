@@ -1,7 +1,9 @@
-//! Harbormaster pages (`PhabricatorHarbormasterApplication`), read-only:
-//! buildables (`/B<id>`), builds, build plans and the lists of buildables
-//! and plans, and the build status of the revision page. The commands
-//! (restart, pause, plan edits...) link to PHP's workflows.
+//! Harbormaster pages (`PhabricatorHarbormasterApplication`):
+//! buildables (`/B<id>`) and their lint and unit test results, builds,
+//! build plans and the lists of buildables and plans, and the build status
+//! of the revision page. The commands of a build are sent from its
+//! confirmation dialog ([`command`]); the others (buildable commands,
+//! plan edits...) link to PHP's workflows.
 //!
 //! Objects are loaded with the queries of the `harbormaster.*.search`
 //! methods, as the viewer, so a page shows what PHP would. What those
@@ -10,9 +12,11 @@
 
 mod build;
 mod buildable;
+mod command;
 mod lists;
 mod log;
 mod plan;
+mod results;
 mod revision;
 pub(crate) mod status;
 mod step;
@@ -30,13 +34,19 @@ use phab_conduit::{ApiRequest, Context, MethodError};
 use phab_core::{Phid, PhidType};
 use phab_policy::Viewer;
 
-pub(crate) use build::{show as build, show_run as build_run};
+pub(crate) use build::show as build;
 pub(crate) use buildable::{parse_monogram as parse_buildable_monogram, show as buildable};
+pub(crate) use command::{
+    command_via as build_command_via, run_or_command as build_run_or_command,
+};
 pub(crate) use lists::{
     build_query, buildables as buildable_list, builds as build_list, plan_query, plans as plan_list,
 };
 pub(crate) use log::show as log;
 pub(crate) use plan::show as plan;
+pub(crate) use results::{
+    lint_page as lint_messages, unit_page as unit_messages, unit_view as unit_message,
+};
 pub(crate) use revision::{DiffChecks, diff_checks};
 pub(crate) use step::show as step;
 

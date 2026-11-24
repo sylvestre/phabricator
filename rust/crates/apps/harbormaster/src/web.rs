@@ -384,6 +384,18 @@ pub async fn can_edit_plans(
     )?)
 }
 
+/// `HarbormasterBuild::sendMessage()`, which the build pages' commands
+/// call: the `harbormaster_buildmessage` row of `command` and the
+/// `HarbormasterBuildWorker` task, contained by the buildable. The
+/// request must allow writes.
+pub async fn send_build_command(
+    request: &ApiRequest<'_>,
+    build: &Build,
+    command: &str,
+) -> Result<(), MethodError> {
+    crate::message::send_to_builds(request, command, &[build]).await
+}
+
 /// A `harbormaster_buildmessage` row: a command sent to a build, or a
 /// message sent to a target.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -540,30 +552,27 @@ pub struct UnitMessage {
     pub duration: Option<f64>,
     /// The properties, like `details` and `format`.
     pub properties: Map<String, Value>,
+    /// `dateCreated`: when it was reported.
+    pub date_created: i64,
 }
 
-/// The unit test results of these targets, newest first
-/// (`HarbormasterBuildUnitMessageQuery`, whose messages everyone may see),
-/// with their names (`didFilterPage()`).
-pub async fn unit_messages(
+/// The unit messages `condition` selects, newest first, with their names
+/// (`HarbormasterBuildUnitMessageQuery::didFilterPage()`).
+async fn select_unit_messages(
     database: &Database,
-    targets: &[Phid],
+    condition: &str,
+    values: &[String],
 ) -> Result<Vec<UnitMessage>, DbError> {
-    if targets.is_empty() {
-        return Ok(Vec::new());
-    }
-    let targets = storage::phid_strings(targets);
     let sql = format!(
         "SELECT message.id, message.buildTargetPHID, message.engine, message.namespace, \
          message.nameIndex, message.result, message.duration, message.properties, \
-         string.stringValue FROM {} message LEFT JOIN {} string \
+         message.dateCreated, string.stringValue FROM {} message LEFT JOIN {} string \
          ON string.stringIndex = message.nameIndex \
-         WHERE message.buildTargetPHID IN ({}) ORDER BY message.id DESC",
+         WHERE {condition} ORDER BY message.id DESC",
         database.table("harbormaster", "harbormaster_buildunitmessage"),
         database.table("harbormaster", "harbormaster_string"),
-        phab_db::placeholders(targets.len()),
     );
-    phab_db::bind_all(phab_db::sqlx::query(&sql), &targets)
+    phab_db::bind_all(phab_db::sqlx::query(&sql), values)
         .fetch_all(database.pool())
         .await?
         .iter()
@@ -583,9 +592,38 @@ pub async fn unit_messages(
                 result: rows::text(row, "result")?,
                 duration: get("duration")?,
                 properties: storage::json_map(row, "properties"),
+                date_created: rows::int(row, "dateCreated")?,
             })
         })
         .collect()
+}
+
+/// The unit test results of these targets, newest first
+/// (`HarbormasterBuildUnitMessageQuery`, whose messages everyone may see),
+/// with their names.
+pub async fn unit_messages(
+    database: &Database,
+    targets: &[Phid],
+) -> Result<Vec<UnitMessage>, DbError> {
+    if targets.is_empty() {
+        return Ok(Vec::new());
+    }
+    let targets = storage::phid_strings(targets);
+    let condition = format!(
+        "message.buildTargetPHID IN ({})",
+        phab_db::placeholders(targets.len())
+    );
+    select_unit_messages(database, &condition, &targets).await
+}
+
+/// The unit test result with this ID, which everyone may see once they
+/// see its target.
+pub async fn unit_message(database: &Database, id: i64) -> Result<Option<UnitMessage>, DbError> {
+    Ok(
+        select_unit_messages(database, "message.id = ?", &[id.to_string()])
+            .await?
+            .pop(),
+    )
 }
 
 /// Why a log can't be read.
