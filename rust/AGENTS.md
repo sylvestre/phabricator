@@ -284,8 +284,12 @@ have.
 `DiffusionUpdateObjectAfterCommitWorker` fails the tasks PHP fails for
 good (no commit or object PHID, a commit or a revision which doesn't
 load); closing the revision is left to PHP, as it needs the commit's
-diff (`newDiffFromCommit()`, `diffusion.rawdiffquery`), and so are
-objects other than revisions.
+diff (`newDiffFromCommit()`, `diffusion.rawdiffquery`), the comparison
+with the active diff, the landing warnings and a close-by-commit edit
+which the Rust editor doesn't make yet (the handler's header lists each
+step), and so are objects other than revisions. The scenarios to compare
+once it is ported are `parity/workers/update-after-commit.json`
+(`worker-parity.py parity/workers/update-after-commit.json`).
 
 `diffusion.commit.edit` (`crates/apps/diffusion/src/commit_edit.rs`)
 applies comments, audit actions, auditors, subscribers and projects to Git
