@@ -101,6 +101,31 @@ fn dashboards<S: WebState>() -> Router<Arc<S>> {
             routing::get(dashboards::dashboard::<S>),
         )
         .route("/portal/view/{id}/", routing::get(dashboards::portal::<S>))
+        .route(
+            "/portal/view/{id}/view/{item}/",
+            routing::get(dashboards::portal_item::<S>),
+        )
+        .route("/portal/", routing::get(dashboards::portal_list::<S>))
+        .route(
+            "/portal/query/{key}/",
+            routing::get(dashboards::portal_query::<S>),
+        )
+        .route(
+            "/dashboard/console/",
+            routing::get(dashboards::console::<S>),
+        )
+        .route(
+            "/portal/view/{id}/configure/",
+            routing::get(dashboards::configure_portal::<S>),
+        )
+        .route(
+            "/home/menu/configure/",
+            routing::get(dashboards::configure_home::<S>),
+        )
+        .route(
+            "/favorites/menu/configure/",
+            routing::get(dashboards::configure_favorites::<S>),
+        )
         .route("/dashboard/", routing::get(dashboards::dashboard_list::<S>))
         .route(
             "/dashboard/query/{key}/",

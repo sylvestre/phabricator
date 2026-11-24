@@ -9,9 +9,11 @@
 //! renders asynchronously with its search engines, and panels nested
 //! deeper than PHP allows send the page to PHP.
 
+mod configure;
 mod dashboard;
 mod lists;
 mod portal;
+mod portals;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -22,12 +24,16 @@ use phab_policy::Viewer;
 use phab_remarkup::Mode;
 use serde_json::Value;
 
+pub(crate) use configure::{
+    favorites as configure_favorites, home as configure_home, portal as configure_portal,
+};
 pub(crate) use dashboard::show as dashboard;
 pub(crate) use lists::{
     dashboard_query, dashboards as dashboard_list, panel, panel_query, panels as panel_list,
     parse_panel_monogram,
 };
-pub(crate) use portal::show as portal;
+pub(crate) use portal::{show as portal, show_item as portal_item};
+pub(crate) use portals::{console, portal_query, portals as portal_list};
 
 use crate::diff_html::escape;
 use crate::error::PageError;

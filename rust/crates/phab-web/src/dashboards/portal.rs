@@ -1,7 +1,8 @@
 //! `/portal/view/<id>/` (`PhabricatorDashboardPortalViewController`): the
 //! portal's menu (`PhabricatorDashboardPortalProfileMenuEngine`) and the
-//! content of its default item, a dashboard. The other item routes
-//! (`view/<item>/`, `configure/`...) are PHP's.
+//! content of its default item, a dashboard; `/portal/view/<id>/view/<item>/`
+//! shows the content of a dashboard item instead. The content of other
+//! items ("Manage Portal", links) and the item writes are PHP's.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -120,16 +121,47 @@ impl DashboardItem<'_> {
 }
 
 /// `GET /portal/view/{id}/`.
-#[allow(clippy::too_many_lines)]
 pub(crate) async fn show<S: WebState>(
     State(state): State<Arc<S>>,
     viewer: WebUser,
     Path(id): Path<String>,
     uri: Uri,
 ) -> Result<Page<PortalPage>, PageError> {
-    viewer.require_application(&*state, APPLICATION).await?;
-    let id = parse_id(&id)?;
-    let state = state.as_ref();
+    render(state.as_ref(), viewer, (&id, None), uri).await
+}
+
+/// `GET /portal/view/{id}/view/{item}/`: the portal with the content of
+/// one of its items.
+pub(crate) async fn show_item<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path((id, item)): Path<(String, String)>,
+    uri: Uri,
+) -> Result<Page<PortalPage>, PageError> {
+    render(state.as_ref(), viewer, (&id, Some(&item)), uri).await
+}
+
+/// `matchesIdentifier()`: the ID, or the builtin key.
+fn matches_identifier(item: &MenuItem, identifier: &str) -> bool {
+    if identifier.is_empty() {
+        return false;
+    }
+    let by_id = identifier.bytes().all(|byte| byte.is_ascii_digit())
+        && item.id.is_some_and(|id| identifier.parse() == Ok(id));
+    by_id || item.builtin_key.as_deref() == Some(identifier)
+}
+
+/// The portal page, with the content of the item `item_id` names, or of
+/// the default item.
+#[allow(clippy::too_many_lines)]
+async fn render<S: WebState>(
+    state: &S,
+    viewer: WebUser,
+    (id, item_id): (&str, Option<&str>),
+    uri: Uri,
+) -> Result<Page<PortalPage>, PageError> {
+    viewer.require_application(state, APPLICATION).await?;
+    let id = parse_id(id)?;
     let database = state.database();
     let as_viewer = viewer.user.viewer();
     let portal = storage::load_portals_by_ids(database, &[id])
@@ -198,11 +230,24 @@ pub(crate) async fn show<S: WebState>(
         .copied()
         .filter(|item| item.menu_item_key == menu::DASHBOARD && !entry(item).is_disabled())
         .collect();
-    let selected = candidates
-        .iter()
-        .find(|item| item.is_default())
-        .or_else(|| candidates.first())
-        .copied();
+    let selected = match item_id {
+        // `getViewsWithItemIdentifier()`: the first item which matches.
+        Some(identifier) => {
+            let selected = items
+                .iter()
+                .copied()
+                .find(|item| matches_identifier(item, identifier));
+            if selected.is_some_and(|item| item.menu_item_key != menu::DASHBOARD) {
+                return Err(PageError::Fallback("portal items other than dashboards"));
+            }
+            selected
+        }
+        None => candidates
+            .iter()
+            .find(|item| item.is_default())
+            .or_else(|| candidates.first())
+            .copied(),
+    };
 
     let base = portal.uri();
     let mut views = Vec::new();
@@ -274,15 +319,21 @@ pub(crate) async fn show<S: WebState>(
 
     let (heading, content) = match selected {
         Some(item) => {
+            // `PhabricatorDashboardProfileMenuItem::newPageContent()`.
             let entry = entry(item);
-            // Selected items have a dashboard which isn't archived.
-            let dashboard = entry
-                .dashboard
-                .ok_or(PageError::Fallback("an invalid portal dashboard"))?;
-            (
-                entry.name(),
-                Content::Dashboard(render_dashboard(state, &as_viewer, dashboard, false).await?),
-            )
+            let content = match entry.dashboard {
+                None => Content::Empty(
+                    "Invalid Dashboard",
+                    "This dashboard is invalid and could not be loaded.",
+                ),
+                Some(dashboard) if dashboard.is_archived() => {
+                    Content::Empty("Archived Dashboard", "This dashboard has been archived.")
+                }
+                Some(dashboard) => {
+                    Content::Dashboard(render_dashboard(state, &as_viewer, dashboard, false).await?)
+                }
+            };
+            (entry.name(), content)
         }
         None => (
             "Empty".to_owned(),

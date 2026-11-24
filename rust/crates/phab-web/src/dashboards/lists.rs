@@ -31,14 +31,14 @@ use crate::viewer::WebUser;
 /// `PhabricatorApplicationSearchEngine` shows this many results a page.
 const PAGE_SIZE: usize = 100;
 
-fn current(uri: &Uri) -> &str {
+pub(super) fn current(uri: &Uri) -> &str {
     uri.path_and_query().map_or("/", |path| path.as_str())
 }
 
 /// The rows of a list page the viewer sees, newest first, as
 /// `PhabricatorCursorPagedPolicyAwareQuery` pages them: up to `PAGE_SIZE`,
 /// and the cursor of the next page.
-async fn visible_page<S, T, F, L>(
+pub(super) async fn visible_page<S, T, F, L>(
     state: &S,
     viewer: &Viewer,
     (after, id): (Option<i64>, fn(&T) -> i64),

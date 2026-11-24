@@ -557,6 +557,23 @@ pub async fn dashboard_page(
     load_page(database, spec, filter, page, Dashboard::from_row).await
 }
 
+/// A page of portals (`PhabricatorDashboardPortalQuery`, which the only
+/// builtin query, `all`, doesn't filter), newest first.
+pub async fn portal_page(
+    database: &Database,
+    page: (Option<i64>, usize),
+) -> Result<Vec<Portal>, DbError> {
+    let spec = ("dashboard_portal", PORTAL_COLUMNS, "1 = 1");
+    load_page(
+        database,
+        spec,
+        &ListFilter::default(),
+        page,
+        Portal::from_row,
+    )
+    .await
+}
+
 /// A page of panels (`PhabricatorDashboardPanelQuery`), newest first.
 pub async fn panel_page(
     database: &Database,

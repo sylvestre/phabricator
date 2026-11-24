@@ -250,6 +250,7 @@ where
 pub(crate) fn routes<S: WebState>() -> Router<Arc<S>> {
     Router::new()
         .route("/", read_only(home::show::<S>))
+        .route("/home/", read_only(home::show::<S>))
         .route("/applications/", read_only(applications::list::<S>))
         .route(
             "/applications/query/{key}/",
