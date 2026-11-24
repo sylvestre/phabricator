@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 25 | 75 | – | 11 | 9 | 120 |
-| Web routes | 48 | – | 58 | 15 | 257 | 378 |
+| Web routes | 48 | – | 61 | 16 | 253 | 378 |
 
 All 9 methods not ported write.
 
@@ -752,11 +752,11 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/transactions/edit/{phid}/` | `PhabricatorApplicationTransactionCommentEditController` | not ported | write (form or action) |
-| `/transactions/remove/{phid}/` | `PhabricatorApplicationTransactionCommentRemoveController` | not ported | write (form or action) |
+| `/transactions/edit/{phid}/` | `PhabricatorApplicationTransactionCommentEditController` | partial | the form, for revision comments, as a page; the post (`PhabricatorApplicationTransactionCommentEditor`, not ported), the dialog (Ajax), removed comments and other objects 421 |
+| `/transactions/remove/{phid}/` | `PhabricatorApplicationTransactionCommentRemoveController` | partial | the confirmation, for revision comments, as a page; the post (`PhabricatorApplicationTransactionCommentEditor`, not ported), the dialog (Ajax), removed comments and other objects 421 |
 | `/transactions/history/{phid}/` | `PhabricatorApplicationTransactionCommentHistoryController` | partial | revision comments, as a page; the dialog (Ajax), removed comments and other objects 421 |
-| `/transactions/quote/{phid}/` | `PhabricatorApplicationTransactionCommentQuoteController` | not ported | quote text for PHP comment forms |
-| `/transactions/raw/{phid}/` | `PhabricatorApplicationTransactionCommentRawController` | not ported | raw comment; read-only |
+| `/transactions/quote/{phid}/` | `PhabricatorApplicationTransactionCommentQuoteController` | ported, not routed | quote text for PHP comment forms: revision comments; removed comments and other objects 421 |
+| `/transactions/raw/{phid}/` | `PhabricatorApplicationTransactionCommentRawController` | partial | revision comments, as a page; the dialog (Ajax), removed comments and other objects 421 |
 | `/transactions/detail/{phid}/` | `PhabricatorApplicationTransactionDetailController` | partial | summary and test plan edits of revisions, as a page; the dialog (Ajax) and other transactions 421 |
 | `/transactions/showolder/{phid}/` | `PhabricatorApplicationTransactionShowOlderController` | not ported | timeline paging of PHP pages |
 | `/transactions/{old\|new}/{phid}/` | `PhabricatorApplicationTransactionValueController` | not ported | old/new values dialog; read-only |

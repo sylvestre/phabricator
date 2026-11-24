@@ -217,6 +217,65 @@ async fn pages_linked_from_mail() {
         StatusCode::NOT_FOUND
     );
 
+    // The current version of the comment, raw and quoted.
+    let raw = page(&test_db, "/transactions/raw/PHID-XACT-DREV-com/", BOB).await;
+    assert!(raw.contains(">Second take</textarea>"), "{raw}");
+    assert!(!raw.contains("draft"), "{raw}");
+    let quote = page(
+        &test_db,
+        "/transactions/quote/PHID-XACT-DREV-com/?ref=D1",
+        BOB,
+    )
+    .await;
+    assert_eq!(
+        quote,
+        "for (;;);{\"error\":null,\"payload\":{\"quoteText\":\"\\u003e\\u003e! In D1, @alice \
+         wrote:\\n\\u003e Second take\"}}"
+    );
+    // The forms editing and removing it, whose posts PHP answers.
+    let edit = page(&test_db, "/transactions/edit/PHID-XACT-DREV-com/", BOB).await;
+    assert!(
+        edit.contains(
+            "<textarea name=\"text\" rows=\"12\" aria-label=\"Comment\">Second take</textarea>"
+        ),
+        "{edit}"
+    );
+    assert!(
+        edit.contains("action=\"/transactions/edit/PHID-XACT-DREV-com/\""),
+        "{edit}"
+    );
+    assert!(edit.contains("<a href=\"/D1\">Cancel</a>"), "{edit}");
+    assert!(!edit.contains("signed with MFA"), "{edit}");
+    let remove = page(&test_db, "/transactions/remove/PHID-XACT-DREV-com/", BOB).await;
+    assert!(remove.contains("Really remove this comment?"), "{remove}");
+    assert!(remove.contains("Remove Comment</button>"), "{remove}");
+    for path in [
+        "/transactions/edit/PHID-XACT-DREV-sum/",
+        "/transactions/remove/PHID-XACT-DREV-sum/",
+        "/transactions/raw/PHID-XACT-DREV-sum/",
+        "/transactions/quote/PHID-XACT-DREV-sum/",
+        "/transactions/raw/PHID-XACT-DREV-hid/",
+    ] {
+        assert_eq!(
+            get(&test_db, path, BOB).await.status(),
+            StatusCode::NOT_FOUND,
+            "{path}"
+        );
+    }
+    assert_eq!(
+        fallback(
+            &test_db,
+            "/transactions/raw/PHID-XACT-DREV-com/?__ajax__=1",
+            BOB
+        )
+        .await,
+        "a transaction dialog"
+    );
+    assert_eq!(
+        fallback(&test_db, "/transactions/raw/PHID-XACT-TASK-1/", BOB).await,
+        "a transaction of an object not ported"
+    );
+
     let subscribers = page(&test_db, "/subscriptions/list/PHID-DREV-1/", BOB).await;
     let bob = subscribers
         .find("<a href=\"/p/bob/\">bob</a>")

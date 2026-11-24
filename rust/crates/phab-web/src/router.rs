@@ -227,6 +227,22 @@ fn transaction_routes<S: WebState>() -> Router<Arc<S>> {
             "/transactions/history/{phid}/",
             routing::get(transactions::history::<S>),
         )
+        .route(
+            "/transactions/raw/{phid}/",
+            routing::get(transactions::raw::<S>),
+        )
+        .route(
+            "/transactions/quote/{phid}/",
+            routing::get(transactions::quote::<S>).post(transactions::quote::<S>),
+        )
+        .route(
+            "/transactions/edit/{phid}/",
+            routing::get(transactions::edit::<S>),
+        )
+        .route(
+            "/transactions/remove/{phid}/",
+            routing::get(transactions::remove::<S>),
+        )
 }
 
 /// Herald: rules, transcripts, the read side of its forms and webhooks.

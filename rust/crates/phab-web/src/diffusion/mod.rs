@@ -14,6 +14,7 @@
 //! and query strings other than the pager's.
 
 mod ajax;
+pub(crate) use ajax::response as ajax_response;
 mod browse;
 mod change;
 mod commit;

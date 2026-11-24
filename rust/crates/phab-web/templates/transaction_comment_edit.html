@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="dialog" aria-labelledby="dialog-title">
+  <h1 id="dialog-title">Edit Comment</h1>
+  {%- if is_mfa %}
+  <p class="notice">This comment was signed with MFA, so you will be required to provide MFA credentials to make changes.</p>
+  {%- endif %}
+  <form class="settings-form" method="post" action="{{ action }}">
+    {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+    <input type="hidden" name="__form__" value="1">
+    <div class="settings-field">
+      <textarea name="text" rows="12" aria-label="Comment">{{ content }}</textarea>
+    </div>
+    <button type="submit">Save Changes</button>
+    <a href="{{ cancel }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}
