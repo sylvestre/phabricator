@@ -1353,6 +1353,33 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_transaction",
         columns: &TRANSACTION_COLUMNS,
     },
+    // The list of Herald webhooks.
+    TableContract {
+        database: "herald",
+        table: "herald_webhook",
+        columns: &["id", "phid", "name", "webhookURI", "viewPolicy", "status"],
+    },
+    // Commit stories of the feed pages.
+    TableContract {
+        database: "audit",
+        table: "audit_transaction",
+        columns: &TRANSACTION_COLUMNS,
+    },
+    TableContract {
+        database: "audit",
+        table: "audit_transaction_comment",
+        columns: &["phid", "authorPHID", "viewPolicy", "editPolicy", "content"],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_commithint",
+        columns: &[
+            "repositoryPHID",
+            "oldCommitIdentifier",
+            "newCommitIdentifier",
+            "hintType",
+        ],
+    },
 ];
 
 /// The columns `phab_db::editor::insert_transaction()` writes.

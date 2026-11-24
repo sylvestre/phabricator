@@ -125,7 +125,7 @@ async fn render<S: WebState>(
 ) -> Result<Page<NotificationsPage>, PageError> {
     viewer.require_application(state, APPLICATION).await?;
     let cursor = cursor(query)?;
-    let listing = listing::notifications(
+    let mut listing = listing::notifications(
         state.database(),
         state.config(),
         &viewer.user.viewer(),
@@ -139,6 +139,7 @@ async fn render<S: WebState>(
     )
     .await
     .map_err(feed::page_error)?;
+    let handles = feed::resolve(state, viewer, &mut listing).await?;
     let key = |entry: Option<&listing::Entry>| entry.map(|entry| entry.story.row.chronological_key);
     let older = key(listing.entries.last())
         .filter(|_| listing.has_older)
@@ -146,7 +147,7 @@ async fn render<S: WebState>(
     let newer = key(listing.entries.first())
         .filter(|_| listing.has_newer)
         .map(|key| feed::page_link(builtin.uri(), "before", key, &[]));
-    let notifications = feed::items(&listing)
+    let notifications = feed::items(&listing, &handles)
         .into_iter()
         .zip(&listing.entries)
         .map(|(story, entry)| NotificationItem {

@@ -153,19 +153,37 @@ fn keys(value: &Value) -> Result<Vec<String>, Unsupported> {
     }
 }
 
-/// `PhabricatorEdgeChangeRecord`: edge values map destination PHIDs to
-/// edge data; the added and removed PHIDs are the keys only on one side.
+/// `PhabricatorEdgeChangeRecord`: the destinations added and removed,
+/// from values which are lists of PHIDs or, in older transactions, maps of
+/// edge dictionaries.
 fn edge_changes(transaction: &Transaction) -> Result<(Vec<Phid>, Vec<Phid>), Unsupported> {
-    let edge_keys = |value: &Value| -> Result<Vec<String>, Unsupported> {
-        match value {
-            Value::Object(entries) => Ok(entries.keys().cloned().collect()),
-            Value::Array(items) if items.is_empty() => Ok(Vec::new()),
-            Value::Null => Ok(Vec::new()),
-            _ => Err(Unsupported("edge values are not dictionaries")),
+    // `getPHIDsFromTransactionValue()`, with `array_fuse()`.
+    let destinations = |value: &Value| -> Result<Vec<String>, Unsupported> {
+        if !phab_core::php::is_truthy(value) {
+            return Ok(Vec::new());
         }
+        let items: Vec<&Value> = match value {
+            Value::Object(entries) => entries.values().collect(),
+            Value::Array(items) => items.iter().collect(),
+            _ => return Err(Unsupported("edge values are not lists")),
+        };
+        let is_map = items
+            .first()
+            .is_some_and(|head| head.is_object() || head.is_array());
+        let mut phids: Vec<String> = Vec::new();
+        for item in items {
+            let phid = if is_map { item.get("dst") } else { Some(item) };
+            let phid = phid
+                .and_then(Value::as_str)
+                .ok_or(Unsupported("edge values are not PHIDs"))?;
+            if !phids.iter().any(|seen| seen == phid) {
+                phids.push(phid.to_owned());
+            }
+        }
+        Ok(phids)
     };
-    let old = edge_keys(&transaction.old_value)?;
-    let new = edge_keys(&transaction.new_value)?;
+    let old = destinations(&transaction.old_value)?;
+    let new = destinations(&transaction.new_value)?;
     let added = new
         .iter()
         .filter(|phid| !old.contains(phid))
@@ -275,10 +293,170 @@ pub fn feed_title(transaction: &Transaction) -> Result<Option<Title>, Unsupporte
             .and_then(status_title)
             .map(|format| pht(format, &[object]))),
         "differential.revision.reviewers" => reviewers_title(transaction).map(Some),
-        "harbormaster:buildable" => Err(Unsupported("buildable titles need Harbormaster handles")),
+        "harbormaster:buildable" => buildable_title(
+            transaction,
+            "%s completed remote builds in %s for %s.",
+            "%s failed remote builds in %s for %s!",
+        ),
 
         _ => core_title(transaction),
     }
+}
+
+/// `getTitleForFeed()` of the `harbormaster:buildable` transactions of
+/// revisions and commits, which name the buildable: `passed` and `failed`
+/// statuses take these formats.
+fn buildable_title(
+    transaction: &Transaction,
+    passed: &str,
+    failed: &str,
+) -> Result<Option<Title>, Unsupported> {
+    let format = match transaction.new_value.as_str() {
+        Some("passed") => passed,
+        Some("failed") => failed,
+        // PHP falls back to the timeline title, which isn't ported.
+        _ => return Err(Unsupported("title of this buildable status is not ported")),
+    };
+    let buildable = transaction
+        .metadata_value("harbormaster:buildablePHID")
+        .and_then(phid_value)
+        .ok_or(Unsupported("buildable transaction without a buildable"))?;
+    Ok(Some(pht(
+        format,
+        &[
+            handle(&transaction.author_phid),
+            handle(&buildable),
+            handle(&transaction.object_phid),
+        ],
+    )))
+}
+
+/// `PhabricatorAuditTransaction::getTitleForFeed()`: the feed titles of
+/// commit transactions, with those of its modular types
+/// (`DiffusionCommitTransactionType`) and the core types commits share.
+/// `Ok(None)` where PHP's title is `null`.
+pub fn audit_feed_title(transaction: &Transaction) -> Result<Option<Title>, Unsupported> {
+    let simple = |format: &str| {
+        Ok(Some(pht(
+            format,
+            &[
+                handle(&transaction.author_phid),
+                handle(&transaction.object_phid),
+            ],
+        )))
+    };
+    let new = &transaction.new_value;
+    match transaction.transaction_type.as_str() {
+        "audit:commit" => commit_title(transaction).map(Some),
+        "audit:inline" => simple("%s added inline comments to %s."),
+        "audit:action" => match new.as_str() {
+            Some("accept") => simple("%s accepted %s."),
+            Some("concern") => simple("%s raised a concern with %s."),
+            Some("resign") => simple("%s resigned from auditing %s."),
+            Some("close") => simple("%s closed the audit of %s."),
+            _ => Err(Unsupported("title of this audit action is not ported")),
+        },
+        "diffusion.commit.accept" => simple("%s accepted %s."),
+        "diffusion.commit.concern" => simple("%s raised a concern with %s."),
+        "diffusion.commit.resign" => simple("%s resigned from %s."),
+        "diffusion.commit.verify" => simple("%s requested verification of %s."),
+        "diffusion.commit.state" => {
+            let format = match new.as_str() {
+                Some("none") => "%s no longer requires audit.",
+                Some("needs-audit") => "%s now requires audit.",
+                Some("concern-raised") => "%s now has outstanding concerns.",
+                Some("needs-verification") => "%s now requires verification by auditors.",
+                Some("audited") => "All concerns with %s have now been addressed.",
+                _ => return Err(Unsupported("title of this audit status is not ported")),
+            };
+            Ok(Some(pht(format, &[handle(&transaction.object_phid)])))
+        }
+        "harbormaster:buildable" => buildable_title(
+            transaction,
+            "%s completed building %s for %s.",
+            "%s failed to build %s for %s!",
+        ),
+        "core:create" | "core:comment" | "core:view-policy" | "core:edit-policy"
+        | "core:subscribers" | "core:edge" | "core:mfa" => core_title(transaction),
+        // Commits have custom fields of their own.
+        _ => Err(Unsupported(
+            "feed title of this commit transaction type is not ported",
+        )),
+    }
+}
+
+/// `getTitleForFeed()` of a `PhabricatorProjectTransaction`: its modular
+/// types (`PhabricatorProjectTransactionType`) and the core types projects
+/// share. `Ok(None)` where PHP's title is `null`.
+pub fn project_feed_title(transaction: &Transaction) -> Result<Option<Title>, Unsupported> {
+    let author = handle(&transaction.author_phid);
+    let object = handle(&transaction.object_phid);
+    match transaction.transaction_type.as_str() {
+        "project:name" => Ok(Some(if transaction.old_value.is_null() {
+            pht("%s created %s.", &[author, object])
+        } else {
+            pht(
+                "%s renamed %s from %s to %s.",
+                &[
+                    author,
+                    object,
+                    Argument::Part(Part::Value(
+                        phab_core::php::string_cast(&transaction.old_value).into_owned(),
+                    )),
+                    Argument::Part(Part::Value(
+                        phab_core::php::string_cast(&transaction.new_value).into_owned(),
+                    )),
+                ],
+            )
+        })),
+        "core:create" | "core:view-policy" | "core:edit-policy" | "core:join-policy"
+        | "core:subscribers" | "core:edge" | "core:mfa" => core_title(transaction),
+        // Icons, colors and slugs read configuration; the description is a
+        // custom field.
+        _ => Err(Unsupported(
+            "feed title of this project transaction type is not ported",
+        )),
+    }
+}
+
+/// The `audit:commit` title: who committed the commit, and who wrote it
+/// when someone else committed it. Names without a user are text.
+fn commit_title(transaction: &Transaction) -> Result<Title, Unsupported> {
+    let new = &transaction.new_value;
+    if !new.is_object() {
+        return Err(Unsupported("commit transaction without commit data"));
+    }
+    let set = |key: &str| new.get(key).filter(|value| truthy(Some(value)));
+    let user = |value: &Value| {
+        phid_value(value)
+            .map(|phid| handle(&phid))
+            .ok_or(Unsupported("commit person is not a PHID"))
+    };
+    let name =
+        |value: Option<&Value>| text(&phab_core::php::string_cast(value.unwrap_or(&Value::Null)));
+    // `$author` is the user, else the name, even an empty one.
+    let mut author = Some(match set("authorPHID") {
+        Some(phid) => user(phid)?,
+        None => name(new.get("authorName")),
+    });
+    let committer = match (set("committerPHID"), set("committerName")) {
+        (Some(phid), _) => user(phid)?,
+        (None, Some(committer)) => name(Some(committer)),
+        (None, None) => author.take().expect("the author is set above"),
+    };
+    let object = handle(&transaction.object_phid);
+    let authored = match &author {
+        Some(Argument::Part(Part::Text(name))) => phab_core::php::is_truthy_str(name),
+        Some(_) => true,
+        None => false,
+    };
+    Ok(match author {
+        Some(author) if authored => pht(
+            "%s committed %s (authored by %s).",
+            &[committer, object, author],
+        ),
+        _ => pht("%s committed %s.", &[committer, object]),
+    })
 }
 
 /// `DifferentialRevisionAuthorTransaction::getTitleForFeed()`:
@@ -504,6 +682,19 @@ const PROJECT_STRINGS: ChangeStrings = ChangeStrings {
     ),
 };
 
+/// `PhabricatorProjectProjectHasMemberEdgeType`.
+const MEMBER_STRINGS: ChangeStrings = ChangeStrings {
+    edit: "%s edited members for %3$s, added: %5$s; removed %7$s.",
+    add: (
+        "%s added a member for %3$s: %4$s.",
+        "%s added members for %3$s: %4$s.",
+    ),
+    remove: (
+        "%s removed a member for %3$s: %4$s.",
+        "%s removed members for %3$s: %4$s.",
+    ),
+};
+
 /// `DifferentialRevisionReviewersTransaction::renderReviewerEditTitle()`
 /// for feed: reviewers added and removed, then those which became blocking
 /// or stopped being.
@@ -563,6 +754,7 @@ fn edge_title(transaction: &Transaction) -> Result<Title, Unsupported> {
     let (added, removed) = edge_changes(transaction)?;
     let strings = match edge_type(transaction) {
         Some(edges::OBJECT_HAS_PROJECT) => &PROJECT_STRINGS,
+        Some(edges::PROJECT_HAS_MEMBER) => &MEMBER_STRINGS,
         Some(REVISION_HAS_REVIEWER) => &REVIEWER_STRINGS,
         _ => return Err(Unsupported("feed title of this edge type is not ported")),
     };
@@ -675,5 +867,169 @@ mod tests {
             ]
             .map(Phid::new)
         );
+    }
+
+    fn of(object: &str, kind: &str, old: Value, new: Value, metadata: Value) -> Transaction {
+        Transaction {
+            phid: Phid::new("PHID-XACT-X-1"),
+            author_phid: Phid::new("PHID-USER-alice"),
+            object_phid: Phid::new(object),
+            view_policy: "users".to_owned(),
+            edit_policy: "users".to_owned(),
+            comment_phid: None,
+            transaction_type: kind.to_owned(),
+            old_value: old,
+            new_value: new,
+            metadata,
+        }
+    }
+
+    /// The title as text, naming handles by their PHIDs.
+    fn text_of(title: Result<Option<Title>, Unsupported>) -> String {
+        title
+            .unwrap()
+            .unwrap()
+            .to_text(|phid| format!("[{}]", phid.as_str()))
+    }
+
+    #[test]
+    fn commits_name_who_committed_them() {
+        let commit = |data: Value| {
+            text_of(audit_feed_title(&of(
+                "PHID-CMIT-1",
+                "audit:commit",
+                Value::Null,
+                data,
+                json!({}),
+            )))
+        };
+        assert_eq!(
+            commit(json!({"authorPHID": "PHID-USER-bob", "authorName": "bob",
+                "committerPHID": "PHID-USER-alice", "committerName": "alice"})),
+            "[PHID-USER-alice] committed [PHID-CMIT-1] (authored by [PHID-USER-bob])."
+        );
+        assert_eq!(
+            commit(json!({"authorPHID": "PHID-USER-bob", "authorName": "bob",
+                "committerPHID": null, "committerName": "Carol <c@x>"})),
+            "Carol <c@x> committed [PHID-CMIT-1] (authored by [PHID-USER-bob])."
+        );
+        assert_eq!(
+            commit(json!({"authorPHID": null, "authorName": "Someone",
+                "committerPHID": null, "committerName": null})),
+            "Someone committed [PHID-CMIT-1]."
+        );
+        assert_eq!(
+            commit(json!({"authorPHID": null, "authorName": "",
+                "committerPHID": null, "committerName": "dave"})),
+            "dave committed [PHID-CMIT-1]."
+        );
+        assert!(
+            audit_feed_title(&of(
+                "PHID-CMIT-1",
+                "audit:commit",
+                Value::Null,
+                json!("x"),
+                json!({})
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn audit_actions_and_states() {
+        let title = |kind: &str, new: Value| {
+            audit_feed_title(&of("PHID-CMIT-1", kind, Value::Null, new, json!({})))
+        };
+        assert_eq!(
+            text_of(title("diffusion.commit.concern", Value::Bool(true))),
+            "[PHID-USER-alice] raised a concern with [PHID-CMIT-1]."
+        );
+        assert_eq!(
+            text_of(title("diffusion.commit.state", json!("needs-audit"))),
+            "[PHID-CMIT-1] now requires audit."
+        );
+        assert_eq!(
+            text_of(title("audit:action", json!("close"))),
+            "[PHID-USER-alice] closed the audit of [PHID-CMIT-1]."
+        );
+        assert!(title("diffusion.commit.state", json!("partially-audited")).is_err());
+        assert!(title("core:customfield", json!("x")).is_err());
+    }
+
+    #[test]
+    fn buildables_name_their_buildable() {
+        let buildable = |object: &str, status: &str| {
+            let transaction = of(
+                object,
+                "harbormaster:buildable",
+                Value::Null,
+                json!(status),
+                json!({"harbormaster:buildablePHID": "PHID-HMBB-1"}),
+            );
+            if object.starts_with("PHID-CMIT") {
+                audit_feed_title(&transaction)
+            } else {
+                feed_title(&transaction)
+            }
+        };
+        assert_eq!(
+            text_of(buildable("PHID-DREV-1", "failed")),
+            "[PHID-USER-alice] failed remote builds in [PHID-HMBB-1] for [PHID-DREV-1]!"
+        );
+        assert_eq!(
+            text_of(buildable("PHID-DREV-1", "passed")),
+            "[PHID-USER-alice] completed remote builds in [PHID-HMBB-1] for [PHID-DREV-1]."
+        );
+        assert_eq!(
+            text_of(buildable("PHID-CMIT-1", "failed")),
+            "[PHID-USER-alice] failed to build [PHID-HMBB-1] for [PHID-CMIT-1]!"
+        );
+        assert!(buildable("PHID-DREV-1", "building").is_err());
+    }
+
+    #[test]
+    fn projects_and_their_members() {
+        let project = |kind: &str, old: Value, new: Value, metadata: Value| {
+            project_feed_title(&of("PHID-PROJ-1", kind, old, new, metadata))
+        };
+        assert_eq!(
+            text_of(project(
+                "project:name",
+                json!("Old"),
+                json!("New"),
+                json!({})
+            )),
+            "[PHID-USER-alice] renamed [PHID-PROJ-1] from \"Old\" to \"New\"."
+        );
+        assert_eq!(
+            text_of(project(
+                "project:name",
+                Value::Null,
+                json!("New"),
+                json!({})
+            )),
+            "[PHID-USER-alice] created [PHID-PROJ-1]."
+        );
+        // Lists of PHIDs, and older maps of edge dictionaries.
+        assert_eq!(
+            text_of(project(
+                "core:edge",
+                json!([]),
+                json!(["PHID-USER-bob", "PHID-USER-carol"]),
+                json!({"edge:type": 13})
+            )),
+            "[PHID-USER-alice] added members for [PHID-PROJ-1]: [PHID-USER-bob], \
+             [PHID-USER-carol]."
+        );
+        assert_eq!(
+            text_of(project(
+                "core:edge",
+                json!({"PHID-USER-bob": {"dst": "PHID-USER-bob"}}),
+                json!([]),
+                json!({"edge:type": "13"})
+            )),
+            "[PHID-USER-alice] removed a member for [PHID-PROJ-1]: [PHID-USER-bob]."
+        );
+        assert!(project("project:icon", json!("a"), json!("b"), json!({})).is_err());
     }
 }

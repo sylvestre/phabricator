@@ -10,13 +10,13 @@ use askama::Template;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::Uri;
 use phab_app_differential::title::{Part, Title};
-use phab_app_feed::handles::Handle;
 use phab_app_feed::listing::{self, Cursor, Listing, Query};
-use phab_app_feed::story::StoryError;
+use phab_app_feed::story::{StoryError, VisibleStory};
 use phab_core::Phid;
-use phab_policy::{Viewer, application};
+use phab_policy::application;
 
 use crate::error::PageError;
+use crate::harbormaster::{self, Handle};
 use crate::response::Page;
 use crate::shell::Shell;
 use crate::state::WebState;
@@ -30,6 +30,8 @@ const PAGE_SIZE: usize = 100;
 pub(crate) struct StoryItem {
     /// The title, as HTML.
     pub(crate) title_html: String,
+    /// The body (`getBodyForFeed()` of its transactions), as HTML.
+    pub(crate) body_html: Option<String>,
     /// When it happened.
     pub(crate) date: String,
 }
@@ -50,21 +52,15 @@ fn escape(text: &str) -> String {
     escaped
 }
 
-fn handle_html(phid: &Phid, handles: &HashMap<Phid, Handle>) -> String {
-    let Some(handle) = handles.get(phid) else {
-        return String::new();
-    };
-    match &handle.uri {
-        Some(uri) => format!("<a href=\"{}\">{}</a>", escape(uri), escape(&handle.name)),
-        None => format!(
-            "<span class=\"handle-restricted\">{}</span>",
-            escape(&handle.name)
-        ),
-    }
+fn handle_html(phid: &Phid, handles: &Handles) -> String {
+    handles.get(phid).map(Handle::link_html).unwrap_or_default()
 }
 
+/// The handles of the titles of a listing, as the viewer sees them.
+pub(crate) type Handles = HashMap<Phid, Handle>;
+
 /// A title as HTML: handles link to their objects, restricted ones don't.
-pub(crate) fn title_html(title: &Title, handles: &HashMap<Phid, Handle>) -> String {
+pub(crate) fn title_html(title: &Title, handles: &Handles) -> String {
     let mut html = String::new();
     for part in &title.0 {
         match part {
@@ -85,6 +81,24 @@ pub(crate) fn title_html(title: &Title, handles: &HashMap<Phid, Handle>) -> Stri
     html
 }
 
+/// The bodies of a story's transactions which have one: the summary of a
+/// commit (`PhabricatorAuditTransaction::getBodyForFeed()`, with
+/// `renderSummary()`). Comments aren't shown.
+fn body_html(story: &VisibleStory) -> Option<String> {
+    let bodies: Vec<String> = story
+        .transactions
+        .iter()
+        .filter(|(transaction, _)| transaction.transaction_type == "audit:commit")
+        .filter_map(|(transaction, _)| {
+            let summary = phab_core::php::string_cast(transaction.new_value.get("summary")?);
+            let summary = phab_core::text::truncate(&summary, None, Some(128));
+            phab_core::php::is_truthy_str(&summary)
+                .then(|| escape(&summary).replace('\n', "<br />"))
+        })
+        .collect();
+    (!bodies.is_empty()).then(|| bodies.join(""))
+}
+
 pub(crate) fn page_error(error: StoryError) -> PageError {
     match error {
         StoryError::Database(error) => error.into(),
@@ -92,27 +106,49 @@ pub(crate) fn page_error(error: StoryError) -> PageError {
     }
 }
 
+/// Leaves out the stories whose titles name objects whose handles aren't
+/// ported, and loads the handles of the others.
+pub(crate) async fn resolve<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    listing: &mut Listing,
+) -> Result<Handles, PageError> {
+    listing.retain_handles(harbormaster::is_supported);
+    let scope = harbormaster::Scope::new(state, viewer);
+    harbormaster::load_handles(state, &scope, &listing.handle_phids()).await
+}
+
 /// The stories of a listing, ready for a template.
-pub(crate) fn items(listing: &Listing) -> Vec<StoryItem> {
+pub(crate) fn items(listing: &Listing, handles: &Handles) -> Vec<StoryItem> {
     listing
         .entries
         .iter()
         .map(|entry| StoryItem {
-            title_html: title_html(&entry.title, &listing.handles),
+            title_html: title_html(&entry.title, handles),
+            body_html: body_html(&entry.story),
             date: time::format_utc(i64::try_from(entry.story.row.epoch()).unwrap_or(i64::MAX)),
         })
         .collect()
 }
 
-/// Loads a page of the feed for `viewer`.
+/// Loads a page of the feed for `viewer`, with the handles its titles
+/// name.
 pub(crate) async fn load<S: WebState>(
     state: &S,
-    viewer: &Viewer,
+    viewer: &WebUser,
     query: Query<'_>,
-) -> Result<Listing, PageError> {
-    listing::list(state.database(), state.config(), viewer, query, state.now())
-        .await
-        .map_err(page_error)
+) -> Result<(Listing, Handles), PageError> {
+    let mut listing = listing::list(
+        state.database(),
+        state.config(),
+        &viewer.user.viewer(),
+        query,
+        state.now(),
+    )
+    .await
+    .map_err(page_error)?;
+    let handles = resolve(state, viewer, &mut listing).await?;
+    Ok((listing, handles))
 }
 
 #[derive(Template)]
@@ -237,9 +273,9 @@ async fn render<S: WebState>(
     references: &[Phid],
     uri: &Uri,
 ) -> Result<Page<Feed>, PageError> {
-    let listing = load(
+    let (listing, handles) = load(
         state,
-        &viewer.user.viewer(),
+        viewer,
         Query {
             cursor,
             limit: PAGE_SIZE,
@@ -269,7 +305,7 @@ async fn render<S: WebState>(
             .iter()
             .map(|query| (query.name(), query.uri(), builtin == Some(*query)))
             .collect(),
-        stories: items(&listing),
+        stories: items(&listing, &handles),
         skipped: listing.skipped,
         older,
         newer,
@@ -354,7 +390,7 @@ pub(crate) async fn detail<S: WebState>(
     }
     // `%Ls` quotes the key: anything but digits matches no row.
     let key: u64 = key.parse().map_err(|_| PageError::NotFound)?;
-    let listing = listing::story(
+    let mut listing = listing::story(
         state.database(),
         state.config(),
         &viewer.user.viewer(),
@@ -363,6 +399,7 @@ pub(crate) async fn detail<S: WebState>(
     )
     .await
     .map_err(page_error)?;
+    let handles = resolve(state.as_ref(), &viewer, &mut listing).await?;
     if listing.skipped > 0 {
         return Err(PageError::Fallback("a feed story Rust can't show"));
     }
@@ -372,7 +409,7 @@ pub(crate) async fn detail<S: WebState>(
     let current = uri.path_and_query().map_or("/feed/", |path| path.as_str());
     Ok(Page(FeedStory {
         shell: Shell::for_user(state.config(), &viewer, "Story", current),
-        stories: items(&listing),
+        stories: items(&listing, &handles),
     }))
 }
 
@@ -387,14 +424,18 @@ mod tests {
                 Phid::new("PHID-USER-alice"),
                 Handle {
                     name: "alice".to_owned(),
+                    full_name: "alice".to_owned(),
                     uri: Some("/p/alice/".to_owned()),
+                    closed: false,
                 },
             ),
             (
                 Phid::new("PHID-DREV-1"),
                 Handle {
                     name: "Restricted Differential Revision".to_owned(),
+                    full_name: "Restricted Differential Revision".to_owned(),
                     uri: None,
+                    closed: false,
                 },
             ),
         ]);

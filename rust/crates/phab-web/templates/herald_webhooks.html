@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>Webhooks: {{ title }}</h1>
+  <nav class="bucket-switch" aria-label="Webhooks">
+    <a href="/herald/webhook/query/active/"{% if query == "active" %} aria-current="page"{% endif %}>Active</a>
+    <a href="/herald/webhook/query/all/"{% if query == "all" %} aria-current="page"{% endif %}>All</a>
+    <a href="/herald/">Rules</a>
+    {%- if can_create %}
+    <a href="/herald/webhook/edit/"><span class="fa fa-plus-square" aria-hidden="true"></span> Create Webhook</a>
+    {%- else %}
+    <span class="muted"><span class="fa fa-plus-square" aria-hidden="true"></span> Create Webhook</span>
+    {%- endif %}
+  </nav>
+</header>
+{%- if items.is_empty() %}
+<p class="muted">No webhooks found.</p>
+{%- else %}
+<ul class="hm-list">
+  {%- for item in items %}
+  <li{% if item.disabled %} class="hm-disabled"{% endif %}>
+    <p class="hm-item"><span class="muted">Webhook {{ item.id }}</span> <a href="/herald/webhook/view/{{ item.id }}/">{{ item.name }}</a> <span class="tag"><span class="fa {{ item.icon }}" aria-hidden="true"></span> {{ item.status }}</span></p>
+    <p class="hm-attribute muted">{{ item.uri }}</p>
+  </li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(next) = next %}
+<nav class="pager"><a href="/herald/webhook/query/{{ query }}/?after={{ next }}">Next Page</a></nav>
+{%- endif %}
+{% endblock %}

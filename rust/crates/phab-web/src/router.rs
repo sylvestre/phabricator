@@ -190,23 +190,9 @@ fn differential<S: WebState>() -> Router<Arc<S>> {
         )
 }
 
-/// The pages, the static files and the interface switch. nginx decides
-/// which of them reach the service (`rust/nginx/rust-web.conf`).
-pub fn router<S: WebState>() -> Router<Arc<S>> {
+/// The pages of a transaction and its comment.
+fn transaction_routes<S: WebState>() -> Router<Arc<S>> {
     Router::new()
-        .merge(crate::system::routes::<S>())
-        .merge(differential::<S>())
-        .merge(web_edit::routes::<S>())
-        .merge(revision_edit::routes::<S>())
-        .merge(project_edit::routes::<S>())
-        .merge(people_and_activity::<S>())
-        .merge(file_routes::<S>())
-        .route("/flag/", routing::get(flags::list::<S>))
-        .route("/flag/query/{key}/", routing::get(flags::query::<S>))
-        .route(
-            "/subscriptions/list/{phid}/",
-            routing::get(subscriptions::list::<S>),
-        )
         .route(
             "/transactions/detail/{phid}/",
             routing::get(transactions::detail::<S>),
@@ -215,7 +201,27 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
             "/transactions/history/{phid}/",
             routing::get(transactions::history::<S>),
         )
-        .merge(harbormaster_routes::<S>())
+        .route(
+            "/transactions/raw/{phid}/",
+            routing::get(transactions::raw::<S>),
+        )
+        .route(
+            "/transactions/quote/{phid}/",
+            routing::get(transactions::quote::<S>).post(transactions::quote::<S>),
+        )
+        .route(
+            "/transactions/edit/{phid}/",
+            routing::get(transactions::edit::<S>),
+        )
+        .route(
+            "/transactions/remove/{phid}/",
+            routing::get(transactions::remove::<S>),
+        )
+}
+
+/// Herald: rules, transcripts, the read side of its forms and webhooks.
+fn herald_routes<S: WebState>() -> Router<Arc<S>> {
+    Router::new()
         .route("/herald/", routing::get(herald::rule_list::<S>))
         .route(
             "/herald/query/{key}/",
@@ -237,6 +243,38 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
             "/herald/transcript/{id}/{view}/",
             routing::get(herald::transcript_view::<S>),
         )
+        .route(
+            "/herald/disable/{id}/{action}/",
+            routing::get(herald::disable::<S>),
+        )
+        .route("/herald/test/", routing::get(herald::test_console::<S>))
+        .route("/herald/webhook/", routing::get(herald::webhook_list::<S>))
+        .route(
+            "/herald/webhook/query/{key}/",
+            routing::get(herald::webhook_query::<S>),
+        )
+}
+
+/// The pages, the static files and the interface switch. nginx decides
+/// which of them reach the service (`rust/nginx/rust-web.conf`).
+pub fn router<S: WebState>() -> Router<Arc<S>> {
+    Router::new()
+        .merge(crate::system::routes::<S>())
+        .merge(differential::<S>())
+        .merge(web_edit::routes::<S>())
+        .merge(revision_edit::routes::<S>())
+        .merge(project_edit::routes::<S>())
+        .merge(people_and_activity::<S>())
+        .merge(file_routes::<S>())
+        .route("/flag/", routing::get(flags::list::<S>))
+        .route("/flag/query/{key}/", routing::get(flags::query::<S>))
+        .route(
+            "/subscriptions/list/{phid}/",
+            routing::get(subscriptions::list::<S>),
+        )
+        .merge(transaction_routes::<S>())
+        .merge(harbormaster_routes::<S>())
+        .merge(herald_routes::<S>())
         .merge(dashboards::<S>())
         .route(
             "/source/{short}/",

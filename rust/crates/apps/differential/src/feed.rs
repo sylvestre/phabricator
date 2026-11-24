@@ -249,6 +249,49 @@ pub fn feed_visibility(transaction: &Transaction, comment: Option<&Comment>) -> 
     }
 }
 
+/// `shouldHideForFeed()` of a `PhabricatorAuditTransaction` (a commit's),
+/// given its comment if the viewer can see it.
+pub fn audit_feed_visibility(
+    transaction: &Transaction,
+    comment: Option<&Comment>,
+) -> FeedVisibility {
+    let kind = transaction.transaction_type.as_str();
+
+    // DiffusionCommitBuildableTransaction::shouldHideForFeed(); the other
+    // modular types keep the default.
+    if kind == "harbormaster:buildable" && transaction.new_value.as_str() != Some("failed") {
+        return FeedVisibility::Hidden;
+    }
+    if let Some(decided) = hidden_for_feed_before_should_hide(transaction) {
+        return decided;
+    }
+    match kind {
+        // Commit custom fields may hide their transactions.
+        "core:customfield" => FeedVisibility::Unknown,
+        _ => should_hide(transaction, comment),
+    }
+}
+
+/// `shouldHideForFeed()` of a `PhabricatorProjectTransaction`, given its
+/// comment if the viewer can see it: no modular type of projects hides
+/// itself, and `shouldHide()` hides the silenced edges.
+pub fn project_feed_visibility(
+    transaction: &Transaction,
+    comment: Option<&Comment>,
+) -> FeedVisibility {
+    if let Some(decided) = hidden_for_feed_before_should_hide(transaction) {
+        return decided;
+    }
+    match transaction.transaction_type.as_str() {
+        TYPE_EDGE if edge_type(transaction) == Some(edges::PROJECT_SILENCED) => {
+            FeedVisibility::Hidden
+        }
+        // The description and the other fields of projects.
+        "core:customfield" => FeedVisibility::Unknown,
+        _ => should_hide(transaction, comment),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use phab_core::Phid;
@@ -341,6 +384,59 @@ mod tests {
         assert_eq!(
             feed_visibility(&token, Some(&comment("hello"))),
             FeedVisibility::Hidden
+        );
+    }
+
+    #[test]
+    fn commits_and_projects_hide_their_own_transactions() {
+        let failed = transaction(
+            "harbormaster:buildable",
+            json!(null),
+            json!("failed"),
+            json!({}),
+        );
+        let passed = transaction(
+            "harbormaster:buildable",
+            json!(null),
+            json!("passed"),
+            json!({}),
+        );
+        let commit = transaction("audit:commit", json!(null), json!({}), json!({}));
+        let field = transaction("core:customfield", json!(null), json!("x"), json!({}));
+        assert_eq!(
+            audit_feed_visibility(&failed, None),
+            FeedVisibility::Visible
+        );
+        assert_eq!(audit_feed_visibility(&passed, None), FeedVisibility::Hidden);
+        assert_eq!(
+            audit_feed_visibility(&commit, None),
+            FeedVisibility::Visible
+        );
+        assert_eq!(audit_feed_visibility(&field, None), FeedVisibility::Unknown);
+
+        let silenced = transaction(
+            "core:edge",
+            json!([]),
+            json!(["x"]),
+            json!({"edge:type": 61}),
+        );
+        let member = transaction(
+            "core:edge",
+            json!([]),
+            json!(["x"]),
+            json!({"edge:type": 13}),
+        );
+        assert_eq!(
+            project_feed_visibility(&silenced, None),
+            FeedVisibility::Hidden
+        );
+        assert_eq!(
+            project_feed_visibility(&member, None),
+            FeedVisibility::Visible
+        );
+        assert_eq!(
+            project_feed_visibility(&field, None),
+            FeedVisibility::Unknown
         );
     }
 

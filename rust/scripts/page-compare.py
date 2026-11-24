@@ -31,6 +31,12 @@ PAGES = [
     "/harbormaster/", "/harbormaster/build/1/", "/harbormaster/plan/1/",
     "/B1", "/settings/user/alice/", "/settings/user/alice/page/datetime/",
     "/dashboard/", "/applications/", "/file/", "/flag/", "/conduit/",
+    "/feed/query/all/", "/feed/7709175067316311499/", "/feed/7710881926747863418/",
+    "/feed/6497289955581676552/",
+    "/herald/test/", "/herald/disable/1/disable/", "/herald/webhook/",
+    "/herald/webhook/query/all/", "/transactions/raw/PHID-XACT-DREV-to3veya3jhdfy4p/",
+    "/transactions/edit/PHID-XACT-DREV-to3veya3jhdfy4p/",
+    "/transactions/remove/PHID-XACT-DREV-to3veya3jhdfy4p/",
 ]
 
 # Words of the page chrome (menus, footers) that differ by design.

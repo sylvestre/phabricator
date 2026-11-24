@@ -808,10 +808,28 @@ impl Comment {
 
 /// The comments with these PHIDs, in no particular order.
 pub async fn load_comments(database: &Database, phids: &[Phid]) -> Result<Vec<Comment>, DbError> {
+    load_application_comments(
+        database,
+        "differential",
+        "differential_transaction_comment",
+        phids,
+    )
+    .await
+}
+
+/// The comments with these PHIDs from the comment table of another
+/// application (like `audit`.`audit_transaction_comment`), in no
+/// particular order.
+pub async fn load_application_comments(
+    database: &Database,
+    application: &str,
+    table: &str,
+    phids: &[Phid],
+) -> Result<Vec<Comment>, DbError> {
     let rows = select_by_phid(
         database,
         "phid, authorPHID, viewPolicy, editPolicy, content",
-        &database.table("differential", "differential_transaction_comment"),
+        &database.table(application, table),
         "phid",
         phids,
     )

@@ -64,6 +64,28 @@ pub(crate) struct DialogPage {
     cancel: String,
 }
 
+impl DialogPage {
+    /// A confirmation posting to `action`, without other inputs.
+    pub(crate) fn new(
+        shell: Shell,
+        title: &'static str,
+        paragraphs: Vec<&'static str>,
+        action: String,
+        submit: Option<&'static str>,
+        cancel: String,
+    ) -> Self {
+        Self {
+            shell,
+            title,
+            paragraphs,
+            action,
+            hidden: Vec::new(),
+            submit,
+            cancel,
+        }
+    }
+}
+
 /// A policy option of the form.
 pub(crate) struct PolicyOption {
     value: String,

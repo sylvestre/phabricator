@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 18 | 15 | 120 |
-| Web routes | 44 | – | 54 | 7 | 273 | 378 |
+| Web routes | 44 | – | 60 | 8 | 266 | 378 |
 
 Of the 15 methods not ported, 14 write; the read-only one left is `diffusion.findsymbols`.
 
@@ -574,12 +574,12 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/herald/new/` | `HeraldNewController` | not ported | write (form or action) |
 | `/herald/create/` | `HeraldNewController` | not ported | write (form or action) |
 | `/herald/edit/[{id}/]` | `HeraldRuleController` | not ported | write: the rule editor |
-| `/herald/disable/{id}/{action}/` | `HeraldDisableController` | not ported | write (form or action) |
-| `/herald/test/` | `HeraldTestConsoleController` | not ported | runs rules against an object (dry run, writes a transcript) |
+| `/herald/disable/{id}/{action}/` | `HeraldDisableController` | partial | the confirmation, for rules the viewer may edit; the post (`HeraldRuleEditor`, not ported) and object rules 421 |
+| `/herald/test/` | `HeraldTestConsoleController` | partial | the object form; the post, which runs the rules against the object (dry run, writes a transcript), 421 |
 | `/herald/transcript/` | `HeraldTranscriptListController` | Rust | default list |
 | `/herald/transcript/[query/{queryKey}/]` | `HeraldTranscriptListController` | partial | builtin queries |
 | `/herald/transcript/{id}/[{view}/]` | `HeraldTranscriptController` | partial | transcripts of revisions, every view; transaction titles not ported 421 |
-| `/herald/webhook/[query/{queryKey}/[{queryAction}/]]` | `HeraldWebhookListController` | not ported | webhook list; read-only (admin) |
+| `/herald/webhook/[query/{queryKey}/[{queryAction}/]]` | `HeraldWebhookListController` | partial | the builtin queries `active` (default) and `all`; saved queries and filters 421 |
 | `/herald/webhook/view/{id}/[request/{requestID}/]` | `HeraldWebhookViewController` | not ported | webhook page; read-only (admin) |
 | `/herald/webhook/edit/[{id}/][{editAction}/]` | `HeraldWebhookEditController` | not ported | write (form or action) |
 | `/herald/webhook/test/{id}/` | `HeraldWebhookTestController` | not ported | write (form or action) |
@@ -752,11 +752,11 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/transactions/edit/{phid}/` | `PhabricatorApplicationTransactionCommentEditController` | not ported | write (form or action) |
-| `/transactions/remove/{phid}/` | `PhabricatorApplicationTransactionCommentRemoveController` | not ported | write (form or action) |
+| `/transactions/edit/{phid}/` | `PhabricatorApplicationTransactionCommentEditController` | partial | the form, for revision comments, as a page; the post (`PhabricatorApplicationTransactionCommentEditor`, not ported), the dialog (Ajax), removed comments and other objects 421 |
+| `/transactions/remove/{phid}/` | `PhabricatorApplicationTransactionCommentRemoveController` | partial | the confirmation, for revision comments, as a page; the post (`PhabricatorApplicationTransactionCommentEditor`, not ported), the dialog (Ajax), removed comments and other objects 421 |
 | `/transactions/history/{phid}/` | `PhabricatorApplicationTransactionCommentHistoryController` | partial | revision comments, as a page; the dialog (Ajax), removed comments and other objects 421 |
-| `/transactions/quote/{phid}/` | `PhabricatorApplicationTransactionCommentQuoteController` | not ported | quote text for PHP comment forms |
-| `/transactions/raw/{phid}/` | `PhabricatorApplicationTransactionCommentRawController` | not ported | raw comment; read-only |
+| `/transactions/quote/{phid}/` | `PhabricatorApplicationTransactionCommentQuoteController` | ported, not routed | quote text for PHP comment forms: revision comments; removed comments and other objects 421 |
+| `/transactions/raw/{phid}/` | `PhabricatorApplicationTransactionCommentRawController` | partial | revision comments, as a page; the dialog (Ajax), removed comments and other objects 421 |
 | `/transactions/detail/{phid}/` | `PhabricatorApplicationTransactionDetailController` | partial | summary and test plan edits of revisions, as a page; the dialog (Ajax) and other transactions 421 |
 | `/transactions/showolder/{phid}/` | `PhabricatorApplicationTransactionShowOlderController` | not ported | timeline paging of PHP pages |
 | `/transactions/{old\|new}/{phid}/` | `PhabricatorApplicationTransactionValueController` | not ported | old/new values dialog; read-only |

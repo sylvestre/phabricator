@@ -142,9 +142,9 @@ pub(crate) async fn show<S: WebState>(
         Some(remarkup::render(state.as_ref(), &as_viewer, &user_profile.blurb, Mode::Html).await?)
     };
     // `buildPeopleFeed()`: the stories referencing the user.
-    let activity = feed::load(
+    let (activity, activity_handles) = feed::load(
         state.as_ref(),
-        &as_viewer,
+        &viewer,
         phab_app_feed::listing::Query {
             cursor: phab_app_feed::listing::Cursor::Newest,
             limit: ACTIVITY_LIMIT,
@@ -167,7 +167,7 @@ pub(crate) async fn show<S: WebState>(
         blurb,
         projects,
         project_count,
-        stories: feed::items(&activity),
+        stories: feed::items(&activity, &activity_handles),
         skipped_stories: activity.skipped,
         user_phid: user.phid.as_str().to_owned(),
         user_id: user.id,
