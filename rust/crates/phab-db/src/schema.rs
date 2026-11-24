@@ -1377,6 +1377,25 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_transaction",
         columns: &TRANSACTION_COLUMNS,
     },
+    // diffusion.findsymbols.
+    TableContract {
+        database: "repository",
+        table: "repository_symbol",
+        columns: &[
+            "repositoryPHID",
+            "symbolContext",
+            "symbolName",
+            "symbolType",
+            "symbolLanguage",
+            "pathID",
+            "lineNumber",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_path",
+        columns: &["id", "path", "pathHash"],
+    },
 ];
 
 /// The columns `phab_db::editor::insert_transaction()` writes.

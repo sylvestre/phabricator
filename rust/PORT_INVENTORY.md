@@ -18,10 +18,10 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 25 | 75 | – | 8 | 12 | 120 |
+| Conduit methods | 25 | 75 | – | 9 | 11 | 120 |
 | Web routes | 47 | – | 54 | 11 | 266 | 378 |
 
-Of the 12 methods not ported, 11 write; the read-only one left is `diffusion.findsymbols`.
+Of the 11 methods not ported, 10 write; the read-only one left is `diffusion.findsymbols`.
 
 Web routes count each PHP route once; a Diffusion route stands for its three spellings (`/source/<name>/`, `/diffusion/<CALLSIGN>/`, `/diffusion/<id>/`), written `/{repo}`. Routes PHP registers twice (Celerity, `/status/`) count once.
 
@@ -98,7 +98,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.diffquery` | stable | shadowed | read-only for Git (the diff is read inline, not stored); with `ArcanistDiffParser`'s dictionaries. Left to PHP: diffs which are not UTF-8 or the Rust parser leaves to PHP. |
 | `diffusion.existsquery` | stable | shadowed |  |
 | `diffusion.filecontentquery` | stable | Rust | write: stores the content as a temporary file attached to the repository (Git). Left to PHP: Git failures, timeouts (`tooSlow`), chunked output, the files `file.upload` leaves to PHP, shadow calls (they would write). |
-| `diffusion.findsymbols` | stable | not ported | read-only; `DiffusionSymbolQuery` over `repository_symbol`, which Mozilla doesn't fill (no symbol import). Easy to port. |
+| `diffusion.findsymbols` | stable | ported, not routed | read-only; `DiffusionSymbolQuery` over `repository_symbol`, which Mozilla doesn't fill (no symbol import). Left to PHP: values which are not strings. |
 | `diffusion.getlintmessages` | unstable | shadowed |  |
 | `diffusion.getrecentcommitsbypath` | deprecated | shadowed |  |
 | `diffusion.historyquery` | stable | shadowed |  |

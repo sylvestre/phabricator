@@ -34,3 +34,19 @@ INSERT IGNORE INTO phabricator_repository.repository_commitdata (commitID,
 -- merge-conflict tasks show in the parity scenarios.
 UPDATE phabricator_differential.differential_revision
   SET repositoryPHID = 'PHID-REPO-paritygit000000' WHERE id = 1;
+
+-- Paths of R2, and symbols in them, for diffusion.findsymbols and
+-- diffusion.updatecoverage.
+INSERT IGNORE INTO phabricator_repository.repository_path (path, pathHash) VALUES
+('/README', MD5('/README')), ('/dir/a.txt', MD5('/dir/a.txt'));
+INSERT INTO phabricator_repository.repository_symbol (repositoryPHID,
+  symbolContext, symbolName, symbolType, symbolLanguage, pathID, lineNumber)
+SELECT 'PHID-REPO-paritygit000000', symbol.context, symbol.name, symbol.type,
+  'php', path.id, symbol.line
+FROM (SELECT 'Parity' AS context, 'parityRun' AS name, 'function' AS type,
+        '/README' AS file, 2 AS line
+      UNION ALL SELECT '', 'ParityRunner', 'class', '/dir/a.txt', 1
+      UNION ALL SELECT '', 'parity_all', 'function', '/dir/a.txt', 0) AS symbol
+JOIN phabricator_repository.repository_path path ON path.path = symbol.file
+WHERE NOT EXISTS (SELECT 1 FROM phabricator_repository.repository_symbol
+  WHERE repositoryPHID = 'PHID-REPO-paritygit000000');

@@ -1,0 +1,15 @@
+[
+  {"name": "diffusion.findsymbols: by name", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"name": "parityRun"}},
+  {"name": "diffusion.findsymbols: by prefix", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"namePrefix": "parity"}},
+  {"name": "diffusion.findsymbols: by prefix, other case", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"namePrefix": "Parity"}},
+  {"name": "diffusion.findsymbols: prefix with an underscore", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"namePrefix": "parity_"}},
+  {"name": "diffusion.findsymbols: by prefix, context, language and type", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"namePrefix": "p", "context": "Parity", "language": "php", "type": "function"}},
+  {"name": "diffusion.findsymbols: empty context", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"namePrefix": "P", "context": ""}},
+  {"name": "diffusion.findsymbols: empty language and type", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"namePrefix": "parity", "language": "", "type": "0"}},
+  {"name": "diffusion.findsymbols: by repository", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"namePrefix": "p", "repositoryPHID": "PHID-REPO-paritygit000000"}},
+  {"name": "diffusion.findsymbols: in another repository", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"namePrefix": "p", "repositoryPHID": "PHID-REPO-tk2tekowvewl4wfqh24m"}},
+  {"name": "diffusion.findsymbols: nothing found", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"name": "nothing"}},
+  {"name": "diffusion.findsymbols: name and prefix", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"name": "parityRun", "namePrefix": "p"}},
+  {"name": "diffusion.findsymbols: no name", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {}},
+  {"name": "diffusion.findsymbols: name 0", "method": "diffusion.findsymbols", "token": "$PHAB_REPLAY_TOKEN", "params": {"name": "0", "namePrefix": "parity"}}
+]

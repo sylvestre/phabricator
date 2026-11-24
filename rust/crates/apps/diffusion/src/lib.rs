@@ -12,6 +12,7 @@ pub mod drequest;
 pub mod exists_query;
 pub mod file_content_query;
 pub mod file_future;
+pub mod find_symbols;
 pub mod git;
 pub mod graph_cache;
 pub mod history;
@@ -65,6 +66,7 @@ pub fn register_with(registry: &mut Registry, mime: Option<MimeCommand>) {
     let mime = mime.map(Arc::new);
     registry.register(audit_query::AuditQuery);
     registry.register(commit_search::CommitSearch);
+    registry.register(find_symbols::FindSymbols);
     registry.register(internal_commit_search::InternalCommitSearch);
     registry.register(legacy_query::LegacyQuery);
     registry.register(query_commits::QueryCommits);
