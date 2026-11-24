@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="dialog" aria-labelledby="dialog-title">
+  <h1 id="dialog-title">Add Members</h1>
+  {%- if let Some(error) = error %}
+  <p class="notice">{{ error }}</p>
+  {%- endif %}
+  <form class="settings-form" method="post" action="{{ action }}">
+    {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+    <input type="hidden" name="__form__" value="1">
+    <fieldset>
+      <legend>Members</legend>
+      {%- for user in users %}
+      <label><input type="checkbox" name="memberPHIDs[]" value="{{ user.phid }}" checked> {{ user.name }}</label>
+      {%- endfor %}
+      <label>Add users <input type="text" name="rust.add" value="{{ adding }}" placeholder="alice, bob"></label>
+    </fieldset>
+    <button type="submit">Add Members</button>
+    <a href="{{ cancel }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

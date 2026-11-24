@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 17 | 70 | – | 18 | 15 | 120 |
-| Web routes | 44 | – | 54 | 7 | 273 | 378 |
+| Web routes | 45 | – | 55 | 11 | 267 | 378 |
 
 Of the 15 methods not ported, 14 write; the read-only one left is `diffusion.findsymbols`.
 
@@ -620,7 +620,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/people/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorPeopleListController` | partial | the builtin queries `active` (the default) and `all`, through `user.search`; the approval queue, saved queries and search parameters 421 |
+| `/people/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorPeopleListController` | partial | the builtin queries `active` (the default) and `all`, saved queries and the "Advanced Search" form (`query/advanced/`, `crates/phab-web/src/search_form.rs`), through `user.search`; the approval queue, search parameters and form posts (which save a query), queries the viewer named, and saved queries with dates, a fulltext query or IDs 421 |
 | `/people/logs/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorPeopleLogsController` | not ported | admin: user activity logs (search engine) |
 | `/people/logs/{id}/` | `PhabricatorPeopleLogViewController` | not ported | admin: one log entry |
 | `/people/invite/[query/{queryKey}/]` | `PhabricatorPeopleInviteListController` | not ported | admin: invites (unused with BMO login) |
@@ -652,13 +652,13 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/project/[query/{queryKey}/]` | `PhabricatorProjectListController` | partial | the builtin queries (`joined`, the default, `watching`, `active`, `all`); saved queries and search parameters 421 |
-| `/project/filter/{filter}/` | `PhabricatorProjectListController` | not ported | project search engine page; read-only |
+| `/project/[query/{queryKey}/]` | `PhabricatorProjectListController` | partial | the builtin queries (`joined`, the default, `watching`, `active`, `all`), saved queries and the "Advanced Search" form (`query/advanced/`, `crates/phab-web/src/search_form.rs`); search parameters and form posts (which save a query), queries the viewer named, saved queries with functions (`viewer()`), a fulltext query, subtypes, ancestors, IDs or spaces, and installs with custom fields or spaces 421 |
+| `/project/filter/{filter}/` | `PhabricatorProjectListController` | Rust | the default query, as `/project/` |
 | `/project/archive/{id}/` | `PhabricatorProjectArchiveController` | not ported | write (form or action) |
 | `/project/lock/{id}/` | `PhabricatorProjectLockController` | not ported | write (form or action) |
-| `/project/members/{id}/` | `PhabricatorProjectMembersViewController` | Rust | new: read-only; the actions link to PHP |
-| `/project/members/{id}/add/` | `PhabricatorProjectMembersAddController` | not ported | write (form or action) |
-| `/project/{members\|watchers}/{id}/remove/` | `PhabricatorProjectMembersRemoveController` | not ported | write (form or action) |
+| `/project/members/{id}/` | `PhabricatorProjectMembersViewController` | Rust | new: read-only; the actions link to their workflows |
+| `/project/members/{id}/add/` | `PhabricatorProjectMembersAddController` | ported, not routed | dialog and post (`memberPHIDs[]`), written by the Rust editor (`crates/phab-web/src/project_members.rs`); projects the viewer can't edit, subprojects, archived projects, workflow requests and edits without effect 421; waits for a web-write parity run |
+| `/project/{members\|watchers}/{id}/remove/` | `PhabricatorProjectMembersRemoveController` | ported, not routed | dialog and post, written by the Rust editor; as adding members, and removing objects which are not users; waits for a web-write parity run |
 | `/project/profile/{id}/` | `PhabricatorProjectProfileController` | Rust | project profile |
 | `/project/view/{id}/` | `PhabricatorProjectViewController` | Rust | project profile |
 | `/project/picture/{id}/` | `PhabricatorProjectEditPictureController` | not ported | write (form or action) |
@@ -674,10 +674,10 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/project/{projectID}/item/builtin/{itemID}/[{id}/][{editAction}/]` | `PhabricatorProjectMenuItemController` | not ported | profile menu items (custom menus; writes for configure/reorder/edit) |
 | `/project/subprojects/{id}/` | `PhabricatorProjectSubprojectsController` | Rust | new: read-only; the actions link to PHP |
 | `/project/update/{id}/{action}/` | `PhabricatorProjectUpdateController` | partial | joining and leaving (dialog and post), written by the Rust editor; parents, milestones, subprojects, archived projects, workflow requests and edits without effect 421 |
-| `/project/manage/{id}/` | `PhabricatorProjectManageController` | not ported | read-only "Manage" page (history, details) |
+| `/project/manage/{id}/` | `PhabricatorProjectManageController` | partial | details, timeline and the actions, which link to PHP; timelines with comments, images, parents, milestones, custom policies or fields, and installs with project custom fields 421 |
 | `/project/{watch\|unwatch}/{id}/` | `PhabricatorProjectWatchController` | partial | dialog and post, written by the Rust editor; subprojects, milestones, parents, archived projects, workflow requests and edits without effect 421 |
-| `/project/silence/{id}/` | `PhabricatorProjectSilenceController` | not ported | write (form or action) |
-| `/project/warning/{id}/` | `PhabricatorProjectSubprojectWarningController` | not ported | dialog before the first subproject |
+| `/project/silence/{id}/` | `PhabricatorProjectSilenceController` | ported, not routed | dialog and post, written by the Rust editor (the silenced members edge, which needs no capability); subprojects, milestones, parents, archived projects, workflow requests and posts which aren't dialog posts 421; waits for a web-write parity run |
+| `/project/warning/{id}/` | `PhabricatorProjectSubprojectWarningController` | ported, not routed | dialog before the first subproject; its post redirects to PHP's form (`/project/edit/?parent=N`) |
 | `/tag/{slug}/` | `PhabricatorProjectViewController` | Rust | project profile; other hashtags redirect |
 
 ### Search (`PhabricatorSearchApplication`)

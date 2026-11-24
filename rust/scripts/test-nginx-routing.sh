@@ -125,6 +125,7 @@ check "revisions of a user go to Rust with the opt-in" "rust /people/revisions/1
 check "commits of a user go to PHP" "php /people/commits/1/ " -b "$optin" "$site/people/commits/1/"
 check "project members go to Rust with the opt-in" "rust /project/members/1/" -b "$optin" "$site/project/members/1/"
 check "adding project members goes to PHP" "php /project/members/1/add/ " -b "$optin" "$site/project/members/1/add/"
+check "the manage page of projects goes to Rust with the opt-in" "rust /project/manage/1/" -b "$optin" "$site/project/manage/1/"
 check "subprojects go to Rust with the opt-in" "rust /project/subprojects/1/" -b "$optin" "$site/project/subprojects/1/"
 check "the project list goes to Rust with the opt-in" "rust /project/" -b "$optin" "$site/project/"
 check "project queries go to Rust with the opt-in" "rust /project/query/all/" -b "$optin" "$site/project/query/all/"

@@ -5,7 +5,7 @@ use phab_db::sqlx::mysql::MySqlRow;
 use phab_db::{Database, DbError, rows};
 
 /// `PhabricatorProjectStatus::STATUS_ARCHIVED`.
-const STATUS_ARCHIVED: &str = "100";
+pub(crate) const STATUS_ARCHIVED: &str = "100";
 /// `PhabricatorProjectStatus::STATUS_ACTIVE`.
 pub(crate) const STATUS_ACTIVE: &str = "0";
 

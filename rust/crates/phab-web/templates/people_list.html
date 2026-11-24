@@ -8,6 +8,7 @@
     {%- if is_admin %}
     <a href="/people/query/approval/">Approval Queue</a>
     {%- endif %}
+    <a href="{% if let Some(edit_uri) = edit_uri %}{{ edit_uri }}{% else %}/people/query/advanced/{% endif %}"{% if edit_uri.is_some() %} aria-current="page"{% endif %}>Advanced Search</a>
   </nav>
 </header>
 {%- if items.is_empty() %}

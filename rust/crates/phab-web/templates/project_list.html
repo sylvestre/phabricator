@@ -7,6 +7,7 @@
     <a href="/project/query/watching/"{% if query == "watching" %} aria-current="page"{% endif %}>Watching</a>
     <a href="/project/query/active/"{% if query == "active" %} aria-current="page"{% endif %}>Active</a>
     <a href="/project/query/all/"{% if query == "all" %} aria-current="page"{% endif %}>All</a>
+    <a href="{% if let Some(edit_uri) = edit_uri %}{{ edit_uri }}{% else %}/project/query/advanced/{% endif %}"{% if edit_uri.is_some() %} aria-current="page"{% endif %}>Advanced Search</a>
     <a href="/project/edit/"><span class="fa fa-plus-square" aria-hidden="true"></span> Create Project</a>
   </nav>
 </header>

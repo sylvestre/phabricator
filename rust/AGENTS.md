@@ -140,9 +140,12 @@ tags, subscribers and Bugzilla bug ID, `crates/phab-web/src/revision_edit.rs`),
 with the Rust editor's edit form source; changes to the author, the
 repository or the policies, and the errors PHP shows on the form, go to
 PHP. So do the project edit form (`/project/edit/N/`: name, icon,
-color and hashtags), joining and leaving (`/project/update/N/join|leave/`)
-and watching (`/project/watch|unwatch/N/`), through the Rust project
-editor with a web content source (`crates/phab-web/src/project_edit.rs`);
+color and hashtags), joining and leaving (`/project/update/N/join|leave/`),
+watching (`/project/watch|unwatch/N/`), adding and removing members and
+watchers (`/project/members/N/add/`, `/project/{members|watchers}/N/remove/`)
+and silencing project mail (`/project/silence/N/`), through the Rust
+project editor with a web content source (`crates/phab-web/src/project_edit.rs`,
+`project_members.rs`);
 description and policy changes, subprojects and milestones go to PHP.
 `rust/scripts/web-write-parity.py`
 compares these writes with PHP's on the dev stack, with the scenarios of

@@ -4,9 +4,10 @@
 //! web content source, and what their forms show.
 
 use phab_conduit::pager::{self, Direction};
+use phab_conduit::search::Constraints;
 use phab_conduit::{ApiRequest, MethodError};
 use phab_db::{Database, DbError, rows};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 
 use crate::editor::{self, Target};
 pub use crate::editor::{Change, Operation, Source};
@@ -47,6 +48,105 @@ pub async fn list(
         request,
         filters,
         order: Order::Name,
+        ancestor_paths: Vec::new(),
+    };
+    let cursor = after.map(|id| pager::Cursor {
+        text: id.to_string(),
+        truthy: id != 0,
+    });
+    let mut found =
+        pager::execute(&projects, cursor.as_ref(), Direction::Forward, limit + 1).await?;
+    let more = found.len() > limit;
+    found.truncate(limit);
+    Ok((found, more))
+}
+
+/// A saved query of `PhabricatorProjectSearchEngine`, as its fields read
+/// it (`buildQueryFromParameters()`): empty values are no constraint.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SavedQuery {
+    /// `name`: name tokens.
+    pub name: String,
+    /// `slugs`.
+    pub slugs: Vec<String>,
+    /// `memberPHIDs`: plain user PHIDs (functions are left to PHP).
+    pub members: Vec<String>,
+    /// `watcherPHIDs`.
+    pub watchers: Vec<String>,
+    /// `status`: `active`, `archived`, or anything else for all.
+    pub status: String,
+    /// `isMilestone`.
+    pub is_milestone: Option<bool>,
+    /// `isRoot`.
+    pub is_root: Option<bool>,
+    /// `minDepth` and `maxDepth`.
+    pub depth: (Option<i64>, Option<i64>),
+    /// `icons`.
+    pub icons: Vec<String>,
+    /// `colors`.
+    pub colors: Vec<String>,
+    /// `parentPHIDs`.
+    pub parents: Vec<String>,
+    /// `order`: a builtin order key, or the default (`name`).
+    pub order: Option<String>,
+}
+
+/// A page of the saved `query` by its order: up to `limit` projects the
+/// viewer sees after the project `after`, and whether there are more.
+/// What `project.search` leaves to PHP is [`MethodError::Unsupported`]
+/// here too, like user functions and the relevance order.
+pub async fn list_saved(
+    request: &ApiRequest<'_>,
+    query: &SavedQuery,
+    after: Option<i64>,
+    limit: usize,
+) -> Result<(Vec<Project>, bool), MethodError> {
+    let mut constraints = Map::new();
+    let mut add = |key: &str, value: Value| {
+        constraints.insert(key.to_owned(), value);
+    };
+    if !query.name.is_empty() {
+        add("name", json!(query.name));
+    }
+    for (key, list) in [
+        ("slugs", &query.slugs),
+        ("members", &query.members),
+        ("watchers", &query.watchers),
+        ("icons", &query.icons),
+        ("colors", &query.colors),
+        ("parents", &query.parents),
+    ] {
+        if !list.is_empty() {
+            add(key, json!(list));
+        }
+    }
+    if let Some(is_milestone) = query.is_milestone {
+        add("isMilestone", json!(is_milestone));
+    }
+    if let Some(is_root) = query.is_root {
+        add("isRoot", json!(is_root));
+    }
+    if let Some(min) = query.depth.0 {
+        add("minDepth", json!(min));
+    }
+    if let Some(max) = query.depth.1 {
+        add("maxDepth", json!(max));
+    }
+    let constraints = Value::Object(constraints);
+    let mut filters = Filters::parse(
+        &Constraints::parse(Some(&constraints), crate::search::VALID_CONSTRAINTS)?,
+        true,
+    )?;
+    filters.statuses = match query.status.as_str() {
+        "active" => Some(vec![crate::storage::STATUS_ACTIVE.to_owned()]),
+        "archived" => Some(vec![crate::storage::STATUS_ARCHIVED.to_owned()]),
+        _ => None,
+    };
+    let order = Order::parse(query.order.as_ref().map(|order| json!(order)).as_ref())?;
+    let projects = Projects {
+        request,
+        filters,
+        order,
         ancestor_paths: Vec::new(),
     };
     let cursor = after.map(|id| pager::Cursor {
@@ -121,6 +221,33 @@ impl Choices {
     pub fn has_color(&self, color: &str) -> bool {
         self.colors.iter().any(|(key, _)| key == color)
     }
+}
+
+/// `PhabricatorIconSet::getIconLabel()`: the name of the icon `key` of
+/// `projects.icons`, disabled or not, or the key itself.
+pub fn icon_label(config: &phab_core::Config, key: &str) -> String {
+    IconSet::load(config)
+        .icons()
+        .iter()
+        .find(|icon| icon["key"].as_str() == Some(key))
+        .and_then(|icon| icon["name"].as_str())
+        .unwrap_or(key)
+        .to_owned()
+}
+
+/// Every hashtag of the project, in ID order (`needSlugs()`).
+pub async fn slugs(database: &Database, project: &Project) -> Result<Vec<String>, DbError> {
+    let sql = format!(
+        "SELECT slug FROM {} WHERE projectPHID = ? ORDER BY id",
+        database.table("project", "project_slug")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(project.phid.as_str())
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| rows::text(row, "slug"))
+        .collect()
 }
 
 /// The additional hashtags the form shows: the project's hashtags in ID
@@ -205,6 +332,35 @@ pub async fn unported_form(request: &ApiRequest<'_>) -> Result<Option<&'static s
     }
     if has_configured_forms(request).await? {
         return Ok(Some("configured project forms"));
+    }
+    Ok(None)
+}
+
+/// What, installed, changes what PHP's project searches find or which
+/// fields they have, which the Rust list doesn't apply: custom fields and
+/// spaces.
+pub async fn unported_search(
+    request: &ApiRequest<'_>,
+) -> Result<Option<&'static str>, MethodError> {
+    let config = &request.context.config;
+    if config.value("projects.fields").is_some()
+        || config
+            .value("projects.custom-field-definitions")
+            .is_some_and(phab_core::php::is_truthy)
+    {
+        return Ok(Some("project custom fields"));
+    }
+    let database = &request.context.database;
+    let sql = format!(
+        "SELECT id FROM {} LIMIT 1",
+        database.table("spaces", "spaces_namespace")
+    );
+    if phab_db::sqlx::query(&sql)
+        .fetch_optional(database.pool())
+        .await?
+        .is_some()
+    {
+        return Ok(Some("projects in spaces"));
     }
     Ok(None)
 }

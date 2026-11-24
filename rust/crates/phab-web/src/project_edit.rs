@@ -56,7 +56,9 @@ const SUBMIT_COOKIE: &str = "phfrm";
 pub(crate) struct DialogPage {
     shell: Shell,
     title: &'static str,
-    paragraphs: Vec<&'static str>,
+    paragraphs: Vec<String>,
+    /// A link after the paragraphs: its text and its URI.
+    link: Option<(&'static str, String)>,
     action: String,
     /// Hidden inputs besides the CSRF token and `__form__`.
     hidden: Vec<(&'static str, String)>,
@@ -99,7 +101,7 @@ pub(crate) struct EditPage {
     policies: Vec<PolicyField>,
 }
 
-fn method_error(error: MethodError) -> PageError {
+pub(crate) fn method_error(error: MethodError) -> PageError {
     match error {
         MethodError::Unsupported(reason) => PageError::Fallback(reason),
         // PHP explains its refusals on the form or in a dialog.
@@ -108,7 +110,7 @@ fn method_error(error: MethodError) -> PageError {
     }
 }
 
-fn internal(error: impl std::error::Error + Send + Sync + 'static) -> PageError {
+pub(crate) fn internal(error: impl std::error::Error + Send + Sync + 'static) -> PageError {
     PageError::Internal(Box::new(error))
 }
 
@@ -117,7 +119,11 @@ fn current(uri: &Uri) -> &str {
 }
 
 /// The project `id` the viewer sees: PHP answers 404 for the others.
-async fn load<S: WebState>(state: &S, viewer: &WebUser, id: i64) -> Result<Project, PageError> {
+pub(crate) async fn load<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    id: i64,
+) -> Result<Project, PageError> {
     viewer
         .require_application(state, application::PROJECT)
         .await?;
@@ -138,7 +144,7 @@ async fn load<S: WebState>(state: &S, viewer: &WebUser, id: i64) -> Result<Proje
     .ok_or(PageError::NotFound)
 }
 
-async fn has<S: WebState>(
+pub(crate) async fn has<S: WebState>(
     state: &S,
     viewer: &WebUser,
     project: &Project,
@@ -167,7 +173,7 @@ async fn can_join<S: WebState>(
 }
 
 /// Runs the editor with `changes` as the viewer.
-async fn apply<S: WebState>(
+pub(crate) async fn apply<S: WebState>(
     state: &S,
     viewer: &WebUser,
     project: Project,
@@ -193,16 +199,46 @@ fn dialog<S: WebState>(
     cancel: String,
 ) -> Response {
     let (title, paragraphs, submit) = dialog;
+    let paragraphs = paragraphs.into_iter().map(str::to_owned).collect();
+    dialog_page(
+        state,
+        viewer,
+        uri,
+        (title, paragraphs, submit),
+        hidden,
+        cancel,
+    )
+    .into_response()
+}
+
+/// A dialog which posts to `uri`, with `hidden` inputs.
+pub(crate) fn dialog_page<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    uri: &Uri,
+    dialog: (&'static str, Vec<String>, Option<&'static str>),
+    hidden: Vec<(&'static str, String)>,
+    cancel: String,
+) -> Page<DialogPage> {
+    let (title, paragraphs, submit) = dialog;
     Page(DialogPage {
         shell: Shell::for_user(state.config(), viewer, title, current(uri)),
         title,
         paragraphs,
+        link: None,
         action: uri.path().to_owned(),
         hidden,
         submit,
         cancel,
     })
-    .into_response()
+}
+
+impl Page<DialogPage> {
+    /// Adds a link after the paragraphs.
+    pub(crate) fn with_link(mut self, text: &'static str, uri: String) -> Self {
+        self.0.link = Some((text, uri));
+        self
+    }
 }
 
 /// `GET|POST /project/update/{id}/{action}/`: joining or leaving.

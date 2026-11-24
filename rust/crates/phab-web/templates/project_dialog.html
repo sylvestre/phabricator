@@ -5,6 +5,9 @@
   {%- for paragraph in paragraphs %}
   <p>{{ paragraph }}</p>
   {%- endfor %}
+  {%- if let Some((text, href)) = link %}
+  <p><a href="{{ href }}">{{ text }}</a></p>
+  {%- endif %}
   <form class="settings-form" method="post" action="{{ action }}">
     {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
     <input type="hidden" name="__form__" value="1">

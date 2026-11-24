@@ -8,7 +8,7 @@ use crate::state::WebState;
 use crate::{
     actions, assets, changeset_view, dashboards, datasource, diff_page, diffusion, favorites, feed,
     files, flags, harbormaster, herald, login, notifications, opt_in, people, people_lists,
-    preview, project_edit, projects, queue, revision, revision_edit, settings, subscriptions,
+    preview, project_edit, project_manage, project_members, projects, queue, revision, revision_edit, settings, subscriptions,
     transactions, typeahead, web_edit,
 };
 
@@ -69,6 +69,14 @@ fn people_and_activity<S: WebState>() -> Router<Arc<S>> {
         .route(
             "/project/members/{id}/",
             routing::get(projects::members::<S>),
+        )
+        .route(
+            "/project/manage/{id}/",
+            routing::get(project_manage::manage::<S>),
+        )
+        .route(
+            "/project/filter/{filter}/",
+            routing::get(projects::filter::<S>),
         )
         .route(
             "/project/subprojects/{id}/",
@@ -199,6 +207,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .merge(web_edit::routes::<S>())
         .merge(revision_edit::routes::<S>())
         .merge(project_edit::routes::<S>())
+        .merge(project_members::routes::<S>())
         .merge(people_and_activity::<S>())
         .merge(file_routes::<S>())
         .route("/flag/", routing::get(flags::list::<S>))

@@ -2,8 +2,10 @@
 //! `PhabricatorPeopleListController`: the builtin queries Active and All
 //! through `user.search`) and a user's "Manage" page (`/people/manage/<id>/`,
 //! `PhabricatorPeopleProfileManageController`), read-only: its actions link
-//! to PHP's workflows. The administrators' approval queue, saved queries
-//! and search parameters stay with PHP, and so do timelines with
+//! to PHP's workflows. Saved queries and the "Advanced Search" form are
+//! [`search_form`]'s. The administrators' approval queue, search
+//! parameters and saved queries with dates or a fulltext query stay with
+//! PHP, and so do timelines with
 //! transactions whose titles aren't ported (custom fields) or comments.
 
 use std::sync::Arc;
@@ -11,6 +13,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::Uri;
+use axum::response::{IntoResponse, Response};
 use phab_app_dashboard::storage::{self as dashboard, Transaction};
 use phab_app_differential::storage as differential;
 use phab_app_people::profile;
@@ -23,6 +26,7 @@ use serde_json::{Map, Value, json};
 use crate::error::PageError;
 use crate::harbormaster::{self, Action, Scope};
 use crate::response::Page;
+use crate::search_form::{self, Control, Field, SavedQuery};
 use crate::shell::Shell;
 use crate::state::WebState;
 use crate::timeline::Entry;
@@ -34,7 +38,7 @@ fn current(uri: &Uri) -> &str {
 }
 
 /// `PhabricatorApplicationSearchEngine` shows this many results a page.
-const PAGE_SIZE: usize = 100;
+const PAGE_SIZE: usize = search_form::PAGE_SIZE;
 /// `PhabricatorPeopleSearchEngine`.
 const ENGINE: &str = "PhabricatorPeopleSearchEngine";
 
@@ -51,8 +55,10 @@ pub(crate) struct UserItem {
 #[template(path = "people_list.html")]
 pub(crate) struct PeopleList {
     shell: Shell,
-    query: &'static str,
+    query: String,
     title: &'static str,
+    /// The advanced search form of a saved query.
+    edit_uri: Option<String>,
     is_admin: bool,
     items: Vec<UserItem>,
     next: Option<String>,
@@ -77,16 +83,38 @@ async fn people_list<S: WebState>(
     query: Option<&str>,
     uri: &Uri,
 ) -> Result<Page<PeopleList>, PageError> {
-    let (key, title, constraints) = match key {
-        "active" => ("active", "Active", json!({"isDisabled": false})),
-        "all" => ("all", "All", json!({})),
+    let (title, constraints, limit, edit_uri) = match key {
+        "active" => ("Active", json!({"isDisabled": false}), PAGE_SIZE, None),
+        "all" => ("All", json!({}), PAGE_SIZE, None),
         // The approval queue is for administrators.
-        _ => return Err(PageError::Fallback("a saved search query")),
+        "approval" => return Err(PageError::Fallback("the approval queue")),
+        _ => {
+            let saved = SavedQuery::load(state, viewer, ENGINE, key).await?;
+            let mut constraints = saved_constraints(&saved)?;
+            if let Some(order) = saved.order()? {
+                constraints.insert("order".to_owned(), json!(order));
+            }
+            let edit_uri = format!("/people/query/advanced/?query={key}");
+            (
+                "Advanced Search",
+                Value::Object(constraints),
+                saved.page_size(),
+                Some(edit_uri),
+            )
+        }
     };
     let after = crate::herald::cursor(query)?;
     let mut params = Map::new();
+    let mut constraints = constraints;
+    // The order is a parameter of its own.
+    if let Some(order) = constraints
+        .as_object_mut()
+        .and_then(|map| map.remove("order"))
+    {
+        params.insert("order".to_owned(), order);
+    }
     params.insert("constraints".to_owned(), constraints);
-    params.insert("limit".to_owned(), json!(PAGE_SIZE));
+    params.insert("limit".to_owned(), json!(limit));
     if let Some(after) = after {
         params.insert("after".to_owned(), json!(after.to_string()));
     }
@@ -95,7 +123,7 @@ async fn people_list<S: WebState>(
     let result = phab_app_people::search::UserSearch
         .execute(&request)
         .await
-        .map_err(harbormaster::method_error)?;
+        .map_err(search_form::query_error)?;
     let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
     let items = result["data"]
         .as_array()
@@ -121,8 +149,9 @@ async fn people_list<S: WebState>(
     let next = result["cursor"]["after"].as_str().map(str::to_owned);
     Ok(Page(PeopleList {
         shell: Shell::for_user(state.config(), viewer, "People", current(uri)),
-        query: key,
+        query: key.to_owned(),
         title,
+        edit_uri,
         is_admin: viewer.user.is_admin,
         items,
         next,
@@ -148,18 +177,193 @@ pub(crate) async fn list<S: WebState>(
     people_list(state.as_ref(), &viewer, "active", query.as_deref(), &uri).await
 }
 
-/// `GET /people/query/{key}/`: a builtin query.
+/// The three-state fields of the engine: their keys, labels and options.
+const THREE_STATES: [(&str, &str, [&str; 3]); 5] = [
+    (
+        "isAdmin",
+        "Administrators",
+        [
+            "(Show All)",
+            "Show Only Administrators",
+            "Hide Administrators",
+        ],
+    ),
+    (
+        "isDisabled",
+        "Disabled",
+        [
+            "(Show All)",
+            "Show Only Disabled Users",
+            "Hide Disabled Users",
+        ],
+    ),
+    (
+        "isBot",
+        "Bots",
+        ["(Show All)", "Show Only Bots", "Hide Bots"],
+    ),
+    (
+        "isMailingList",
+        "Mailing Lists",
+        [
+            "(Show All)",
+            "Show Only Mailing Lists",
+            "Hide Mailing Lists",
+        ],
+    ),
+    (
+        "needsApproval",
+        "Needs Approval",
+        [
+            "(Show All)",
+            "Show Only Unapproved Users",
+            "Hide Unapproved Users",
+        ],
+    ),
+];
+
+/// The `user.search` constraints of a saved query, as
+/// `buildQueryFromParameters()` reads its parameters: empty values are no
+/// constraint.
+fn saved_constraints(saved: &SavedQuery) -> Result<Map<String, Value>, PageError> {
+    let empty_only = ["query", "ids", "phids", "createdStart", "createdEnd"];
+    let mut known = vec!["usernames", "nameLike", "mfa", "order", "limit"];
+    known.extend(THREE_STATES.iter().map(|(key, _, _)| *key));
+    known.extend(empty_only);
+    saved.only(&known)?;
+    for key in empty_only {
+        let empty = match key {
+            "ids" | "phids" => saved.list(key)?.is_empty(),
+            // Dates are read by `PhabricatorSearchDateField`.
+            _ => saved.text(key)?.is_empty(),
+        };
+        if !empty {
+            return Err(PageError::Fallback("saved query parameters not ported"));
+        }
+    }
+    let mut constraints = Map::new();
+    let usernames = saved.list("usernames")?;
+    if !usernames.is_empty() {
+        constraints.insert("usernames".to_owned(), json!(usernames));
+    }
+    let name_like = saved.text("nameLike")?;
+    if !name_like.is_empty() {
+        constraints.insert("nameLike".to_owned(), json!(name_like));
+    }
+    for key in THREE_STATES
+        .iter()
+        .map(|(key, _, _)| *key)
+        .chain(std::iter::once("mfa"))
+    {
+        if let Some(value) = saved.three_state(key)? {
+            constraints.insert(key.to_owned(), json!(value));
+        }
+    }
+    Ok(constraints)
+}
+
+/// The fields of the people search form, filled with `saved`.
+fn search_fields(viewer: &WebUser, saved: &SavedQuery) -> Result<Vec<Field>, PageError> {
+    let mut fields = vec![
+        Field::text("query", "Query", saved.text("query")?),
+        Field::text(
+            "usernames",
+            "Usernames",
+            saved.list("usernames")?.join(", "),
+        ),
+        Field::text("nameLike", "Name Contains", saved.text("nameLike")?),
+    ];
+    for (key, label, options) in THREE_STATES {
+        fields.push(Field::three_state(
+            key,
+            label,
+            options,
+            saved.three_state(key)?,
+        ));
+    }
+    if viewer.user.is_admin {
+        fields.push(Field::three_state(
+            "mfa",
+            "Has MFA",
+            [
+                "(Show All)",
+                "Show Only Users With MFA",
+                "Hide Users With MFA",
+            ],
+            saved.three_state("mfa")?,
+        ));
+    }
+    fields.push(Field::text(
+        "createdStart",
+        "Joined After",
+        saved.text("createdStart")?,
+    ));
+    fields.push(Field::text(
+        "createdEnd",
+        "Joined Before",
+        saved.text("createdEnd")?,
+    ));
+    let order = saved.order()?.unwrap_or_else(|| "newest".to_owned());
+    fields.push(Field {
+        key: "order",
+        label: "Order By",
+        control: Control::Select(
+            [
+                ("newest", "Creation (Newest First)"),
+                ("oldest", "Creation (Oldest First)"),
+                ("relevance", "Relevance"),
+            ]
+            .into_iter()
+            .map(|(value, label)| (value.to_owned(), label.to_owned()))
+            .collect(),
+            order,
+        ),
+    });
+    Ok(fields)
+}
+
+/// `GET /people/query/advanced/[?query=<key>]`: the search form. Its post
+/// saves the query, which PHP does.
+async fn advanced<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    query: Option<&str>,
+    uri: &Uri,
+) -> Result<Response, PageError> {
+    let saved = match search_form::edited_key(query)? {
+        Some(key) if matches!(key.as_str(), "active" | "all" | "approval") => {
+            return Err(PageError::Fallback("editing builtin queries"));
+        }
+        Some(key) => SavedQuery::load(state, viewer, ENGINE, &key).await?,
+        None => SavedQuery::empty(),
+    };
+    let fields = search_fields(viewer, &saved)?;
+    Ok(
+        search_form::advanced_page(state, viewer, uri, ("People", "/people/"), &saved, fields)
+            .into_response(),
+    )
+}
+
+/// `GET /people/query/{key}/`: a builtin or saved query, or the search
+/// form.
 pub(crate) async fn query<S: WebState>(
     State(state): State<Arc<S>>,
     viewer: WebUser,
     Path(key): Path<String>,
     RawQuery(query): RawQuery,
     uri: Uri,
-) -> Result<Page<PeopleList>, PageError> {
+) -> Result<Response, PageError> {
     viewer
         .require_application(&*state, application::PEOPLE)
         .await?;
-    people_list(state.as_ref(), &viewer, &key, query.as_deref(), &uri).await
+    if key == "advanced" {
+        return advanced(state.as_ref(), &viewer, query.as_deref(), &uri).await;
+    }
+    Ok(
+        people_list(state.as_ref(), &viewer, &key, query.as_deref(), &uri)
+            .await?
+            .into_response(),
+    )
 }
 
 #[derive(Template)]
