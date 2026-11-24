@@ -11,8 +11,8 @@
 //! `harbormaster.buildplan.edit` edits plans ([`plan_edit`]),
 //! `harbormaster.step.edit` the custom fields of steps ([`step_edit`]);
 //! `harbormaster.build.edit` and `harbormaster.buildable.edit` have no
-//! field but `mfa` (their commands are messages, sent by `sendmessage`)
-//! and only save their object ([`object_edit`]). The write methods queue the
+//! field (their commands are messages, sent by `sendmessage`; the MFA
+//! extension is disabled) and only save their object ([`object_edit`]). The write methods queue the
 //! build workers' tasks, which [`engine`] runs. [`web`] is what the web
 //! pages read.
 

@@ -4,7 +4,7 @@
   {"name": "edit a build with an unknown type", "method": "harbormaster.build.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "restart", "value": true}]}},
   {"name": "edit an unknown build", "method": "harbormaster.build.edit", "params": {"objectIdentifier": 99999, "transactions": []}},
   {"name": "edit an unknown build by PHID", "method": "harbormaster.build.edit", "params": {"objectIdentifier": "PHID-HMBD-doesnotexist00000000", "transactions": []}},
-  {"name": "sign a build edit with MFA", "method": "harbormaster.build.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "mfa", "value": true}]}},
+  {"name": "sign a build edit with MFA (not a type: the extension is disabled)", "method": "harbormaster.build.edit", "params": {"objectIdentifier": 1, "transactions": [{"type": "mfa", "value": true}]}},
   {"name": "create a build", "method": "harbormaster.build.edit", "params": {"transactions": []}},
   {"name": "save buildable B1 without transactions", "method": "harbormaster.buildable.edit", "params": {"objectIdentifier": "1", "transactions": []}},
   {"name": "edit a buildable with an unknown type", "method": "harbormaster.buildable.edit", "params": {"objectIdentifier": "PHID-HMBB-gb3hmgwxms3gclfmnwml", "transactions": [{"type": "name", "value": "B1"}]}},

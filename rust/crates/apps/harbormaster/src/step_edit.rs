@@ -5,13 +5,14 @@
 //!
 //! The engine builds no field of its own: its edit types are the custom
 //! fields of the step implementation (`HarbormasterBuildStepCoreCustomField`,
-//! `custom.<key>`), then `mfa`. A field transaction (`core:customfield`)
+//! `custom.<key>`; `PhabricatorAuthMFAEditEngineExtension`, which would add
+//! `mfa`, is disabled). A field transaction (`core:customfield`)
 //! sets `details[<key>]`; the field reads its value from the step, never
 //! from storage, so the old value is always null, every transaction has
 //! an effect, and the only validation error, a required field left empty,
 //! is a missing field error, which edits drop. Ported: the text and select
 //! fields of the implementations of this install, and edits without
-//! transactions. Left to PHP: creations, credentials, `mfa`, unknown
+//! transactions. Left to PHP: creations, credentials, unknown
 //! implementations, and steps the viewer can't see or edit.
 
 use phab_conduit::edit::{self, Planned, Publication, RawTransaction};
@@ -74,7 +75,6 @@ fn edit_types(fields: &[(&str, Kind)]) -> Vec<String> {
     fields
         .iter()
         .map(|(key, _)| format!("custom.{key}"))
-        .chain(["mfa".to_owned()])
         .collect()
 }
 
@@ -92,7 +92,7 @@ fn plan_changes(
             .strip_prefix("custom.")
             .and_then(|key| fields.iter().find(|(known, _)| *known == key))
         else {
-            return Err(unsupported("MFA transactions"));
+            unreachable!("the types were checked");
         };
         if *field == Kind::Credential {
             return Err(unsupported("credentials of build steps"));
@@ -211,10 +211,9 @@ mod tests {
                 "custom.content_type",
                 "custom.http_body",
                 "custom.builtin.wait-for-message",
-                "mfa",
             ]
         );
-        assert_eq!(edit_types(&[]), ["mfa"]);
+        assert!(edit_types(&[]).is_empty());
     }
 
     #[test]
@@ -242,14 +241,13 @@ mod tests {
             Value::Object(details),
             json!({"uri": "https://b", "dependsOn": [], "builtin.wait-for-message": "wait"})
         );
-        for refused in [
-            raw("custom.credential", json!("PHID-CDTL-1")),
-            raw("mfa", json!(true)),
-        ] {
-            assert!(matches!(
-                plan_changes(HTTP_REQUEST_FIELDS, &Map::new(), &[refused]),
-                Err(MethodError::Unsupported(_))
-            ));
-        }
+        assert!(matches!(
+            plan_changes(
+                HTTP_REQUEST_FIELDS,
+                &Map::new(),
+                &[raw("custom.credential", json!("PHID-CDTL-1"))]
+            ),
+            Err(MethodError::Unsupported(_))
+        ));
     }
 }

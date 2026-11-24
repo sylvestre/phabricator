@@ -4,13 +4,12 @@
 //! ([`crate::step_edit`]): loading the edited object and saving it.
 //!
 //! `HarbormasterBuildEditEngine` and `HarbormasterBuildableEditEngine`
-//! build no field of their own, and the only extension which applies to
-//! builds and buildables is `PhabricatorAuthMFAEditEngineExtension`: the
-//! one edit type is `mfa`. Ported: the errors of unknown objects and
-//! types, and edits without transactions, which need `CAN_EDIT`, save the
-//! object (Lisk writes `dateModified`) and queue the publish task. Left to
-//! PHP: creations, `mfa` transactions, and objects the viewer can't see or
-//! edit.
+//! build no field of their own, and the only extension which would apply
+//! to builds and buildables, `PhabricatorAuthMFAEditEngineExtension`, is
+//! disabled: they have no edit type. Ported: the errors of unknown objects
+//! and types, and edits without transactions, which need `CAN_EDIT`, save
+//! the object (Lisk writes `dateModified`) and queue the publish task. Left
+//! to PHP: creations, and objects the viewer can't see or edit.
 
 use phab_conduit::edit::{self, Identifier, Publication};
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
@@ -143,10 +142,7 @@ async fn save_without_transactions(
     raw: &[edit::RawTransaction],
     edited: Edited,
 ) -> Result<Value, MethodError> {
-    edit::check_types(raw, &["mfa"])?;
-    if !raw.is_empty() {
-        return Err(unsupported("MFA transactions"));
-    }
+    edit::check_types(raw, &[])?;
     if !edited.can_edit {
         return Err(unsupported("objects the viewer can't edit"));
     }

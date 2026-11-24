@@ -177,11 +177,11 @@ async fn builds_and_buildables(test_db: &TestDatabase, context: &Context) {
             error_info(
                 context,
                 method,
-                json!({"objectIdentifier": 1, "transactions": [{"type": "name", "value": "x"}]}),
+                json!({"objectIdentifier": 1, "transactions": [{"type": "mfa", "value": true}]}),
             )
             .await,
-            "Transaction with key \"0\" has invalid type \"name\". This type is not \
-             recognized. Valid types are: mfa."
+            "Transaction with key \"0\" has invalid type \"mfa\". This type is not \
+             recognized. Valid types are: ."
         );
         assert_eq!(
             error_info(
@@ -201,10 +201,9 @@ async fn builds_and_buildables(test_db: &TestDatabase, context: &Context) {
             .await,
             "No object exists with PHID \"PHID-HMBD-nope\"."
         );
-        // Left to PHP: creations, MFA and objects alice can't see.
+        // Left to PHP: creations and objects alice can't see.
         for params in [
             json!({"transactions": []}),
-            json!({"objectIdentifier": 1, "transactions": [{"type": "mfa", "value": true}]}),
             json!({"objectIdentifier": hidden, "transactions": []}),
         ] {
             assert!(
@@ -284,7 +283,7 @@ async fn steps(test_db: &TestDatabase, context: &Context) {
         .await,
         "Transaction with key \"1\" has invalid type \"name\". This type is not recognized. \
          Valid types are: custom.uri, custom.method, custom.credential, custom.content_type, \
-         custom.http_body, custom.builtin.wait-for-message, mfa."
+         custom.http_body, custom.builtin.wait-for-message."
     );
     assert_eq!(
         error_info(
@@ -294,7 +293,7 @@ async fn steps(test_db: &TestDatabase, context: &Context) {
         )
         .await,
         "Transaction with key \"0\" has invalid type \"custom.uri\". This type is not \
-         recognized. Valid types are: mfa."
+         recognized. Valid types are: ."
     );
     assert_eq!(
         error_info(
@@ -306,13 +305,12 @@ async fn steps(test_db: &TestDatabase, context: &Context) {
         "Exception when processing transaction of type \"custom.uri\": Error while reading \
          \"value\": Expected string, got something else."
     );
-    // Left to PHP: credentials, MFA, steps alice can't edit or see,
+    // Left to PHP: credentials, steps alice can't edit or see,
     // unknown implementations, details Lisk would store differently.
     for params in [
         json!({"objectIdentifier": 1, "transactions": [
             {"type": "custom.credential", "value": "PHID-CDTL-1"},
         ]}),
-        json!({"objectIdentifier": 1, "transactions": [{"type": "mfa", "value": true}]}),
         json!({"objectIdentifier": 2, "transactions": [{"type": "custom.uri", "value": "x"}]}),
         json!({"objectIdentifier": 4, "transactions": []}),
         json!({"objectIdentifier": 3, "transactions": []}),
