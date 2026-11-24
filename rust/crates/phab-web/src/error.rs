@@ -113,11 +113,10 @@ impl IntoResponse for PageError {
                 "404 Not Found",
                 "The page you requested was not found.".to_owned(),
             ),
-            Self::PolicyDenied => (
-                StatusCode::FORBIDDEN,
-                "Access Denied",
-                "You do not have permission to view this object.".to_owned(),
-            ),
+            // PHP explains which policy stops the viewer, in a dialog named
+            // after the object ("You Shall Not Pass: …") answered with a 200:
+            // PHP renders it.
+            Self::PolicyDenied => return fallback_response("policy exceptions"),
             Self::Roadblock(Roadblock::NeedsMultiFactor) => {
                 action = Some(("/auth/enroll/", "Add Multi-Factor Auth"));
                 (

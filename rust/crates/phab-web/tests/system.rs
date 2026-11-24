@@ -224,7 +224,7 @@ async fn configuration_is_for_administrators(test_db: &TestDatabase) {
         "/daemon/task/1/",
     ] {
         let response = get(test_db, path, ALICE).await;
-        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+        assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST, "{path}");
     }
     test_db
         .execute(

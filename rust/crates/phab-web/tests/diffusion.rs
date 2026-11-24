@@ -409,7 +409,7 @@ async fn home_and_policies(fixture: &Fixture) {
 
     // A repository the viewer can't see, as PHP's policy exception.
     let response = get(fixture, "/diffusion/SEC/", ALICE).await;
-    check_eq!(response.status(), StatusCode::FORBIDDEN);
+    check_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
     let page = self::page(fixture, "/diffusion/SEC/", ROOT).await;
     check!(page.contains("Secret"), page);
     check_eq!(
@@ -591,7 +591,7 @@ async fn commits(fixture: &Fixture) {
     fallback(fixture, &format!("/rGIT{C2}?diff=1")).await;
     check_eq!(
         get(fixture, &format!("/rSEC{C2}"), ALICE).await.status(),
-        StatusCode::FORBIDDEN
+        StatusCode::MISDIRECTED_REQUEST
     );
 }
 

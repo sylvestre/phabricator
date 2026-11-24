@@ -297,7 +297,7 @@ async fn dashboards(test_db: &TestDatabase) {
 
     assert_eq!(
         status(test_db, "/dashboard/view/2/", BOB).await,
-        StatusCode::FORBIDDEN
+        StatusCode::MISDIRECTED_REQUEST
     );
     assert_eq!(
         status(test_db, "/dashboard/view/99/", BOB).await,
@@ -372,7 +372,7 @@ async fn portals(test_db: &TestDatabase) {
 
     assert_eq!(
         status(test_db, "/portal/view/2/", BOB).await,
-        StatusCode::FORBIDDEN
+        StatusCode::MISDIRECTED_REQUEST
     );
     assert_eq!(
         status(test_db, "/portal/view/99/", BOB).await,

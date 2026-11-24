@@ -436,7 +436,7 @@ async fn pages_need_their_application() {
         json!({"PHID-APPS-PhabricatorDifferentialApplication": {"policy": {"view": "admin"}}}),
     )]);
     let response = get(&test_db, admins_only.clone(), "/differential/", alice).await;
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
     // People and Feed can't be uninstalled or restricted.
     let response = get(&test_db, admins_only, "/p/alice/", alice).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -700,7 +700,7 @@ async fn project_pages_follow_policy() {
     // A project the viewer can't see is denied, and not redirected.
     for path in ["/tag/hidden/", "/tag/HIDDEN/", "/project/view/2/"] {
         let response = get(&test_db, Config::default(), path, alice).await;
-        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+        assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST, "{path}");
     }
     for path in ["/tag/nope/", "/project/view/9/"] {
         let response = get(&test_db, Config::default(), path, alice).await;
@@ -746,8 +746,8 @@ async fn project_subpages_follow_policy(test_db: &TestDatabase) {
             .contains("Milestone projects do not support subprojects or milestones.")
     );
     for (path, status) in [
-        ("/project/members/2/", StatusCode::FORBIDDEN),
-        ("/project/subprojects/2/", StatusCode::FORBIDDEN),
+        ("/project/members/2/", StatusCode::MISDIRECTED_REQUEST),
+        ("/project/subprojects/2/", StatusCode::MISDIRECTED_REQUEST),
         ("/project/members/9/", StatusCode::NOT_FOUND),
     ] {
         let response = get(test_db, Config::default(), path, alice).await;
@@ -921,7 +921,7 @@ async fn revisions_show_their_header_text_and_diff() {
     assert!(!text(response).await.contains("secure revision"));
 
     for (path, status) in [
-        ("/D5", StatusCode::FORBIDDEN),
+        ("/D5", StatusCode::MISDIRECTED_REQUEST),
         ("/D9", StatusCode::NOT_FOUND),
         ("/Dx", StatusCode::NOT_FOUND),
     ] {

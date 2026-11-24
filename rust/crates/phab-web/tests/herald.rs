@@ -639,7 +639,7 @@ async fn transcripts(test_db: &TestDatabase) {
     );
     assert_eq!(
         status(test_db, "/herald/transcript/2/", ALICE).await,
-        StatusCode::FORBIDDEN
+        StatusCode::MISDIRECTED_REQUEST
     );
     assert_eq!(
         status(test_db, "/herald/transcript/9/", ALICE).await,

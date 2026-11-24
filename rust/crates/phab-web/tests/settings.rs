@@ -327,7 +327,7 @@ async fn settings_are_their_owners() {
     };
     for path in ["/settings/user/bob/", "/settings/user/bob/page/sessions/"] {
         let response = get(&test_db, path, ALICE).await;
-        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+        assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST, "{path}");
     }
     let response = get(&test_db, "/settings/user/nobody/page/datetime/", ALICE).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -338,10 +338,10 @@ async fn settings_are_their_owners() {
         "administrators editing the settings of a bot or mailing list"
     );
     let response = get(&test_db, "/settings/user/bot/page/datetime/", ALICE).await;
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
     // Administrators may not see other users' settings either.
     let response = get(&test_db, "/settings/user/alice/page/datetime/", ADMIN).await;
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
     // A post as someone else writes nothing.
     let response = send(
         &test_db,
@@ -352,7 +352,7 @@ async fn settings_are_their_owners() {
         Body::from("__form__=1&editEngine=true&timezone=UTC"),
     )
     .await;
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
     assert_eq!(preferences(&test_db).await, Vec::<String>::new());
     let response = get(
         &test_db,

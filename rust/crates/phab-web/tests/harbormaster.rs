@@ -671,7 +671,7 @@ async fn plans(test_db: &TestDatabase) {
 
     assert_eq!(
         status(test_db, "/harbormaster/plan/2/", ROOT).await,
-        StatusCode::FORBIDDEN
+        StatusCode::MISDIRECTED_REQUEST
     );
     assert_eq!(
         status(test_db, "/harbormaster/plan/9/", ROOT).await,

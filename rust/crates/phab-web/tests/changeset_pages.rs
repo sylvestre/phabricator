@@ -413,7 +413,7 @@ async fn diffs_show_their_changesets_or_go_to_their_revision() {
         .await;
     assert_eq!(
         get(&test_db, "/differential/diff/8/").await.status(),
-        StatusCode::FORBIDDEN
+        StatusCode::MISDIRECTED_REQUEST
     );
 
     // The list of changesets.
