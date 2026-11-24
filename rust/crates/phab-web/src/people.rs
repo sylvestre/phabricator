@@ -63,7 +63,7 @@ impl Profile {
 
 /// `PhabricatorUserReviewQueueField` (a Mozilla field): the revisions
 /// waiting on this reviewer, among the first open ones they review.
-fn review_queue_length(revisions: &[Revision], reviewer: &Phid) -> usize {
+pub(crate) fn review_queue_length(revisions: &[Revision], reviewer: &Phid) -> usize {
     revisions
         .iter()
         .take(REVIEW_QUEUE_LIMIT)

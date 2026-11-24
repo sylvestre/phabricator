@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="queue-header">
+  <h1>{{ results }}: Advanced Search</h1>
+  {%- if let Some(results_uri) = results_uri %}
+  <nav class="bucket-switch" aria-label="Results"><a href="{{ results_uri }}">Show Results</a></nav>
+  {%- endif %}
+</header>
+<form class="settings-form" method="post" action="{{ action }}">
+  {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+  <input type="hidden" name="__form__" value="1">
+  {%- for field in fields %}
+  {%- if field.is_text() %}
+  <label>{{ field.label }} <input type="text" name="{{ field.key }}" value="{{ field.text_value() }}"></label>
+  {%- else if field.is_checkboxes() %}
+  <fieldset>
+    <legend>{{ field.label }}</legend>
+    {%- for (value, label, checked) in field.options() %}
+    <label><input type="checkbox" name="{{ field.key }}[]" value="{{ value }}"{% if checked %} checked{% endif %}> {{ label }}</label>
+    {%- endfor %}
+  </fieldset>
+  {%- else %}
+  <label>{{ field.label }} <select name="{{ field.key }}">
+    {%- for (value, label, selected) in field.options() %}
+    <option value="{{ value }}"{% if selected %} selected{% endif %}>{{ label }}</option>
+    {%- endfor %}
+  </select></label>
+  {%- endif %}
+  {%- endfor %}
+  <button type="submit">Search</button>
+</form>
+{% endblock %}

@@ -17,8 +17,8 @@ the stack and copy it from the browser). A scenario posts one form:
 (as `editengine.actions` is). `__form__` and a `__csrf__` token are added
 unless the scenario gives its own. The token comes from the `__csrf__`
 input of `--csrf-page`, fetched from PHP before the first snapshot. `{D3}`
-in a path or a field is the PHID of revision D3, `{@alice}` the PHID of
-user alice. The optional `sql`
+in a path, a field or a field's name is the PHID of revision D3, `{@alice}`
+the PHID of user alice. The optional `sql`
 statements run on both sides before the post, and are undone with the
 rest.
 
@@ -185,7 +185,7 @@ def form_body(scenario, token):
     for key, value in scenario.get("fields", {}).items():
         if not isinstance(value, str):
             value = json.dumps(value)
-        fields[key] = expand(value)
+        fields[expand(key)] = expand(value)
     return urllib.parse.urlencode(fields)
 
 

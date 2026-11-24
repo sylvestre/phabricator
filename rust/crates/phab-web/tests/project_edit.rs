@@ -557,8 +557,9 @@ async fn lists_show_the_builtin_queries() {
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("Build Reviewers"), "{body}");
     assert!(!body.contains("Sprint 1"), "{body}");
+    // A key nobody saved.
     let (status, _) = get(&test_db, "/project/query/custom123/").await;
-    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+    assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _) = get(&test_db, "/project/query/all/?name=x").await;
     assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
 
@@ -598,4 +599,299 @@ async fn lists_show_the_builtin_queries() {
     assert!(body.contains("/project/edit/form/default/"), "{body}");
     assert!(!body.contains("/diffusion/edit/form/default/"), "{body}");
     assert!(body.contains("Edit Favorites"), "{body}");
+}
+
+#[tokio::test]
+async fn members_are_added_and_removed_from_the_web() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    let (status, body) = get(&test_db, "/project/members/1/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("/project/members/1/add/"), "{body}");
+    assert!(
+        body.contains("/project/members/1/remove/?phid=PHID-USER-carol"),
+        "{body}"
+    );
+    // Bob can't edit the locked project: no member actions.
+    let (_, body) = get(&test_db, "/project/members/2/").await;
+    assert!(!body.contains("/project/members/2/add/"), "{body}");
+    assert!(body.contains("/project/silence/2/"), "{body}");
+
+    let (status, body) = get(&test_db, "/project/members/1/add/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(r#"name="rust.add""#), "{body}");
+    // Milestones explain why they have no members of their own.
+    let (status, body) = get(&test_db, "/project/members/3/add/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Unsupported Project"), "{body}");
+    let (status, _) = get(&test_db, "/project/members/2/add/").await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+
+    // Names typed in Rust's input are checked, and nothing is written.
+    let response = post(
+        &test_db,
+        "/project/members/1/add/",
+        &[("rust.add", "alice")],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8_lossy(&body);
+    assert!(
+        body.contains(r#"name="memberPHIDs[]" value="PHID-USER-alice" checked"#),
+        "{body}"
+    );
+    assert_eq!(
+        transactions(&test_db, "PHID-PROJ-build").await,
+        Vec::<String>::new()
+    );
+
+    let response = post(
+        &test_db,
+        "/project/members/1/add/",
+        &[("memberPHIDs[]", "PHID-USER-alice")],
+    )
+    .await;
+    assert_eq!(
+        location(&response),
+        "http://phabricator.test/project/members/1/"
+    );
+    assert_eq!(
+        transactions(&test_db, "PHID-PROJ-build").await,
+        vec![format!(
+            r#"core:edge [] ["PHID-USER-alice"] {{"edge:type":13,"core.groupID":"G"}} PHID-USER-bob {WEB_SOURCE}"#
+        )]
+    );
+    // Adding her again has no effect.
+    let response = post(
+        &test_db,
+        "/project/members/1/add/",
+        &[("memberPHIDs[]", "PHID-USER-alice")],
+    )
+    .await;
+    assert_eq!(fallback_reason(&response), "edits without effect");
+    let response = post(
+        &test_db,
+        "/project/members/1/add/",
+        &[("memberPHIDs[]", "PHID-PROJ-locked")],
+    )
+    .await;
+    assert_eq!(fallback_reason(&response), "members which are not users");
+
+    let (status, body) = get(&test_db, "/project/members/1/remove/?phid=PHID-USER-carol").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("Remove carol as a project member of Build Reviewers?"),
+        "{body}"
+    );
+    assert!(
+        body.contains(r#"<input type="hidden" name="phid" value="PHID-USER-carol">"#),
+        "{body}"
+    );
+    let response = post(
+        &test_db,
+        "/project/members/1/remove/",
+        &[("phid", "PHID-USER-carol")],
+    )
+    .await;
+    assert_eq!(
+        location(&response),
+        "http://phabricator.test/project/members/1/"
+    );
+    assert_eq!(
+        edges(&test_db, "project", 13).await,
+        [
+            "PHID-PROJ-build PHID-USER-alice",
+            "PHID-PROJ-locked PHID-USER-bob",
+        ]
+    );
+    // Milestones have no member list to edit.
+    let (status, _) = get(&test_db, "/project/members/3/remove/?phid=PHID-USER-carol").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let response = post(
+        &test_db,
+        "/project/members/2/remove/",
+        &[("phid", "PHID-USER-bob")],
+    )
+    .await;
+    assert_eq!(fallback_reason(&response), "projects the viewer can't edit");
+
+    // Watchers.
+    let response = post(&test_db, "/project/watch/1/", &[("__dialog__", "1")]).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    let (_, body) = get(&test_db, "/project/watchers/1/remove/?phid=PHID-USER-bob").await;
+    assert!(
+        body.contains("Remove bob as a watcher of Build Reviewers?"),
+        "{body}"
+    );
+    let response = post(
+        &test_db,
+        "/project/watchers/1/remove/",
+        &[("phid", "PHID-USER-bob")],
+    )
+    .await;
+    assert_eq!(
+        location(&response),
+        "http://phabricator.test/project/members/1/"
+    );
+    assert_eq!(edges(&test_db, "project", 47).await, Vec::<String>::new());
+    assert_eq!(edges(&test_db, "user", 48).await, Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn members_silence_project_mail() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    // Bob isn't a member of project 1.
+    let (status, body) = get(&test_db, "/project/silence/1/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Not a Member"), "{body}");
+    let (status, body) = get(&test_db, "/project/silence/2/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Disable Project Mail"), "{body}");
+    let response = post(&test_db, "/project/silence/2/", &[]).await;
+    assert_eq!(
+        fallback_reason(&response),
+        "posts which aren't dialog posts"
+    );
+    // Silencing needs no capability: Bob can't edit the locked project.
+    let response = post(&test_db, "/project/silence/2/", &[("__dialog__", "1")]).await;
+    assert_eq!(
+        location(&response),
+        "http://phabricator.test/project/members/2/"
+    );
+    assert_eq!(
+        transactions(&test_db, "PHID-PROJ-locked").await,
+        vec![format!(
+            r#"core:edge [] ["PHID-USER-bob"] {{"edge:type":61,"core.groupID":"G"}} PHID-USER-bob {WEB_SOURCE}"#
+        )]
+    );
+    assert_eq!(
+        edges(&test_db, "project", 61).await,
+        ["PHID-PROJ-locked PHID-USER-bob"]
+    );
+    let (_, body) = get(&test_db, "/project/silence/2/").await;
+    assert!(body.contains("Enable Project Mail"), "{body}");
+    let response = post(&test_db, "/project/silence/2/", &[("__dialog__", "1")]).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(edges(&test_db, "project", 61).await, Vec::<String>::new());
+    let (status, _) = get(&test_db, "/project/silence/3/").await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+}
+
+#[tokio::test]
+async fn the_manage_page_shows_the_project_history() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    let response = post(
+        &test_db,
+        "/project/edit/1/",
+        &edit_form(&[("name", "Build Team"), ("color", "red")]),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    let response = post(&test_db, "/project/update/1/join/", &[]).await;
+    assert_eq!(response.status(), StatusCode::FOUND);
+    let (status, body) = get(&test_db, "/project/manage/1/").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains(r#"renamed this project from "Build Reviewers" to "Build Team"."#),
+        "{body}"
+    );
+    assert!(body.contains("added 1 member(s): "), "{body}");
+    assert!(
+        body.contains("#build_reviewers, #builders, #build_team"),
+        "{body}"
+    );
+    assert!(body.contains("/project/archive/1/"), "{body}");
+
+    // The warning before the first subproject goes on to PHP's form.
+    let (status, body) = get(&test_db, "/project/warning/1/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Convert Project"), "{body}");
+    let response = post(&test_db, "/project/warning/1/", &[]).await;
+    assert_eq!(
+        location(&response),
+        "http://phabricator.test/project/edit/?parent=1"
+    );
+    let (status, _) = get(&test_db, "/project/warning/2/").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // `/project/filter/x/` is the default query.
+    let (status, body) = get(&test_db, "/project/filter/x/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Locked Team"), "{body}");
+}
+
+#[tokio::test]
+async fn lists_run_saved_queries() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_search`.search_savedquery (engineClassName, parameters, \
+               dateCreated, dateModified, queryKey) VALUES \
+             ('PhabricatorProjectSearchEngine', '{\"name\":\"\",\"memberPHIDs\":[\"PHID-USER-carol\"],\"watcherPHIDs\":[],\"status\":\"active\",\"isMilestone\":false,\"isRoot\":null,\"icons\":[],\"colors\":[],\"query\":\"\",\"order\":\"name\"}', 1, 1, 'carolsprojs1'), \
+             ('PhabricatorProjectSearchEngine', '{\"colors\":[\"red\"],\"order\":\"newest\"}', 1, 1, 'redprojects1'), \
+             ('PhabricatorProjectSearchEngine', '{\"memberPHIDs\":[\"viewer()\"]}', 1, 1, 'viewerprojs1'), \
+             ('PhabricatorProjectSearchEngine', '{\"query\":\"build\"}', 1, 1, 'fulltextprj1'), \
+             ('PhabricatorPeopleSearchEngine', '{\"isDisabled\":true,\"usernames\":[],\"nameLike\":\"\"}', 1, 1, 'disabledppl1'), \
+             ('PhabricatorPeopleSearchEngine', '{\"createdStart\":\"2020-01-01\"}', 1, 1, 'datedpeople1')",
+        )
+        .await;
+    let (status, body) = get(&test_db, "/project/query/carolsprojs1/").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("Advanced Search"), "{body}");
+    assert!(body.contains("Build Reviewers"), "{body}");
+    assert!(!body.contains("Locked Team"), "{body}");
+    assert!(
+        body.contains("/project/query/advanced/?query=carolsprojs1"),
+        "{body}"
+    );
+    let (_, body) = get(&test_db, "/project/query/redprojects1/").await;
+    assert!(body.contains("Locked Team"), "{body}");
+    assert!(!body.contains("Build Reviewers"), "{body}");
+    let (status, _) = get(&test_db, "/project/query/viewerprojs1/").await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+    let (status, _) = get(&test_db, "/project/query/fulltextprj1/").await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+    // A query of another engine.
+    let (status, _) = get(&test_db, "/project/query/disabledppl1/").await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+
+    let (status, body) = get(&test_db, "/project/query/advanced/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(r#"name="memberPHIDs""#), "{body}");
+    assert!(
+        body.contains(
+            r#"<form class="settings-form" method="post" action="/project/query/advanced/">"#
+        ),
+        "{body}"
+    );
+    let (_, body) = get(&test_db, "/project/query/advanced/?query=carolsprojs1").await;
+    assert!(
+        body.contains(r#"name="memberPHIDs" value="carol""#),
+        "{body}"
+    );
+    let (status, _) = get(&test_db, "/project/query/advanced/?query=nosuchquery1").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, body) = get(&test_db, "/people/query/disabledppl1/").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("/p/carol/"), "{body}");
+    assert!(!body.contains("/p/alice/"), "{body}");
+    let (status, _) = get(&test_db, "/people/query/datedpeople1/").await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+    let (status, body) = get(&test_db, "/people/query/advanced/?query=disabledppl1").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains(r#"<option value="true" selected>Show Only Disabled Users</option>"#),
+        "{body}"
+    );
 }

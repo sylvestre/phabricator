@@ -23,7 +23,7 @@ mod graph;
 mod history;
 mod home;
 mod list;
-mod manage;
+pub(crate) mod manage;
 mod refs;
 mod uri;
 

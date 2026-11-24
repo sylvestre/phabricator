@@ -30,7 +30,7 @@ pub const APPLICATION: Application = Application {
 const QUERY_CLASS: &str = "PhabricatorProjectQuery";
 
 /// `getValidConstraintKeys()` of the engine's fields.
-const VALID_CONSTRAINTS: &[&str] = &[
+pub(crate) const VALID_CONSTRAINTS: &[&str] = &[
     "name",
     "slugs",
     "members",
@@ -67,7 +67,7 @@ pub(crate) enum Order {
 }
 
 impl Order {
-    fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
+    pub(crate) fn parse(value: Option<&Value>) -> Result<Self, MethodError> {
         let key = match value {
             None | Some(Value::Null) => return Ok(Self::Name),
             Some(Value::String(key)) => key.as_str(),
@@ -130,7 +130,7 @@ fn user_phids(key: &str, value: &Value) -> Result<Option<Vec<String>>, MethodErr
 }
 
 impl Filters {
-    fn parse(constraints: &Constraints, strict: bool) -> Result<Self, MethodError> {
+    pub(crate) fn parse(constraints: &Constraints, strict: bool) -> Result<Self, MethodError> {
         let mut filters = Self::default();
         // String lists and checkboxes take an empty list, which is no
         // constraint; PHID lists and datasources don't.

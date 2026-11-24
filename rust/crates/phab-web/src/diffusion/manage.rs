@@ -87,7 +87,7 @@ pub(crate) struct ManagePage {
 }
 
 /// `PhabricatorEnv::getDoclink()`.
-fn doclink(name: &str) -> String {
+pub(crate) fn doclink(name: &str) -> String {
     let mut query = form_urlencoded::Serializer::new(String::new());
     query.append_pair("name", name);
     query.append_pair("type", "article");

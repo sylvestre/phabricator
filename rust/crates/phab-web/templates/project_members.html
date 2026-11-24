@@ -16,7 +16,7 @@
     {%- else %}
     <ul class="object-list">
       {%- for member in members %}
-      <li><a href="{{ member.uri }}"{% if member.closed %} class="remarkup-mention-disabled"{% endif %}>{{ member.name }}</a></li>
+      <li><a href="{{ member.uri }}"{% if member.closed %} class="remarkup-mention-disabled"{% endif %}>{{ member.name }}</a>{% if can_edit_members %} · <a href="/project/members/{{ id }}/remove/?phid={{ member.phid }}">Remove</a>{% endif %}</li>
       {%- endfor %}
     </ul>
     {%- endif %}
@@ -26,7 +26,7 @@
     {%- else %}
     <ul class="object-list">
       {%- for watcher in watchers %}
-      <li><a href="{{ watcher.uri }}"{% if watcher.closed %} class="remarkup-mention-disabled"{% endif %}>{{ watcher.name }}</a></li>
+      <li><a href="{{ watcher.uri }}"{% if watcher.closed %} class="remarkup-mention-disabled"{% endif %}>{{ watcher.name }}</a>{% if can_edit_members %} · <a href="/project/watchers/{{ id }}/remove/?phid={{ watcher.phid }}">Remove</a>{% endif %}</li>
       {%- endfor %}
     </ul>
     {%- endif %}
@@ -36,6 +36,15 @@
       <li>{% if is_member %}<a href="/project/update/{{ id }}/leave/">Leave Project</a>{% else %}<a href="/project/update/{{ id }}/join/">Join Project</a>{% endif %}</li>
       <li><a href="/project/edit/{{ id }}/">Edit Project</a></li>
       <li>{% if is_watcher %}<a href="/project/unwatch/{{ id }}/">Unwatch Project</a>{% else %}<a href="/project/watch/{{ id }}/">Watch Project</a>{% endif %}</li>
+      {%- if is_member %}
+      <li><a href="/project/silence/{{ id }}/">{% if is_silenced %}Enable Mail{% else %}Disable Mail{% endif %}</a></li>
+      {%- endif %}
+      {%- if can_edit_members %}
+      <li><a href="/project/members/{{ id }}/add/">Add Members</a></li>
+      {%- endif %}
+      {%- if can_edit %}
+      <li><a href="/project/manage/{{ id }}/">Manage Project</a></li>
+      {%- endif %}
     </ul>
   </aside>
 </div>

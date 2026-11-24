@@ -611,7 +611,12 @@ pub const CONTRACT: &[TableContract] = &[
     TableContract {
         database: "search",
         table: "search_namedquery",
-        columns: &["userPHID", "engineClassName"],
+        columns: &["userPHID", "engineClassName", "queryKey"],
+    },
+    TableContract {
+        database: "search",
+        table: "search_savedquery",
+        columns: &["engineClassName", "parameters", "queryKey"],
     },
     TableContract {
         database: "harbormaster",

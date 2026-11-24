@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1><a href="{{ uri }}">{{ name }}</a>: Project History</h1>
+  <p class="profile-title">{% if archived %}<span class="fa fa-ban" aria-hidden="true"></span> Archived{% else %}<span class="fa fa-check" aria-hidden="true"></span> Active{% endif %}</p>
+  <nav class="bucket-switch" aria-label="Project">
+    <a href="{{ uri }}">Profile</a>
+    <a href="/project/members/{{ id }}/">Members</a>
+    <a href="/project/subprojects/{{ id }}/">Subprojects</a>
+    <strong>Manage</strong>
+  </nav>
+</header>
+<div class="columns">
+  <section class="main-column">
+    <h2>Details</h2>
+    <dl class="properties">
+      <dt>Looks Like</dt><dd><span class="fa {{ icon }} project-color-{{ color }}" aria-hidden="true"></span> <a href="{{ uri }}">{{ name }}</a></dd>
+      <dt>Hashtags</dt><dd>{{ hashtags }}</dd>
+      <dt>Review Queue</dt><dd><a href="{{ review_queue_uri }}">{{ review_queue }}</a></dd>
+    </dl>
+    {%- if description.is_some() %}
+    <h3>Description</h3>
+    <div class="remarkup">{{ self.description_html()|safe }}</div>
+    {%- endif %}
+    {% include "hm_timeline.html" %}
+  </section>
+  {% include "hm_actions.html" %}
+</div>
+{% endblock %}
