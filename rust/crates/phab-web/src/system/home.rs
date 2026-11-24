@@ -243,9 +243,9 @@ pub(crate) async fn show<S: WebState>(
             }),
         ));
     }
-    let listing = crate::feed::load(
+    let (listing, handles) = crate::feed::load(
         state,
-        &viewer.user.viewer(),
+        &viewer,
         FeedQuery {
             cursor: Cursor::Newest,
             limit: 40,
@@ -253,14 +253,19 @@ pub(crate) async fn show<S: WebState>(
         },
     )
     .await?;
-    let stories: Vec<String> = crate::feed::items(&listing)
+    let stories: Vec<String> = crate::feed::items(&listing, &handles)
         .iter()
         .map(|story| {
             format!(
                 "<li class=\"feed-story\"><span class=\"feed-title\">{}</span> <time \
-                 class=\"muted\">{}</time></li>",
+                 class=\"muted\">{}</time>{}</li>",
                 story.title_html,
-                escape(&story.date)
+                escape(&story.date),
+                story
+                    .body_html
+                    .as_ref()
+                    .map(|body| format!("<div class=\"feed-body\">{body}</div>"))
+                    .unwrap_or_default()
             )
         })
         .collect();

@@ -4,14 +4,13 @@
 //! visible stories newest first, paged by chronological key, each with the
 //! title of its primary transaction.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use phab_app_differential::title::{self, Title};
-use phab_core::{Config, Phid};
+use phab_core::{Config, Phid, PhidType};
 use phab_db::Database;
 use phab_policy::Viewer;
 
-use crate::handles::{self, Handle};
 use crate::story::{
     self, Column, NotificationPage, Order, Page, StoryError, StoryRow, Unported, VisibleStory,
 };
@@ -48,8 +47,6 @@ pub struct Entry {
 pub struct Listing {
     /// The stories, newest first.
     pub entries: Vec<Entry>,
-    /// The handles the titles name.
-    pub handles: HashMap<Phid, Handle>,
     /// Stories left out because Rust can't render them or decide whether
     /// the viewer may see them.
     pub skipped: usize,
@@ -209,7 +206,6 @@ pub async fn story(
     let mut listing = Listing::default();
     // PHP shows a story without a title too, which Rust doesn't.
     listing.skipped += add_entries(database, config, viewer, rows, now, &mut listing).await?;
-    finish(database, config, viewer, &mut listing, now).await?;
     Ok(listing)
 }
 
@@ -231,7 +227,13 @@ async fn add_entries(
             untitled += 1;
             continue;
         };
-        match title::feed_title(primary) {
+        let title = match story.object.phid_type() {
+            PhidType::COMMIT => title::audit_feed_title(primary),
+            PhidType::PROJECT => title::project_feed_title(primary),
+            PhidType::APPLICATION => title::application_feed_title(primary),
+            _ => title::feed_title(primary),
+        };
+        match title {
             Ok(Some(title)) => listing.entries.push(Entry { story, title }),
             // PHP shows the story without a title; there is nothing to
             // show here.
@@ -242,32 +244,33 @@ async fn add_entries(
     Ok(untitled)
 }
 
-/// Leaves out the entries whose titles name unported handles, and loads
-/// the handles of the others.
-async fn finish(
-    database: &Database,
-    config: &Config,
-    viewer: &Viewer,
-    listing: &mut Listing,
-    now: i64,
-) -> Result<(), StoryError> {
-    // Titles naming objects whose handles are not ported (repositories,
-    // packages) are left out.
-    let before = listing.entries.len();
-    listing
-        .entries
-        .retain(|entry| entry.title.handles().iter().all(handles::is_supported));
-    listing.skipped += before - listing.entries.len();
+impl Listing {
+    /// Leaves out the entries whose titles name an object `supported`
+    /// refuses (whose handle the caller can't load), counting them as
+    /// skipped.
+    pub fn retain_handles(&mut self, supported: impl Fn(&Phid) -> bool) {
+        self.retain_titles(|title| title.handles().iter().all(&supported));
+    }
 
-    let mut phids: Vec<Phid> = listing
-        .entries
-        .iter()
-        .flat_map(|entry| entry.title.handles())
-        .collect();
-    phids.sort();
-    phids.dedup();
-    listing.handles = handles::load_handles(database, config, viewer, &phids, now).await?;
-    Ok(())
+    /// Leaves out the entries whose titles `supported` refuses (which the
+    /// caller can't render), counting them as skipped.
+    pub fn retain_titles(&mut self, supported: impl Fn(&Title) -> bool) {
+        let before = self.entries.len();
+        self.entries.retain(|entry| supported(&entry.title));
+        self.skipped += before - self.entries.len();
+    }
+
+    /// The objects the titles name, sorted.
+    pub fn handle_phids(&self) -> Vec<Phid> {
+        let mut phids: Vec<Phid> = self
+            .entries
+            .iter()
+            .flat_map(|entry| entry.title.handles())
+            .collect();
+        phids.sort();
+        phids.dedup();
+        phids
+    }
 }
 
 async fn list_from(
@@ -310,6 +313,5 @@ async fn list_from(
             listing.has_older = true;
         }
     }
-    finish(database, config, viewer, &mut listing, now).await?;
     Ok(listing)
 }

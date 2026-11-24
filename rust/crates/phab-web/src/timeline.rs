@@ -62,8 +62,12 @@ fn title_html(title: &Title, handles: &HashMap<Phid, Handle>) -> String {
                     .collect();
                 html.push_str(&list.join(", "));
             }
-            Part::Value(value) => {
+            Part::Value(value) | Part::Capability(value) => {
                 let _ = write!(html, "&quot;{}&quot;", escape(value));
+            }
+            // Revisions have no application policy titles.
+            Part::Policy { policy, .. } => {
+                let _ = write!(html, "&quot;{}&quot;", escape(policy));
             }
         }
     }

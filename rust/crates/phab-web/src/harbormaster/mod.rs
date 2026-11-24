@@ -200,8 +200,14 @@ fn type_name(phid: &Phid) -> Option<&'static str> {
         "HMBD" => "Build",
         "HMCP" => "Build Plan",
         "FILE" => "File",
+        "APPS" => "Application",
         _ => return None,
     })
+}
+
+/// Whether [`load_handles()`] loads the handle of `phid`.
+pub(crate) fn is_supported(phid: &Phid) -> bool {
+    type_name(phid).is_some()
 }
 
 fn of_type(phids: &[Phid], code: &str) -> Vec<Phid> {
@@ -283,15 +289,16 @@ pub(crate) async fn load_handles<S: WebState>(
         );
     }
 
-    for (phid, commit) in
+    let commits =
         commit::load_visible_by_phids(database, config, &viewer, &of_type(&phids, "CMIT"), now)
             .await
-            .map_err(internal)?
-    {
-        found.insert(
-            phid,
-            Handle::new(commit.name(), commit.full_name(), commit.uri()),
-        );
+            .map_err(internal)?;
+    let rewritten = commit::rewritten_to(database, commits.values()).await?;
+    for (phid, commit) in commits {
+        let (name, full_name) = commit.handle_names(rewritten.get(&phid).map(String::as_str));
+        let mut handle = Handle::new(name, full_name, commit.uri());
+        handle.closed = commit.is_unreachable;
+        found.insert(phid, handle);
     }
 
     let repositories = repository::load(database, &of_type(&phids, "REPO")).await?;
@@ -324,9 +331,74 @@ pub(crate) async fn load_handles<S: WebState>(
     }
 
     harbormaster_handles(state, scope, &phids, &mut found).await?;
+    application_handles(state, &viewer, &of_type(&phids, "APPS"), &mut found).await?;
 
     missing_handles(database, &phids, &mut found).await?;
     Ok(found)
+}
+
+/// The handles of applications (`PhabricatorApplicationApplicationPHIDType`):
+/// their name and URI, when the viewer may see them.
+async fn application_handles<S: WebState>(
+    state: &S,
+    viewer: &Viewer,
+    phids: &[Phid],
+    found: &mut HashMap<Phid, Handle>,
+) -> Result<(), PageError> {
+    let known: Vec<(&Phid, &crate::system::catalog::Application)> = phids
+        .iter()
+        .filter_map(|phid| {
+            let class = phid.as_str().strip_prefix("PHID-APPS-")?;
+            Some((phid, crate::system::catalog::application(class)?))
+        })
+        .collect();
+    let config = state.config();
+    let policies = phab_policy::ApplicationPolicies::from_config(config);
+    let subjects: Vec<phab_policy::PolicySubject> = known
+        .iter()
+        .map(|(_, application)| policies.subject(&application.class, config.allow_public()))
+        .collect();
+    let refs: Vec<&phab_policy::PolicySubject> = subjects.iter().collect();
+    let facts = phab_policy::loader::load_facts(
+        state.database(),
+        config,
+        viewer,
+        &refs,
+        &phab_policy::loader::NoExtendedObjects,
+        state.now(),
+    )
+    .await
+    .map_err(internal)?;
+    let visible = phab_policy::filter(viewer, &refs, &[phab_policy::Capability::VIEW], &facts)
+        .map_err(internal)?;
+    for ((phid, application), visible) in known.into_iter().zip(visible) {
+        let handle = match (visible, &application.base_uri) {
+            (true, Some(uri)) => Handle::plain(application.name.clone(), uri.clone()),
+            (true, None) => Handle {
+                name: application.name.clone(),
+                full_name: application.name.clone(),
+                uri: None,
+                closed: false,
+            },
+            (false, _) => Handle {
+                name: "Restricted Application".to_owned(),
+                full_name: "Restricted Application".to_owned(),
+                uri: None,
+                closed: false,
+            },
+        };
+        found.insert(phid.clone(), handle);
+    }
+    // Classes which don't exist have no table to look in.
+    for phid in phids {
+        found.entry(phid.clone()).or_insert_with(|| Handle {
+            name: "Unknown Object (Application)".to_owned(),
+            full_name: "Unknown Object (Application)".to_owned(),
+            uri: None,
+            closed: false,
+        });
+    }
+    Ok(())
 }
 
 /// The handles of the objects the viewer can't see: "Restricted" when

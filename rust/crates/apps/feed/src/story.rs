@@ -5,12 +5,13 @@ use std::collections::{HashMap, HashSet};
 
 use phab_app_differential::feed::FeedVisibility;
 
-use phab_app_differential::{Comment, Repositories, Revision, Transaction, feed, storage};
+use phab_app_differential::{Comment, Repositories, Revision, Transaction, commit, feed, storage};
+use phab_app_project as project;
 use phab_conduit::MethodError;
 use phab_core::{Config, Phid, PhidType, php};
 use phab_db::{Database, DbError, rows};
 use phab_policy::loader::LoaderError;
-use phab_policy::{Capability, PolicyError, PolicySubject, Viewer, loader};
+use phab_policy::{ApplicationPolicies, Capability, PolicyError, PolicySubject, Viewer, loader};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -261,15 +262,67 @@ pub async fn load_notification_page(
         .collect()
 }
 
+/// What a story Rust shows is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoryObject {
+    /// A revision, with `DifferentialTransaction`s.
+    Revision,
+    /// A commit, with `PhabricatorAuditTransaction`s.
+    Commit,
+    /// A project, with `PhabricatorProjectTransaction`s.
+    Project,
+    /// An application, with
+    /// `PhabricatorApplicationApplicationTransaction`s.
+    Application,
+}
+
+impl StoryObject {
+    fn of(object: &Phid) -> Option<Self> {
+        match object.phid_type() {
+            PhidType::REVISION => Some(Self::Revision),
+            PhidType::COMMIT => Some(Self::Commit),
+            PhidType::PROJECT => Some(Self::Project),
+            PhidType::APPLICATION => Some(Self::Application),
+            _ => None,
+        }
+    }
+
+    /// The subtype of its transactions' PHIDs.
+    fn transaction_subtype(self) -> &'static str {
+        match self {
+            Self::Revision => "DREV",
+            Self::Commit => "CMIT",
+            Self::Project => "PROJ",
+            Self::Application => "APPS",
+        }
+    }
+
+    fn has_transaction(self, phid: &Phid) -> bool {
+        phid.phid_type() == PhidType::TRANSACTION
+            && phid.subtype() == Some(self.transaction_subtype())
+    }
+
+    /// `shouldHideForFeed()` of its transactions.
+    fn feed_visibility(
+        self,
+        transaction: &Transaction,
+        comment: Option<&Comment>,
+    ) -> FeedVisibility {
+        match self {
+            Self::Revision => feed::feed_visibility(transaction, comment),
+            Self::Commit => feed::audit_feed_visibility(transaction, comment),
+            Self::Project => feed::project_feed_visibility(transaction, comment),
+            Self::Application => feed::application_feed_visibility(transaction, comment),
+        }
+    }
+}
+
 /// A story of the page with the objects it needs.
 struct Candidate {
     row: StoryRow,
+    kind: StoryObject,
     object: Phid,
     transactions: Vec<Phid>,
-}
-
-fn is_revision_transaction(phid: &Phid) -> bool {
-    phid.phid_type() == PhidType::TRANSACTION && phid.subtype() == Some("DREV")
 }
 
 impl Candidate {
@@ -306,15 +359,15 @@ impl Candidate {
             // skips stories which fail to render.
             _ => return Err(StoryError::Unsupported("feed story without an object")),
         };
-        if object.phid_type() != PhidType::REVISION
-            || !transactions.iter().all(is_revision_transaction)
-        {
-            return Err(StoryError::Unsupported(
-                "feed story about objects other than revisions",
-            ));
-        }
+        let kind = StoryObject::of(&object)
+            .filter(|kind| transactions.iter().all(|phid| kind.has_transaction(phid)))
+            .ok_or(StoryError::Unsupported(
+                "feed story about objects other than revisions, commits, projects and \
+                 applications",
+            ))?;
         Ok(Some(Self {
             row,
+            kind,
             object,
             transactions,
         }))
@@ -328,12 +381,103 @@ fn sorted(phids: impl IntoIterator<Item = Phid>) -> Vec<Phid> {
     phids
 }
 
+impl From<storage::VisibilityError> for StoryError {
+    fn from(error: storage::VisibilityError) -> Self {
+        match error {
+            storage::VisibilityError::Loader(error) => Self::Loader(error),
+            storage::VisibilityError::Policy(error) => Self::Policy(error),
+        }
+    }
+}
+
 /// The objects of a page's stories the viewer can see.
 struct VisibleObjects {
-    revisions: HashSet<Phid>,
-    /// Transactions whose revision is visible too.
+    /// The revisions, commits, projects and applications.
+    objects: HashSet<Phid>,
+    /// Transactions whose object is visible too.
     transactions: HashMap<Phid, Transaction>,
     comments: HashMap<Phid, Comment>,
+}
+
+/// The transactions of the stories, each from its object's table, with
+/// their comments (projects and applications have none).
+async fn load_transactions(
+    database: &Database,
+    candidates: &[Candidate],
+) -> Result<(Vec<Transaction>, Vec<Comment>), StoryError> {
+    let of_kind = |kind: StoryObject| {
+        sorted(
+            candidates
+                .iter()
+                .filter(|candidate| candidate.kind == kind)
+                .flat_map(|candidate| candidate.transactions.iter().cloned()),
+        )
+    };
+    let revision_transactions =
+        storage::load_transactions(database, &of_kind(StoryObject::Revision)).await?;
+    let commit_transactions = storage::load_application_transactions(
+        database,
+        "audit",
+        "audit_transaction",
+        &of_kind(StoryObject::Commit),
+    )
+    .await?;
+    let project_transactions = storage::load_application_transactions(
+        database,
+        "project",
+        "project_transaction",
+        &of_kind(StoryObject::Project),
+    )
+    .await?;
+    let application_transactions = storage::load_application_transactions(
+        database,
+        "application",
+        "application_applicationtransaction",
+        &of_kind(StoryObject::Application),
+    )
+    .await?;
+    let comment_phids = |transactions: &[Transaction]| {
+        sorted(
+            transactions
+                .iter()
+                .filter_map(|xaction| xaction.comment_phid.clone()),
+        )
+    };
+    let mut comments =
+        storage::load_comments(database, &comment_phids(&revision_transactions)).await?;
+    comments.extend(
+        storage::load_application_comments(
+            database,
+            "audit",
+            "audit_transaction_comment",
+            &comment_phids(&commit_transactions),
+        )
+        .await?,
+    );
+    let mut transactions = revision_transactions;
+    transactions.extend(commit_transactions);
+    transactions.extend(project_transactions);
+    transactions.extend(application_transactions);
+    Ok((transactions, comments))
+}
+
+/// The projects of `phids` the viewer can see (`PhabricatorProjectQuery`).
+async fn visible_projects(
+    database: &Database,
+    config: &Config,
+    viewer: &Viewer,
+    phids: &[Phid],
+    now: i64,
+) -> Result<Vec<Phid>, StoryError> {
+    let projects = project::storage::load_by_phid(database, phids).await?;
+    let (projects, _) = project::policy::visible_projects(database, config, viewer, projects, now)
+        .await
+        .map_err(|error| match error {
+            project::policy::VisibilityError::Database(error) => StoryError::Database(error),
+            project::policy::VisibilityError::Loader(error) => StoryError::Loader(error),
+            project::policy::VisibilityError::Policy(error) => StoryError::Policy(error),
+        })?;
+    Ok(projects.into_iter().map(|project| project.phid).collect())
 }
 
 impl VisibleObjects {
@@ -344,18 +488,9 @@ impl VisibleObjects {
         candidates: &[Candidate],
         now: i64,
     ) -> Result<Self, StoryError> {
-        let transactions = storage::load_transactions(
-            database,
-            &sorted(
-                candidates
-                    .iter()
-                    .flat_map(|candidate| candidate.transactions.iter().cloned()),
-            ),
-        )
-        .await?;
-        let revisions = storage::load_revisions(
-            database,
-            &sorted(
+        let (transactions, comments) = load_transactions(database, candidates).await?;
+        let object_phids = |of: PhidType| {
+            sorted(
                 candidates
                     .iter()
                     .map(|candidate| candidate.object.clone())
@@ -363,23 +498,38 @@ impl VisibleObjects {
                         transactions
                             .iter()
                             .map(|xaction| xaction.object_phid.clone()),
-                    ),
-            ),
-        )
-        .await?;
-        let comments = storage::load_comments(
+                    )
+                    .filter(|phid| phid.phid_type() == of),
+            )
+        };
+        let revisions =
+            storage::load_revisions(database, &object_phids(PhidType::REVISION)).await?;
+        let commits = commit::load_visible_by_phids(
             database,
-            &sorted(
-                transactions
-                    .iter()
-                    .filter_map(|xaction| xaction.comment_phid.clone()),
-            ),
+            config,
+            viewer,
+            &object_phids(PhidType::COMMIT),
+            now,
         )
         .await?;
-
+        let projects = visible_projects(
+            database,
+            config,
+            viewer,
+            &object_phids(PhidType::PROJECT),
+            now,
+        )
+        .await?;
+        // `PhabricatorApplicationQuery`: an application's view policy.
+        let applications = object_phids(PhidType::APPLICATION);
+        let policies = ApplicationPolicies::from_config(config);
         let subjects: Vec<PolicySubject> = revisions
             .iter()
             .map(Revision::subject)
+            .chain(applications.iter().filter_map(|phid| {
+                let class = phid.as_str().strip_prefix("PHID-APPS-")?;
+                Some(policies.subject(class, config.allow_public()))
+            }))
             .chain(transactions.iter().map(Transaction::subject))
             .chain(comments.iter().map(Comment::subject))
             .collect();
@@ -400,17 +550,26 @@ impl VisibleObjects {
             .filter_map(|(subject, ok)| subject.phid.as_ref().filter(|_| ok))
             .collect();
 
-        let revisions: HashSet<Phid> = revisions
+        // Commits follow their repository, which `load_visible_by_phids()`
+        // checked, as `visible_projects()` checked the projects.
+        let objects: HashSet<Phid> = revisions
             .into_iter()
             .map(|revision| revision.phid)
             .filter(|phid| can_see.contains(phid))
+            .chain(commits.into_keys())
+            .chain(projects)
+            .chain(
+                applications
+                    .into_iter()
+                    .filter(|phid| can_see.contains(phid)),
+            )
             .collect();
         // The transaction query drops transactions whose object is not
         // visible, and attaches the comments the viewer can see.
         let transactions = transactions
             .into_iter()
             .filter(|xaction| {
-                can_see.contains(&xaction.phid) && revisions.contains(&xaction.object_phid)
+                can_see.contains(&xaction.phid) && objects.contains(&xaction.object_phid)
             })
             .map(|xaction| (xaction.phid.clone(), xaction))
             .collect();
@@ -420,7 +579,7 @@ impl VisibleObjects {
             .map(|comment| (comment.phid.clone(), comment))
             .collect();
         Ok(Self {
-            revisions,
+            objects,
             transactions,
             comments,
         })
@@ -429,7 +588,7 @@ impl VisibleObjects {
     /// The story's transactions and whether each shows in feed; `None` if
     /// the viewer can't see every object the story is about.
     fn transactions(&self, candidate: &Candidate) -> Option<Vec<(Transaction, FeedVisibility)>> {
-        if !self.revisions.contains(&candidate.object) {
+        if !self.objects.contains(&candidate.object) {
             return None;
         }
         candidate
@@ -441,7 +600,10 @@ impl VisibleObjects {
                     .comment_phid
                     .as_ref()
                     .and_then(|phid| self.comments.get(phid));
-                Some((xaction.clone(), feed::feed_visibility(xaction, comment)))
+                Some((
+                    xaction.clone(),
+                    candidate.kind.feed_visibility(xaction, comment),
+                ))
             })
             .collect()
     }
@@ -462,7 +624,7 @@ pub enum Unported {
 pub struct VisibleStory {
     /// The story row.
     pub row: StoryRow,
-    /// The revision it is about.
+    /// The revision, commit, project or application it is about.
     pub object: Phid,
     /// Its transactions, in order, and whether each is hidden from feed
     /// (`shouldHideForFeed()`).

@@ -10,16 +10,17 @@ use askama::Template;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::Uri;
 use phab_app_differential::title::{Part, Title};
-use phab_app_feed::handles::Handle;
 use phab_app_feed::listing::{self, Cursor, Listing, Query};
-use phab_app_feed::story::StoryError;
+use phab_app_feed::story::{StoryError, VisibleStory};
 use phab_core::Phid;
-use phab_policy::{Viewer, application};
+use phab_policy::application;
 
 use crate::error::PageError;
+use crate::harbormaster::{self, Handle};
 use crate::response::Page;
 use crate::shell::Shell;
 use crate::state::WebState;
+use crate::system::catalog;
 use crate::time;
 use crate::viewer::WebUser;
 
@@ -30,6 +31,8 @@ const PAGE_SIZE: usize = 100;
 pub(crate) struct StoryItem {
     /// The title, as HTML.
     pub(crate) title_html: String,
+    /// The body (`getBodyForFeed()` of its transactions), as HTML.
+    pub(crate) body_html: Option<String>,
     /// When it happened.
     pub(crate) date: String,
 }
@@ -50,21 +53,34 @@ fn escape(text: &str) -> String {
     escaped
 }
 
-fn handle_html(phid: &Phid, handles: &HashMap<Phid, Handle>) -> String {
-    let Some(handle) = handles.get(phid) else {
-        return String::new();
-    };
-    match &handle.uri {
-        Some(uri) => format!("<a href=\"{}\">{}</a>", escape(uri), escape(&handle.name)),
-        None => format!(
-            "<span class=\"handle-restricted\">{}</span>",
-            escape(&handle.name)
-        ),
+fn handle_html(phid: &Phid, handles: &Handles) -> String {
+    handles
+        .objects
+        .get(phid)
+        .map(Handle::link_html)
+        .unwrap_or_default()
+}
+
+/// The handles of the titles of a listing, as the viewer sees them.
+#[derive(Debug, Default)]
+pub(crate) struct Handles {
+    objects: HashMap<Phid, Handle>,
+    /// `getFullName()` of the users which policies name, "username (Real
+    /// Name)", which user handles don't keep.
+    user_full_names: HashMap<Phid, String>,
+}
+
+impl From<HashMap<Phid, Handle>> for Handles {
+    fn from(objects: HashMap<Phid, Handle>) -> Self {
+        Self {
+            objects,
+            user_full_names: HashMap::new(),
+        }
     }
 }
 
 /// A title as HTML: handles link to their objects, restricted ones don't.
-pub(crate) fn title_html(title: &Title, handles: &HashMap<Phid, Handle>) -> String {
+pub(crate) fn title_html(title: &Title, handles: &Handles) -> String {
     let mut html = String::new();
     for part in &title.0 {
         match part {
@@ -80,9 +96,104 @@ pub(crate) fn title_html(title: &Title, handles: &HashMap<Phid, Handle>) -> Stri
                 html.push_str(&escape(value));
                 html.push_str("</span>");
             }
+            Part::Capability(capability) => {
+                html.push_str("<span class=\"title-value\">");
+                html.push_str(&escape(capability_label(capability).unwrap_or_default()));
+                html.push_str("</span>");
+            }
+            Part::Policy {
+                policy,
+                transaction,
+                mode,
+            } => {
+                html.push_str("<span class=\"title-value\">");
+                html.push_str(&policy_html(policy, transaction, mode, handles));
+                html.push_str("</span>");
+            }
         }
     }
     html
+}
+
+/// `PhabricatorApplication::getCapabilityLabel()`: the label of an
+/// application capability, `None` for a capability which doesn't exist
+/// (which PHP renders as nothing).
+fn capability_label(capability: &str) -> Option<&'static str> {
+    match capability {
+        "view" => Some("Can Use Application"),
+        "edit" => Some("Can Configure Application"),
+        _ => catalog::applications()
+            .iter()
+            .flat_map(|application| &application.capabilities)
+            .find(|custom| custom.key == capability)
+            .and_then(|custom| custom.label.as_deref()),
+    }
+}
+
+/// Whether [`policy_html()`] renders `policy`: a global policy, or a user,
+/// project or custom policy. Other object policies are masked, which isn't
+/// ported.
+fn is_rendered_policy(policy: &str) -> bool {
+    matches!(policy, "public" | "users" | "admin" | "no-one")
+        || matches!(
+            policy.get(..10),
+            Some("PHID-USER-" | "PHID-PROJ-" | "PHID-PLCY-")
+        )
+}
+
+/// `PhabricatorPolicyRef::newTransactionLink()`: a global policy's name, a
+/// link to a user or project (with a hint), or a link to the dialog
+/// describing a custom policy.
+fn policy_html(policy: &str, transaction: &Phid, mode: &str, handles: &Handles) -> String {
+    let link = |name: &str, uri: Option<&str>| match uri {
+        Some(uri) => format!("<a href=\"{}\">{}</a>", escape(uri), escape(name)),
+        None => escape(name),
+    };
+    match policy {
+        "public" => escape("Public (No Login Required)"),
+        "users" => escape("All Users"),
+        "admin" => escape("Administrators"),
+        "no-one" => escape("No One"),
+        _ if policy.starts_with("PHID-PLCY-") => link(
+            "Custom Policy",
+            Some(&format!("/transactions/{mode}/{}/", transaction.as_str())),
+        ),
+        _ => {
+            let phid = Phid::new(policy);
+            let handle = handles.objects.get(&phid);
+            let uri = handle.and_then(|handle| handle.uri.as_deref());
+            if policy.starts_with("PHID-PROJ-") {
+                let name = handle.map_or("", |handle| handle.name.as_str());
+                format!("{} (Project)", link(name, uri))
+            } else {
+                // A user who doesn't exist keeps the handle's name.
+                let name = handles
+                    .user_full_names
+                    .get(&phid)
+                    .map(String::as_str)
+                    .or(handle.map(|handle| handle.full_name.as_str()));
+                link(name.unwrap_or(""), uri)
+            }
+        }
+    }
+}
+
+/// The bodies of a story's transactions which have one: the summary of a
+/// commit (`PhabricatorAuditTransaction::getBodyForFeed()`, with
+/// `renderSummary()`). Comments aren't shown.
+fn body_html(story: &VisibleStory) -> Option<String> {
+    let bodies: Vec<String> = story
+        .transactions
+        .iter()
+        .filter(|(transaction, _)| transaction.transaction_type == "audit:commit")
+        .filter_map(|(transaction, _)| {
+            let summary = phab_core::php::string_cast(transaction.new_value.get("summary")?);
+            let summary = phab_core::text::truncate(&summary, None, Some(128));
+            phab_core::php::is_truthy_str(&summary)
+                .then(|| escape(&summary).replace('\n', "<br />"))
+        })
+        .collect();
+    (!bodies.is_empty()).then(|| bodies.join(""))
 }
 
 pub(crate) fn page_error(error: StoryError) -> PageError {
@@ -92,27 +203,90 @@ pub(crate) fn page_error(error: StoryError) -> PageError {
     }
 }
 
+/// Leaves out the stories whose titles name objects whose handles aren't
+/// ported, and loads the handles of the others.
+pub(crate) async fn resolve<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    listing: &mut Listing,
+) -> Result<Handles, PageError> {
+    // `PhabricatorApplicationQuery` loads no application of a class which
+    // doesn't exist, which hides the story.
+    listing.entries.retain(|entry| {
+        let object = entry.story.object.as_str();
+        object
+            .strip_prefix("PHID-APPS-")
+            .is_none_or(|class| catalog::application(class).is_some())
+    });
+    listing.retain_handles(harbormaster::is_supported);
+    listing.retain_titles(|title| {
+        title.0.iter().all(|part| match part {
+            Part::Policy { policy, .. } => is_rendered_policy(policy),
+            Part::Capability(capability) => capability_label(capability).is_some(),
+            _ => true,
+        })
+    });
+    let scope = harbormaster::Scope::new(state, viewer);
+    let mut handles: Handles = harbormaster::load_handles(state, &scope, &listing.handle_phids())
+        .await?
+        .into();
+    let mut users: Vec<Phid> = listing
+        .entries
+        .iter()
+        .flat_map(|entry| &entry.title.0)
+        .filter_map(|part| match part {
+            Part::Policy { policy, .. } if policy.starts_with("PHID-USER-") => {
+                Some(Phid::new(policy.as_str()))
+            }
+            _ => None,
+        })
+        .collect();
+    users.sort();
+    users.dedup();
+    if !users.is_empty() {
+        for user in phab_auth::user::load_users_by_phid(state.database(), &users).await? {
+            let full_name = if user.real_name.is_empty() {
+                user.user_name
+            } else {
+                format!("{} ({})", user.user_name, user.real_name)
+            };
+            handles.user_full_names.insert(user.phid, full_name);
+        }
+    }
+    Ok(handles)
+}
+
 /// The stories of a listing, ready for a template.
-pub(crate) fn items(listing: &Listing) -> Vec<StoryItem> {
+pub(crate) fn items(listing: &Listing, handles: &Handles) -> Vec<StoryItem> {
     listing
         .entries
         .iter()
         .map(|entry| StoryItem {
-            title_html: title_html(&entry.title, &listing.handles),
+            title_html: title_html(&entry.title, handles),
+            body_html: body_html(&entry.story),
             date: time::format_utc(i64::try_from(entry.story.row.epoch()).unwrap_or(i64::MAX)),
         })
         .collect()
 }
 
-/// Loads a page of the feed for `viewer`.
+/// Loads a page of the feed for `viewer`, with the handles its titles
+/// name.
 pub(crate) async fn load<S: WebState>(
     state: &S,
-    viewer: &Viewer,
+    viewer: &WebUser,
     query: Query<'_>,
-) -> Result<Listing, PageError> {
-    listing::list(state.database(), state.config(), viewer, query, state.now())
-        .await
-        .map_err(page_error)
+) -> Result<(Listing, Handles), PageError> {
+    let mut listing = listing::list(
+        state.database(),
+        state.config(),
+        &viewer.user.viewer(),
+        query,
+        state.now(),
+    )
+    .await
+    .map_err(page_error)?;
+    let handles = resolve(state, viewer, &mut listing).await?;
+    Ok((listing, handles))
 }
 
 #[derive(Template)]
@@ -237,9 +411,9 @@ async fn render<S: WebState>(
     references: &[Phid],
     uri: &Uri,
 ) -> Result<Page<Feed>, PageError> {
-    let listing = load(
+    let (listing, handles) = load(
         state,
-        &viewer.user.viewer(),
+        viewer,
         Query {
             cursor,
             limit: PAGE_SIZE,
@@ -269,7 +443,7 @@ async fn render<S: WebState>(
             .iter()
             .map(|query| (query.name(), query.uri(), builtin == Some(*query)))
             .collect(),
-        stories: items(&listing),
+        stories: items(&listing, &handles),
         skipped: listing.skipped,
         older,
         newer,
@@ -354,7 +528,7 @@ pub(crate) async fn detail<S: WebState>(
     }
     // `%Ls` quotes the key: anything but digits matches no row.
     let key: u64 = key.parse().map_err(|_| PageError::NotFound)?;
-    let listing = listing::story(
+    let mut listing = listing::story(
         state.database(),
         state.config(),
         &viewer.user.viewer(),
@@ -363,6 +537,7 @@ pub(crate) async fn detail<S: WebState>(
     )
     .await
     .map_err(page_error)?;
+    let handles = resolve(state.as_ref(), &viewer, &mut listing).await?;
     if listing.skipped > 0 {
         return Err(PageError::Fallback("a feed story Rust can't show"));
     }
@@ -372,7 +547,7 @@ pub(crate) async fn detail<S: WebState>(
     let current = uri.path_and_query().map_or("/feed/", |path| path.as_str());
     Ok(Page(FeedStory {
         shell: Shell::for_user(state.config(), &viewer, "Story", current),
-        stories: items(&listing),
+        stories: items(&listing, &handles),
     }))
 }
 
@@ -387,14 +562,18 @@ mod tests {
                 Phid::new("PHID-USER-alice"),
                 Handle {
                     name: "alice".to_owned(),
+                    full_name: "alice".to_owned(),
                     uri: Some("/p/alice/".to_owned()),
+                    closed: false,
                 },
             ),
             (
                 Phid::new("PHID-DREV-1"),
                 Handle {
                     name: "Restricted Differential Revision".to_owned(),
+                    full_name: "Restricted Differential Revision".to_owned(),
                     uri: None,
+                    closed: false,
                 },
             ),
         ]);
@@ -407,7 +586,7 @@ mod tests {
             Part::Text(".".to_owned()),
         ]);
         assert_eq!(
-            title_html(&title, &handles),
+            title_html(&title, &handles.into()),
             "<a href=\"/p/alice/\">alice</a> retitled \
              <span class=\"handle-restricted\">Restricted Differential Revision</span> to \
              <span class=\"title-value\">&lt;b&gt;</span>."

@@ -53,6 +53,76 @@ impl Commit {
     pub fn uri(&self) -> String {
         self.repository.commit_uri(&self.identifier)
     }
+
+    /// The name and full name of the handle (`loadHandles()` of
+    /// `PhabricatorRepositoryCommitPHIDType`), given the hash an
+    /// unreachable commit was rewritten to, if any.
+    pub fn handle_names(&self, rewritten_to: Option<&str>) -> (String, String) {
+        let mut name = self.name();
+        if let Some(target) = rewritten_to.filter(|_| self.is_unreachable) {
+            name = format!(
+                "{name} \u{267B} {}",
+                self.repository.format_commit_name(target)
+            );
+        }
+        let full_name = if self.summary.is_empty() {
+            name.clone()
+        } else {
+            format!("{name}: {}", self.summary)
+        };
+        (name, full_name)
+    }
+}
+
+/// `DiffusionCommitHintQuery::withCommits()` on the unreachable commits:
+/// the hash each was rewritten to, by commit PHID.
+pub async fn rewritten_to<'a>(
+    database: &Database,
+    commits: impl IntoIterator<Item = &'a Commit>,
+) -> Result<HashMap<Phid, String>, DbError> {
+    let unreachable: Vec<&Commit> = commits
+        .into_iter()
+        .filter(|commit| commit.is_unreachable)
+        .collect();
+    if unreachable.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sql = format!(
+        "SELECT repositoryPHID, oldCommitIdentifier, newCommitIdentifier, hintType FROM {} \
+         WHERE repositoryPHID IN ({}) AND oldCommitIdentifier IN ({})",
+        database.table("repository", "repository_commithint"),
+        phab_db::placeholders(unreachable.len()),
+        phab_db::placeholders(unreachable.len()),
+    );
+    let query = phab_db::bind_all(
+        phab_db::sqlx::query(&sql),
+        unreachable
+            .iter()
+            .map(|commit| commit.repository.phid.as_str()),
+    );
+    let rows = phab_db::bind_all(
+        query,
+        unreachable.iter().map(|commit| commit.identifier.as_str()),
+    )
+    .fetch_all(database.pool())
+    .await?;
+    let mut found = HashMap::new();
+    for row in &rows {
+        if rows::text(row, "hintType")? != "rewritten" {
+            continue;
+        }
+        let repository = rows::text(row, "repositoryPHID")?;
+        let old = rows::text(row, "oldCommitIdentifier")?;
+        if let Some(commit) = unreachable.iter().find(|commit| {
+            commit.repository.phid.as_str() == repository && commit.identifier == old
+        }) {
+            found.insert(
+                commit.phid.clone(),
+                rows::opt_text(row, "newCommitIdentifier")?.unwrap_or_default(),
+            );
+        }
+    }
+    Ok(found)
 }
 
 /// A commit reference split into its repository and its hash.

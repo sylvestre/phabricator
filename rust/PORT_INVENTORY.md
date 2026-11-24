@@ -493,7 +493,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Route | Controller | Port | Note |
 |---|---|---|---|
 | `/feed/{id}/` | `PhabricatorFeedDetailController` | Rust | new: one story; `?text=1` and stories Rust can't render 421 |
-| `/feed/[query/{queryKey}/]` | `PhabricatorFeedListController` | partial | `/feed/` (`?userPHIDs=`, paging) and the builtin queries `all` and `projects` (new); saved queries 421 |
+| `/feed/[query/{queryKey}/]` | `PhabricatorFeedListController` | partial | `/feed/` (`?userPHIDs=`, paging) and the builtin queries `all` and `projects` (new), with the stories of revisions, commits, projects and application policies; saved queries 421, stories whose titles aren't ported are counted in a notice |
 | `/feed/transactions/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorFeedTransactionListController` | not ported | transaction search engine page; read-only |
 
 ### Files (`PhabricatorFilesApplication`)

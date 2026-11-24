@@ -1,6 +1,9 @@
 //! `/feed/`, its queries and stories, and `/notification/` against a test
 //! database.
 
+// Each test fills its database with stories, then checks the pages.
+#![allow(clippy::too_many_lines)]
+
 use std::sync::Arc;
 
 use axum::body::{self, Body};
@@ -92,6 +95,9 @@ async fn setup() -> Option<TestDatabase> {
         "policy",
         "spaces",
         "repository",
+        "audit",
+        "harbormaster",
+        "application",
     ])
     .await?;
     let session = hash::hmac_sha256(b"alice-token", &hex::decode(DIGEST_KEY_HEX).unwrap()).unwrap();
@@ -119,7 +125,7 @@ async fn setup() -> Option<TestDatabase> {
         .await;
     // 1: bob accepts D1. 2: bob accepts D2, which alice can't see.
     // 3: alice retitles D1. 4: an edge type whose title is not ported.
-    // 5: a story about a commit, which is not ported.
+    // 5: a story about a commit made of revision transactions, left to PHP.
     add_story(
         &test_db,
         1,
@@ -308,6 +314,402 @@ async fn builtin_queries_and_single_stories() {
         let (status, _) = get(&test_db, &path).await;
         assert_eq!(status, expected, "{path}");
     }
+    test_db.drop_databases().await;
+}
+
+/// A story `id` about a commit, made of one `audit_transaction`.
+async fn add_commit_story(
+    test_db: &TestDatabase,
+    id: u64,
+    (author, commit): (&str, &str),
+    kind: &str,
+    (new, metadata): (&str, &str),
+) {
+    let transaction = format!("PHID-XACT-CMIT-{id}");
+    let data = json!({
+        "objectPHID": commit,
+        "transactionPHIDs": [&transaction],
+    })
+    .to_string();
+    let key = chronological_key(id);
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_audit`.audit_transaction (phid, authorPHID, objectPHID, \
+               viewPolicy, editPolicy, commentPHID, commentVersion, transactionType, oldValue, \
+               newValue, contentSource, metadata, dateCreated, dateModified) VALUES \
+             ('{transaction}', '{author}', '{commit}', 'public', 'no-one', NULL, 0, '{kind}', \
+               'null', '{new}', '{{}}', '{metadata}', 1, 1); \
+             INSERT INTO `{{ns}}_feed`.feed_storydata (id, phid, chronologicalKey, storyType, \
+               storyData, authorPHID, dateCreated, dateModified) VALUES \
+             ({id}, 'PHID-STRY-{id}', {key}, '{STORY}', '{data}', '{author}', 1, 1); \
+             INSERT INTO `{{ns}}_feed`.feed_storyreference (objectPHID, chronologicalKey) \
+             VALUES ('{commit}', {key}), ('{author}', {key})"
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn commit_and_buildable_stories() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    // A repository alice can see, with a commit and a rewritten one, and a
+    // repository she can't see.
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_repository`.repository (id, phid, name, callsign, \
+               versionControlSystem, details, dateCreated, dateModified, viewPolicy, editPolicy, \
+               pushPolicy, repositorySlug) VALUES \
+             (1, 'PHID-REPO-vct', 'Tools', 'VCT', 'git', '{}', 1, 1, 'users', 'users', 'users', \
+               NULL), \
+             (2, 'PHID-REPO-secret', 'Secret', 'SECRET', 'git', '{}', 1, 1, 'no-one', 'no-one', \
+               'no-one', NULL); \
+             INSERT INTO `{ns}_repository`.repository_commit (repositoryID, phid, \
+               commitIdentifier, epoch, auditStatus, summary, importStatus) VALUES \
+             (1, 'PHID-CMIT-landed', 'abcdef0123456789abcdef0123456789abcdef01', 1, 'none', \
+               'Add <the> README', 15), \
+             (1, 'PHID-CMIT-gone', 'b50ab917138e4e2fb5bf04a99d8eacf540934cdb', 1, 'none', \
+               'Rewritten', 3083), \
+             (2, 'PHID-CMIT-hidden', '1111111111111111111111111111111111111111', 1, 'none', \
+               'Hidden', 15); \
+             INSERT INTO `{ns}_repository`.repository_commithint (repositoryPHID, \
+               oldCommitIdentifier, newCommitIdentifier, hintType) VALUES \
+             ('PHID-REPO-vct', 'b50ab917138e4e2fb5bf04a99d8eacf540934cdb', \
+               'cd825461a99bc447c59d79f92156325664434c44', 'rewritten'); \
+             INSERT INTO `{ns}_differential`.differential_diff (id, phid, revisionID, \
+               authorPHID, lintStatus, unitStatus, lineCount, dateCreated, dateModified, \
+               viewPolicy) VALUES \
+             (1, 'PHID-DIFF-1', 1, 'PHID-USER-alice', 0, 0, 1, 1, 1, 'users'); \
+             INSERT INTO `{ns}_harbormaster`.harbormaster_buildable (id, phid, buildablePHID, \
+               containerPHID, buildableStatus, dateCreated, dateModified, isManualBuildable) \
+             VALUES (1, 'PHID-HMBB-1', 'PHID-DIFF-1', 'PHID-DREV-one', 'failed', 1, 1, 0)",
+        )
+        .await;
+    // 6: alice commits, bob wrote it. 7: a commit by someone without an
+    // account. 8: the rewritten commit. 9: a hidden commit. 10: a
+    // Harbormaster failure on D1. 11: a passed build, hidden from feed.
+    add_commit_story(
+        &test_db,
+        6,
+        ("PHID-USER-alice", "PHID-CMIT-landed"),
+        "audit:commit",
+        (
+            r#"{"summary":"Add <the> README","authorName":"bob","authorPHID":"PHID-USER-bob","committerName":"alice","committerPHID":"PHID-USER-alice"}"#,
+            "{}",
+        ),
+    )
+    .await;
+    add_commit_story(
+        &test_db,
+        7,
+        ("PHID-RIDT-someone", "PHID-CMIT-landed"),
+        "audit:commit",
+        (
+            r#"{"summary":"","authorName":"Someone <someone@example.com>","authorPHID":null,"committerName":null,"committerPHID":null}"#,
+            "{}",
+        ),
+    )
+    .await;
+    add_commit_story(
+        &test_db,
+        8,
+        ("PHID-USER-alice", "PHID-CMIT-gone"),
+        "audit:commit",
+        (
+            r#"{"summary":"Rewritten","authorName":"alice","authorPHID":"PHID-USER-alice","committerName":null,"committerPHID":null}"#,
+            "{}",
+        ),
+    )
+    .await;
+    add_commit_story(
+        &test_db,
+        9,
+        ("PHID-USER-bob", "PHID-CMIT-hidden"),
+        "audit:commit",
+        (
+            r#"{"summary":"Hidden","authorName":"bob","authorPHID":"PHID-USER-bob","committerName":null,"committerPHID":null}"#,
+            "{}",
+        ),
+    )
+    .await;
+    add_story(
+        &test_db,
+        10,
+        "PHID-APPS-PhabricatorHarbormasterApplication",
+        "PHID-DREV-one",
+        "harbormaster:buildable",
+        (
+            "null",
+            "\"failed\"",
+            r#"{"harbormaster:buildablePHID":"PHID-HMBB-1"}"#,
+        ),
+    )
+    .await;
+    add_story(
+        &test_db,
+        11,
+        "PHID-APPS-PhabricatorHarbormasterApplication",
+        "PHID-DREV-one",
+        "harbormaster:buildable",
+        (
+            "null",
+            "\"passed\"",
+            r#"{"harbormaster:buildablePHID":"PHID-HMBB-1"}"#,
+        ),
+    )
+    .await;
+
+    let (status, page) = get(&test_db, "/feed/").await;
+    assert_eq!(status, StatusCode::OK);
+    for expected in [
+        "<a href=\"/p/alice/\">alice</a> committed <a href=\"/rVCTabcdef0123456789abcdef0123456789abcdef01\">rVCTabcdef012345: \
+         Add &lt;the&gt; README</a> (authored by <a href=\"/p/bob/\">bob</a>).",
+        "<div class=\"feed-body\">Add &lt;the&gt; README</div>",
+        "Someone &lt;someone@example.com&gt; committed <a href=\"/rVCTabcdef0123456789abcdef0123456789abcdef01\">",
+        "<a href=\"/p/alice/\">alice</a> committed <a href=\"/rVCTb50ab917138e4e2fb5bf04a99d8eacf540934cdb\" \
+         class=\"remarkup-object-closed\">rVCTb50ab917138e \u{267B} rVCTcd825461a99b: Rewritten</a>.",
+        "<a href=\"/harbormaster/\">Harbormaster</a> failed remote builds in \
+         <a href=\"/B1\">B1: Diff 1</a> for <a href=\"/D1\">D1: Open &lt;one&gt;</a>!",
+    ] {
+        assert!(page.contains(expected), "{expected}\n{page}");
+    }
+    assert!(!page.contains("Hidden"), "{page}");
+    assert!(!page.contains("completed remote builds"), "{page}");
+    // Only the edge and the commit story made of revision transactions
+    // are left out.
+    assert!(page.contains("2 stories are not shown here yet"), "{page}");
+
+    // The commit's story, alone, and on bob's profile.
+    let (status, page) = get(&test_db, &format!("/feed/{}/", chronological_key(6))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("(authored by"), "{page}");
+    let (status, _) = get(&test_db, &format!("/feed/{}/", chronological_key(9))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, page) = get(&test_db, "/p/bob/").await;
+    assert!(page.contains("bob</a> accepted"), "{page}");
+    assert!(!page.contains("committed"), "{page}");
+    test_db.drop_databases().await;
+}
+
+/// A story `id` by alice about a project, made of one `project_transaction`.
+async fn add_project_story(
+    test_db: &TestDatabase,
+    id: u64,
+    project: &str,
+    kind: &str,
+    (old, new, metadata): (&str, &str, &str),
+) {
+    let transaction = format!("PHID-XACT-PROJ-{id}");
+    let data = json!({
+        "objectPHID": project,
+        "transactionPHIDs": {&transaction: &transaction},
+    })
+    .to_string();
+    let key = chronological_key(id);
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_project`.project_transaction (phid, authorPHID, objectPHID, \
+               viewPolicy, editPolicy, commentPHID, commentVersion, transactionType, oldValue, \
+               newValue, contentSource, metadata, dateCreated, dateModified) VALUES \
+             ('{transaction}', 'PHID-USER-alice', '{project}', 'public', 'PHID-USER-alice', \
+               NULL, 0, '{kind}', '{old}', '{new}', '{{}}', '{metadata}', 1, 1); \
+             INSERT INTO `{{ns}}_feed`.feed_storydata (id, phid, chronologicalKey, storyType, \
+               storyData, authorPHID, dateCreated, dateModified) VALUES \
+             ({id}, 'PHID-STRY-{id}', {key}, '{STORY}', '{data}', 'PHID-USER-alice', 1, 1); \
+             INSERT INTO `{{ns}}_feed`.feed_storyreference (objectPHID, chronologicalKey) \
+             VALUES ('{project}', {key}), ('PHID-USER-alice', {key})"
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn project_stories() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_project`.project (name, phid, authorPHID, dateCreated, \
+               dateModified, status, viewPolicy, editPolicy, joinPolicy, icon, color, mailKey, \
+               hasWorkboard, hasMilestones, hasSubprojects, projectPath, projectDepth, \
+               projectPathKey, properties, subtype, primarySlug) VALUES \
+             ('Build', 'PHID-PROJ-build', 'x', 1, 1, '0', 'users', 'users', 'users', 'fa-x', \
+               'blue', 'k', 0, 0, 0, 'a', 0, 'k001', '{}', 'default', 'build'), \
+             ('Hush', 'PHID-PROJ-hush', 'x', 1, 1, '0', 'no-one', 'users', 'users', 'fa-x', \
+               'red', 'k', 0, 0, 0, 'b', 0, 'k002', '{}', 'default', 'hush')",
+        )
+        .await;
+    // 12: alice creates Build. 13: she adds bob to it, as a list of PHIDs.
+    // 14: she removes bob, as older edge dictionaries. 15: a hidden
+    // project. 16: an icon, whose title is not ported. 17: a silenced
+    // member, hidden from feed.
+    add_project_story(
+        &test_db,
+        12,
+        "PHID-PROJ-build",
+        "core:create",
+        ("null", "null", r#"{"core.create":true}"#),
+    )
+    .await;
+    add_project_story(
+        &test_db,
+        13,
+        "PHID-PROJ-build",
+        "core:edge",
+        ("[]", r#"["PHID-USER-bob"]"#, r#"{"edge:type":13}"#),
+    )
+    .await;
+    add_project_story(
+        &test_db,
+        14,
+        "PHID-PROJ-build",
+        "core:edge",
+        (
+            r#"{"PHID-USER-bob":{"dst":"PHID-USER-bob","type":"13"},"PHID-USER-alice":{"dst":"PHID-USER-alice","type":"13"}}"#,
+            r#"{"PHID-USER-alice":{"dst":"PHID-USER-alice","type":13}}"#,
+            r#"{"edge:type":13}"#,
+        ),
+    )
+    .await;
+    add_project_story(
+        &test_db,
+        15,
+        "PHID-PROJ-hush",
+        "core:create",
+        ("null", "null", r#"{"core.create":true}"#),
+    )
+    .await;
+    add_project_story(
+        &test_db,
+        16,
+        "PHID-PROJ-build",
+        "project:icon",
+        (r#""project""#, r#""group""#, "{}"),
+    )
+    .await;
+    add_project_story(
+        &test_db,
+        17,
+        "PHID-PROJ-build",
+        "core:edge",
+        ("[]", r#"["PHID-USER-bob"]"#, r#"{"edge:type":61}"#),
+    )
+    .await;
+
+    let (status, page) = get(&test_db, "/feed/").await;
+    assert_eq!(status, StatusCode::OK);
+    for expected in [
+        "<a href=\"/p/alice/\">alice</a> created <a href=\"/tag/build/\">Build</a>.",
+        "<a href=\"/p/alice/\">alice</a> added a member for <a href=\"/tag/build/\">Build</a>: \
+         <a href=\"/p/bob/\">bob</a>.",
+        "<a href=\"/p/alice/\">alice</a> removed a member for <a href=\"/tag/build/\">Build</a>: \
+         <a href=\"/p/bob/\">bob</a>.",
+    ] {
+        assert!(page.contains(expected), "{expected}\n{page}");
+    }
+    assert!(!page.contains("Hush"), "{page}");
+    // The icon, the edge and the commit story made of revision
+    // transactions are left out.
+    assert!(page.contains("3 stories are not shown here yet"), "{page}");
+    test_db.drop_databases().await;
+}
+
+/// A story `id` by alice about the application `class`, made of one policy
+/// change of `capability`.
+async fn add_application_story(
+    test_db: &TestDatabase,
+    id: u64,
+    class: &str,
+    capability: &str,
+    (old, new): (&str, &str),
+) {
+    let transaction = format!("PHID-XACT-APPS-{id}");
+    let application = format!("PHID-APPS-{class}");
+    let data = json!({
+        "objectPHID": application,
+        "transactionPHIDs": {&transaction: &transaction},
+    })
+    .to_string();
+    let key = chronological_key(id);
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_application`.application_applicationtransaction (phid, \
+               authorPHID, objectPHID, viewPolicy, editPolicy, commentPHID, commentVersion, \
+               transactionType, oldValue, newValue, contentSource, metadata, dateCreated, \
+               dateModified) VALUES \
+             ('{transaction}', 'PHID-USER-alice', '{application}', 'public', 'admin', NULL, 0, \
+               'application.policy', '\"{old}\"', '\"{new}\"', '{{}}', \
+               '{{\"capability.name\":\"{capability}\"}}', 1, 1); \
+             INSERT INTO `{{ns}}_feed`.feed_storydata (id, phid, chronologicalKey, storyType, \
+               storyData, authorPHID, dateCreated, dateModified) VALUES \
+             ({id}, 'PHID-STRY-{id}', {key}, '{STORY}', '{data}', 'PHID-USER-alice', 1, 1); \
+             INSERT INTO `{{ns}}_feed`.feed_storyreference (objectPHID, chronologicalKey) \
+             VALUES ('{application}', {key}), ('PHID-USER-alice', {key})"
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn application_stories() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    // 18: a user policy. 19: a custom policy. 20: a capability which
+    // doesn't exist, whose label PHP renders empty. 21: an application
+    // which doesn't exist, which PHP hides.
+    let differential = "PhabricatorDifferentialApplication";
+    add_application_story(
+        &test_db,
+        18,
+        differential,
+        "differential.default.view",
+        ("users", "PHID-USER-bob"),
+    )
+    .await;
+    add_application_story(
+        &test_db,
+        19,
+        differential,
+        "edit",
+        ("admin", "PHID-PLCY-custom"),
+    )
+    .await;
+    add_application_story(
+        &test_db,
+        20,
+        differential,
+        "differential.nothing",
+        ("users", "admin"),
+    )
+    .await;
+    add_application_story(
+        &test_db,
+        21,
+        "PhabricatorNothingApplication",
+        "view",
+        ("users", "admin"),
+    )
+    .await;
+
+    let (status, page) = get(&test_db, "/feed/").await;
+    assert_eq!(status, StatusCode::OK);
+    for expected in [
+        "<a href=\"/p/alice/\">alice</a> changed the <span class=\"title-value\">Default View \
+         Policy</span> policy for application <a href=\"/differential/\">Differential</a> from \
+         <span class=\"title-value\">All Users</span> to <span class=\"title-value\"><a \
+         href=\"/p/bob/\">bob (Bob)</a></span>.",
+        "<a href=\"/p/alice/\">alice</a> changed the <span class=\"title-value\">Can Configure \
+         Application</span> policy for application <a href=\"/differential/\">Differential</a> \
+         from <span class=\"title-value\">Administrators</span> to <span \
+         class=\"title-value\"><a href=\"/transactions/new/PHID-XACT-APPS-19/\">Custom \
+         Policy</a></span>.",
+    ] {
+        assert!(page.contains(expected), "{expected}\n{page}");
+    }
+    assert!(!page.contains("Nothing"), "{page}");
+    // The unknown capability, the edge and the commit story made of
+    // revision transactions are left out.
+    assert!(page.contains("3 stories are not shown here yet"), "{page}");
     test_db.drop_databases().await;
 }
 
