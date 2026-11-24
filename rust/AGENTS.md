@@ -287,6 +287,13 @@ load); closing the revision is left to PHP, as it needs the commit's
 diff (`newDiffFromCommit()`, `diffusion.rawdiffquery`), and so are
 objects other than revisions.
 
+`diffusion.commit.edit` (`crates/apps/diffusion/src/commit_edit.rs`)
+applies comments, audit actions, auditors, subscribers and projects to Git
+commits as `PhabricatorAuditEditor` does and queues the publish task,
+whose mail and feed PHP sends (`phab-worker` declines commits). Herald
+doesn't run on these edits in PHP either. `parity/writes/commit-edit.json`
+has its scenarios, run as alice.
+
 `phab-worker repository discover|refs|update <repository>` is
 `bin/repository`'s workflow for one Git repository (what
 `PhabricatorRepositoryPullLocalDaemon` runs): it takes PHP's repository

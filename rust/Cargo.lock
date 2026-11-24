@@ -1746,6 +1746,7 @@ dependencies = [
  "phab-app-differential",
  "phab-app-files",
  "phab-app-herald",
+ "phab-app-project",
  "phab-auth",
  "phab-conduit",
  "phab-core",

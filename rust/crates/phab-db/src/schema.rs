@@ -1463,7 +1463,7 @@ pub const CONTRACT: &[TableContract] = &[
         table: "herald_webhook",
         columns: &["id", "phid", "name", "webhookURI", "viewPolicy", "status"],
     },
-    // Commit stories of the feed pages.
+    // Commit stories of the feed pages, and diffusion.commit.edit.
     TableContract {
         database: "audit",
         table: "audit_transaction",
@@ -1472,7 +1472,29 @@ pub const CONTRACT: &[TableContract] = &[
     TableContract {
         database: "audit",
         table: "audit_transaction_comment",
-        columns: &["phid", "authorPHID", "viewPolicy", "editPolicy", "content"],
+        columns: &[
+            "phid",
+            "transactionPHID",
+            "authorPHID",
+            "viewPolicy",
+            "editPolicy",
+            "commentVersion",
+            "content",
+            "contentSource",
+            "isDeleted",
+            "dateCreated",
+            "dateModified",
+            "commitPHID",
+            "pathID",
+            "isNewFile",
+            "lineNumber",
+            "lineLength",
+            "fixedState",
+            "hasReplies",
+            "replyToCommentPHID",
+            "legacyCommentID",
+            "attributes",
+        ],
     },
     // Application policy stories of the feed pages.
     TableContract {
@@ -1489,6 +1511,39 @@ pub const CONTRACT: &[TableContract] = &[
             "newCommitIdentifier",
             "hintType",
         ],
+    },
+    // diffusion.commit.edit.
+    TableContract {
+        database: "repository",
+        table: "repository_auditrequest",
+        columns: &[
+            "id",
+            "auditorPHID",
+            "commitPHID",
+            "auditStatus",
+            "auditReasons",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_commit",
+        columns: &[
+            "id",
+            "phid",
+            "authorPHID",
+            "auditStatus",
+            "authorIdentityPHID",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_commitdata",
+        columns: &["commitID", "commitDetails"],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_identity",
+        columns: &["phid", "currentEffectiveUserPHID"],
     },
 ];
 

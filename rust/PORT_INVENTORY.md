@@ -18,10 +18,10 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 25 | 75 | – | 11 | 9 | 120 |
+| Conduit methods | 25 | 75 | – | 12 | 8 | 120 |
 | Web routes | 52 | – | 64 | 20 | 242 | 378 |
 
-All 9 methods not ported write.
+All 8 methods not ported write.
 
 Web routes count each PHP route once; a Diffusion route stands for its three spellings (`/source/<name>/`, `/diffusion/<CALLSIGN>/`, `/diffusion/<id>/`), written `/{repo}`. Routes PHP registers twice (Celerity, `/status/`) count once.
 
@@ -92,7 +92,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.blame` | stable | shadowed |  |
 | `diffusion.branchquery` | stable | shadowed |  |
 | `diffusion.browsequery` | stable | shadowed |  |
-| `diffusion.commit.edit` | stable | not ported | write (EditEngine): auditors, audit actions, comments, projects and subscribers through `PhabricatorAuditEditor`, which sends mail, publishes feed stories and runs Herald on commits: not ported. |
+| `diffusion.commit.edit` | stable | ported, not routed | write (EditEngine, `PhabricatorAuditEditor`): on Git commits named by ID or PHID, a `comment` without remarkup effect, one audit action (`accept`, `concern`, `resign`, `verify`), auditors (users and projects), subscribers and projects, with the implicit CC, the audit requests, the audit status and its `diffusion.commit.state` transaction, and the publish task whose mail and feed PHP sends; Herald doesn't run on these edits (only on `audit:commit`). Left to PHP: other identifiers and transactions (inline comments), mentions, object references and files in comments, inline comments with a draft state, auditors with an action, several transactions of a type, no effect, PHP's validation errors, packages, projects with watchers, subprojects, Mercurial. |
 | `diffusion.commit.search` | stable | shadowed |  |
 | `diffusion.commitparentsquery` | stable | shadowed |  |
 | `diffusion.diffquery` | stable | shadowed | read-only for Git (the diff is read inline, not stored); with `ArcanistDiffParser`'s dictionaries. Left to PHP: diffs which are not UTF-8 or the Rust parser leaves to PHP. |
