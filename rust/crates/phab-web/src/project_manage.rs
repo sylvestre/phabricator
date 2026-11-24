@@ -649,7 +649,9 @@ mod tests {
         );
         let title = title(&joined, &config, &handles).unwrap();
         assert!(
-            title.ends_with(" added 1 member(s): Unknown Object."),
+            title.ends_with(
+                r#" added 1 member(s): <span class="handle-restricted">Unknown Object</span>."#
+            ),
             "{title}"
         );
         let status = transaction("project:status", json!("0"), json!("100"), json!({}));

@@ -8,8 +8,8 @@ use crate::state::WebState;
 use crate::{
     actions, assets, changeset_view, dashboards, datasource, diff_page, diffusion, favorites, feed,
     files, flags, harbormaster, herald, login, notifications, opt_in, people, people_lists,
-    preview, project_edit, project_manage, project_members, projects, queue, revision, revision_edit, settings, subscriptions,
-    transactions, typeahead, web_edit,
+    preview, project_edit, project_manage, project_members, projects, queue, revision,
+    revision_edit, settings, subscriptions, transactions, typeahead, web_edit,
 };
 
 /// The login, registration and account linking pages (W7).
