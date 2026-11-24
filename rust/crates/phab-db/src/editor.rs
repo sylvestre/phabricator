@@ -11,6 +11,8 @@ use crate::{Database, DbError, edges};
 
 /// The content source of a Conduit call (`PhabricatorConduitContentSource`).
 pub const CONDUIT_SOURCE: &str = r#"{"source":"conduit","params":[]}"#;
+/// The content source of a web request (`PhabricatorWebContentSource`).
+pub const WEB_SOURCE: &str = r#"{"source":"web","params":[]}"#;
 
 /// A transaction without a comment, its values and metadata already
 /// encoded as PHP's `json_encode()` does.
