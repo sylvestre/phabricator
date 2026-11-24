@@ -21,7 +21,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | Conduit methods | 25 | 75 | – | 11 | 9 | 120 |
 | Web routes | 48 | – | 55 | 15 | 260 | 378 |
 
-Of the 9 methods not ported, 8 write; the read-only one left is `diffusion.findsymbols`.
+All 9 methods not ported write.
 
 Web routes count each PHP route once; a Diffusion route stands for its three spellings (`/source/<name>/`, `/diffusion/<CALLSIGN>/`, `/diffusion/<id>/`), written `/{repo}`. Routes PHP registers twice (Celerity, `/status/`) count once.
 
