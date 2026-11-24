@@ -5,6 +5,7 @@ pub mod blame;
 pub mod branch_query;
 pub mod browse_query;
 pub mod cache;
+pub mod commit_edit;
 pub mod commit_parents_query;
 pub mod commit_search;
 pub mod diff_query;
@@ -64,6 +65,7 @@ pub fn register(registry: &mut Registry) {
 pub fn register_with(registry: &mut Registry, mime: Option<MimeCommand>) {
     let mime = mime.map(Arc::new);
     registry.register(audit_query::AuditQuery);
+    registry.register(commit_edit::CommitEdit);
     registry.register(commit_search::CommitSearch);
     registry.register(internal_commit_search::InternalCommitSearch);
     registry.register(legacy_query::LegacyQuery);

@@ -1353,6 +1353,71 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_transaction",
         columns: &TRANSACTION_COLUMNS,
     },
+    // diffusion.commit.edit.
+    TableContract {
+        database: "audit",
+        table: "audit_transaction",
+        columns: &TRANSACTION_COLUMNS,
+    },
+    TableContract {
+        database: "audit",
+        table: "audit_transaction_comment",
+        columns: &[
+            "phid",
+            "transactionPHID",
+            "authorPHID",
+            "viewPolicy",
+            "editPolicy",
+            "commentVersion",
+            "content",
+            "contentSource",
+            "isDeleted",
+            "dateCreated",
+            "dateModified",
+            "commitPHID",
+            "pathID",
+            "isNewFile",
+            "lineNumber",
+            "lineLength",
+            "fixedState",
+            "hasReplies",
+            "replyToCommentPHID",
+            "legacyCommentID",
+            "attributes",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_auditrequest",
+        columns: &[
+            "id",
+            "auditorPHID",
+            "commitPHID",
+            "auditStatus",
+            "auditReasons",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_commit",
+        columns: &[
+            "id",
+            "phid",
+            "authorPHID",
+            "auditStatus",
+            "authorIdentityPHID",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_commitdata",
+        columns: &["commitID", "commitDetails"],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_identity",
+        columns: &["phid", "currentEffectiveUserPHID"],
+    },
 ];
 
 /// The columns `phab_db::editor::insert_transaction()` writes.

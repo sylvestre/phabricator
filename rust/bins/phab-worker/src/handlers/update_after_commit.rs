@@ -7,14 +7,46 @@
 //! Ported: the task's checks, which fail it for good (no commit or object
 //! PHID, a commit or an object which doesn't load), as PHP does.
 //!
-//! Left to PHP: closing a revision. It needs the commit's diff
-//! (`newDiffFromCommit()`: `diffusion.rawdiffquery`'s temporary file, the
-//! parsed changesets and their binary files, `local:commits`), whether the
-//! diff changed since the revision's (`isDiffChangedBeforeCommit()`), and
-//! the build plans' landing warnings, before the editor's
-//! `differential:update`, `core:edge` and `differential.revision.close`
-//! transactions; and objects of other types, which PHP loads but leaves as
-//! they are.
+//! Left to PHP: closing a revision, and objects of other types, which PHP
+//! loads but leaves as they are. Closing writes, in this order, what Rust
+//! has no single piece for yet:
+//!
+//! 1. `newDiffFromCommit()`: an unattached diff of the commit is reused
+//!    (`withCommitPHIDs()`, `withHasRevision(false)`); otherwise
+//!    `diffusion.rawdiffquery` as the omnipotent user (its temporary file,
+//!    as `crates/apps/diffusion/src/raw_diff_query.rs` stores it),
+//!    `ArcanistDiffParser`, `diffusion.commitparentsquery`, a
+//!    `DiffusionFileContentQuery` file for each side of each binary change
+//!    (`*:binary-phid`, `*:file:size`, `*:file:mime-type`), then
+//!    `DifferentialDiff::newFromRawChanges()` saved with
+//!    `creationMethod` `commit`, the lint and unit statuses
+//!    `AUTO_SKIP`, the commit's epoch as `dateCreated`, its monogram as
+//!    description, the acting PHID as author and the parent as base
+//!    revision; the binary files attached to the diff; and the
+//!    `local:commits` property (with the tree hash of the commit's ref).
+//! 2. `isDiffChangedBeforeCommit()` against the active diff: the paths of
+//!    the changesets, the contents of binary files (`diffusion.filecontentquery`
+//!    again), and the old and new files rebuilt from the hunks with context
+//!    (`makeChangesWithContext()`, `makeOldFile()`, `makeNewFile()`); a
+//!    change sets the editor's `changedPriorToCommitURI` (`/DN?vs=..&id=..#toc`).
+//! 3. `differential.revision.wrong` when the revision is neither closed
+//!    nor accepted, `differential.revision.wrongbuilds` for the builds of
+//!    the active diff whose plan's "Warn When Landing" behavior asks for it
+//!    (`loadConcerningBuilds()`).
+//! 4. `DifferentialTransactionEditor` as the omnipotent user acting as the
+//!    committer, the author or Diffusion (`getActingPHID()`), with a daemon
+//!    content source, `setIsCloseByCommit(true)` and
+//!    `setContinueOnNoEffect(true)`: those transactions, `differential:update`
+//!    (ignored without effect, `isCommitUpdate` and `commitPHIDs`
+//!    metadata), the "has commit" `core:edge` with its inverse edit of the
+//!    commit, and `differential.revision.close` (`isCommitClose`,
+//!    `revisionMatchData`, `commitPHID`), with Herald on the revision and
+//!    the publish task. `phab_app_differential::edit` has the update, the
+//!    close and daemon edits, but refuses a close with an update, and has
+//!    neither the two warnings nor the close-by-commit state.
+//!
+//! `parity/workers/update-after-commit.json` has the scenarios to compare
+//! once this is ported (D1 and D2 closed by the Git commits of R2).
 
 use phab_core::php;
 use phab_db::{Database, DbError};
