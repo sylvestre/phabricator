@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1>Test Console</h1>
+</header>
+<form class="settings-form" method="post" action="/herald/test/">
+  {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+  <input type="hidden" name="__form__" value="1">
+  <div class="remarkup">{{ instructions_html|safe }}</div>
+  <div class="settings-field">
+    <label for="herald-object-name">Object Name</label>
+    <input type="text" id="herald-object-name" name="object_name" value="">
+  </div>
+  <button type="submit">Continue</button>
+</form>
+{% endblock %}

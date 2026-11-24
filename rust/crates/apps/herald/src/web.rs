@@ -284,6 +284,57 @@ pub async fn transcripts(
         .collect()
 }
 
+/// A `herald_webhook` row (`HeraldWebhook`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebhookRow {
+    /// The row ID.
+    pub id: i64,
+    /// The PHID.
+    pub phid: Phid,
+    /// The name.
+    pub name: String,
+    /// Where requests go.
+    pub webhook_uri: String,
+    /// The view policy; webhooks have no automatic capability.
+    pub view_policy: String,
+    /// `firehose`, `enabled` or `disabled`.
+    pub status: String,
+}
+
+/// The webhooks with one of `statuses` (all of them when `None`) and an
+/// ID below `before`, newest first (`HeraldWebhookQuery`).
+pub async fn webhooks(
+    database: &Database,
+    statuses: Option<&[&str]>,
+    before: Option<i64>,
+    limit: usize,
+) -> Result<Vec<WebhookRow>, DbError> {
+    let status_clause = statuses
+        .map(|statuses| format!(" AND status IN ({})", phab_db::placeholders(statuses.len())))
+        .unwrap_or_default();
+    let sql = format!(
+        "SELECT id, phid, name, webhookURI, viewPolicy, status FROM {} WHERE id < ?{status_clause} \
+         ORDER BY id DESC LIMIT {limit}",
+        database.table("herald", "herald_webhook"),
+    );
+    let query = phab_db::sqlx::query(&sql).bind(before.unwrap_or(i64::MAX));
+    phab_db::bind_all(query, statuses.unwrap_or_default().iter().copied())
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| {
+            Ok(WebhookRow {
+                id: rows::int(row, "id")?,
+                phid: Phid::new(rows::text(row, "phid")?),
+                name: rows::text(row, "name")?,
+                webhook_uri: rows::text(row, "webhookURI")?,
+                view_policy: rows::text(row, "viewPolicy")?,
+                status: rows::text(row, "status")?,
+            })
+        })
+        .collect()
+}
+
 /// A transcript with its details, decoded.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transcript {

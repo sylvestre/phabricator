@@ -654,6 +654,107 @@ async fn transcripts(test_db: &TestDatabase) {
     );
 }
 
+/// The confirmation of disabling a rule, the test console and the list of
+/// webhooks.
+async fn forms(test_db: &TestDatabase) {
+    // root may edit the global rule H1, alice her personal rule H2.
+    let page = self::page(test_db, "/herald/disable/1/disable/", ROOT).await;
+    assert!(page.contains("Really disable this rule?"), "{page}");
+    assert!(
+        page.contains("This rule will no longer activate."),
+        "{page}"
+    );
+    assert!(
+        page.contains("action=\"/herald/disable/1/disable/\""),
+        "{page}"
+    );
+    assert!(page.contains("Disable Rule</button>"), "{page}");
+    assert!(page.contains("<a href=\"/H1\">Cancel</a>"), "{page}");
+    let page = self::page(test_db, "/herald/disable/2/whatever/", ALICE).await;
+    assert!(page.contains("Really enable this rule?"), "{page}");
+    assert!(page.contains("Enable Rule</button>"), "{page}");
+    assert_eq!(
+        fallback(test_db, "/herald/disable/1/disable/", ALICE).await,
+        "policy exceptions"
+    );
+    for path in [
+        "/herald/disable/0/disable/",
+        "/herald/disable/99/disable/",
+        "/herald/disable/1/dis-able/",
+    ] {
+        assert_eq!(
+            status(test_db, path, ROOT).await,
+            StatusCode::NOT_FOUND,
+            "{path}"
+        );
+    }
+    // Posts change the rule, which PHP does.
+    let config = Config::default();
+    let state = Arc::new(State {
+        database: test_db.database().clone(),
+        remarkup: phab_web::remarkup::new_engine(&config),
+        config,
+    });
+    let response = phab_web::router::<State>()
+        .with_state(state)
+        .oneshot(
+            Request::post("/herald/disable/1/disable/")
+                .header(header::COOKIE, ROOT)
+                .body(Body::from("__form__=1"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::MISDIRECTED_REQUEST);
+
+    let page = self::page(test_db, "/herald/test/", ALICE).await;
+    assert!(page.contains("<h1>Test Console</h1>"), "{page}");
+    assert!(page.contains("name=\"object_name\""), "{page}");
+    assert!(
+        page.contains("<tt class=\"remarkup-monospaced\">rX123</tt>"),
+        "{page}"
+    );
+
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_herald`.herald_webhook (id, phid, name, webhookURI, viewPolicy, \
+               editPolicy, status, hmacKey, dateCreated, dateModified) VALUES \
+             (1, 'PHID-HWBH-1', 'CI', 'https://ci.example/', 'users', 'admin', 'firehose', 'k', \
+               1, 1), \
+             (2, 'PHID-HWBH-2', 'Old', 'https://old.example/', 'users', 'admin', 'disabled', \
+               'k', 1, 1), \
+             (3, 'PHID-HWBH-3', 'Secret', 'https://secret.example/', 'no-one', 'no-one', \
+               'enabled', 'k', 1, 1)",
+        )
+        .await;
+    let page = self::page(test_db, "/herald/webhook/", ALICE).await;
+    assert!(page.contains("<h1>Webhooks: Active</h1>"), "{page}");
+    assert!(
+        page.contains("<a href=\"/herald/webhook/view/1/\">CI</a>"),
+        "{page}"
+    );
+    assert!(page.contains("fa-star-o\" aria-hidden=\"true\"></span> Firehose"));
+    assert!(page.contains("https://ci.example/"), "{page}");
+    assert!(!page.contains("Old"), "{page}");
+    assert!(!page.contains("Secret"), "{page}");
+    // Only administrators may create webhooks.
+    assert!(!page.contains("href=\"/herald/webhook/edit/\""), "{page}");
+    let page = self::page(test_db, "/herald/webhook/query/all/", ROOT).await;
+    assert!(page.contains("<h1>Webhooks: All</h1>"), "{page}");
+    assert!(page.contains("<li class=\"hm-disabled\">"), "{page}");
+    assert!(page.contains(">Old</a>"), "{page}");
+    assert!(!page.contains("Secret"), "{page}");
+    assert!(page.contains("href=\"/herald/webhook/edit/\""), "{page}");
+    assert_eq!(
+        fallback(test_db, "/herald/webhook/query/abcdef/", ROOT).await,
+        "a saved search query"
+    );
+    assert_eq!(
+        fallback(test_db, "/herald/webhook/?statuses[0]=enabled", ROOT).await,
+        "a search query"
+    );
+}
+
 #[tokio::test]
 async fn herald_pages_show_what_the_viewer_may_see() {
     let Some(test_db) = setup().await else {
@@ -662,5 +763,6 @@ async fn herald_pages_show_what_the_viewer_may_see() {
     rules(&test_db).await;
     lists(&test_db).await;
     transcripts(&test_db).await;
+    forms(&test_db).await;
     test_db.drop_databases().await;
 }

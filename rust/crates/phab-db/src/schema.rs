@@ -1457,6 +1457,12 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_uritransaction",
         columns: &TRANSACTION_COLUMNS,
     },
+    // The list of Herald webhooks.
+    TableContract {
+        database: "herald",
+        table: "herald_webhook",
+        columns: &["id", "phid", "name", "webhookURI", "viewPolicy", "status"],
+    },
     // Commit stories of the feed pages.
     TableContract {
         database: "audit",

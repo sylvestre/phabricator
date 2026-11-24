@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 25 | 75 | – | 11 | 9 | 120 |
-| Web routes | 48 | – | 55 | 15 | 260 | 378 |
+| Web routes | 48 | – | 58 | 15 | 257 | 378 |
 
 All 9 methods not ported write.
 
@@ -574,12 +574,12 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/herald/new/` | `HeraldNewController` | not ported | write (form or action) |
 | `/herald/create/` | `HeraldNewController` | not ported | write (form or action) |
 | `/herald/edit/[{id}/]` | `HeraldRuleController` | not ported | write: the rule editor |
-| `/herald/disable/{id}/{action}/` | `HeraldDisableController` | not ported | write (form or action) |
-| `/herald/test/` | `HeraldTestConsoleController` | not ported | runs rules against an object (dry run, writes a transcript) |
+| `/herald/disable/{id}/{action}/` | `HeraldDisableController` | partial | the confirmation, for rules the viewer may edit; the post (`HeraldRuleEditor`, not ported) and object rules 421 |
+| `/herald/test/` | `HeraldTestConsoleController` | partial | the object form; the post, which runs the rules against the object (dry run, writes a transcript), 421 |
 | `/herald/transcript/` | `HeraldTranscriptListController` | Rust | default list |
 | `/herald/transcript/[query/{queryKey}/]` | `HeraldTranscriptListController` | partial | builtin queries |
 | `/herald/transcript/{id}/[{view}/]` | `HeraldTranscriptController` | partial | transcripts of revisions, every view; transaction titles not ported 421 |
-| `/herald/webhook/[query/{queryKey}/[{queryAction}/]]` | `HeraldWebhookListController` | not ported | webhook list; read-only (admin) |
+| `/herald/webhook/[query/{queryKey}/[{queryAction}/]]` | `HeraldWebhookListController` | partial | the builtin queries `active` (default) and `all`; saved queries and filters 421 |
 | `/herald/webhook/view/{id}/[request/{requestID}/]` | `HeraldWebhookViewController` | not ported | webhook page; read-only (admin) |
 | `/herald/webhook/edit/[{id}/][{editAction}/]` | `HeraldWebhookEditController` | not ported | write (form or action) |
 | `/herald/webhook/test/{id}/` | `HeraldWebhookTestController` | not ported | write (form or action) |

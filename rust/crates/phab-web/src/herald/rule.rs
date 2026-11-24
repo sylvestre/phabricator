@@ -55,7 +55,7 @@ pub(crate) struct RulePage {
 
 /// Whether the viewer may edit the rule (`CAN_EDIT`): the global rules
 /// capability for global rules, the author for personal ones.
-async fn can_edit<S: WebState>(
+pub(crate) async fn can_edit<S: WebState>(
     state: &S,
     scope: &Scope,
     rule: &RuleRow,
