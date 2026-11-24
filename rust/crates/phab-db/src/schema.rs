@@ -1396,6 +1396,29 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_path",
         columns: &["id", "path", "pathHash"],
     },
+    // diffusion.updatecoverage.
+    TableContract {
+        database: "repository",
+        table: "repository_branch",
+        columns: &[
+            "id",
+            "repositoryID",
+            "name",
+            "lintCommit",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_coverage",
+        columns: &["branchID", "pathID", "commitID", "coverage"],
+    },
+    TableContract {
+        database: "repository",
+        table: "repository_commit",
+        columns: &["id", "repositoryID", "commitIdentifier"],
+    },
 ];
 
 /// The columns `phab_db::editor::insert_transaction()` writes.

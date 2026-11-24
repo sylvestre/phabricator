@@ -229,7 +229,7 @@ fn split_spaces(line: &str, limit: usize) -> Vec<&str> {
 }
 
 /// `md5()`, in hex.
-fn md5_hex(text: &str) -> String {
+pub(crate) fn md5_hex(text: &str) -> String {
     hex::encode(Md5::digest(text.as_bytes()))
 }
 

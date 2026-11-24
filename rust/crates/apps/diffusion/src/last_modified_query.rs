@@ -26,7 +26,7 @@ const CACHE_TIME: Duration = Duration::from_secs(10);
 
 /// The repository part of a commit name (`^(?:[rR]([A-Z]+:?|[0-9]+:))?`),
 /// and the rest.
-fn split_monogram(name: &str) -> (Option<&str>, &str) {
+pub(crate) fn split_monogram(name: &str) -> (Option<&str>, &str) {
     let Some(rest) = name.strip_prefix(['r', 'R']) else {
         return (None, name);
     };

@@ -39,6 +39,7 @@ pub mod repository_search;
 pub mod resolve_refs;
 pub mod search_query;
 pub mod tags_query;
+pub mod update_coverage;
 
 use std::sync::Arc;
 
@@ -75,6 +76,7 @@ pub fn register_with(registry: &mut Registry, mime: Option<MimeCommand>) {
     registry.register(lint_messages::GetLintMessages);
     registry.register(look_soon::LookSoon);
     registry.register(recent_commits_by_path::GetRecentCommitsByPath);
+    registry.register(update_coverage::UpdateCoverage);
     registry.register(Query(blame::Blame));
     registry.register(Query(branch_query::BranchQuery));
     registry.register(Query(browse_query::BrowseQuery));
