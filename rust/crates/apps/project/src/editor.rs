@@ -11,7 +11,7 @@
 //! stories and search indexing still come from PHP's daemons.
 //!
 //! Ported transactions: the name, icon, color, additional hashtags,
-//! members and watchers of root projects, which are neither milestones,
+//! members, watchers and silenced members of root projects, which are neither milestones,
 //! nor parents, nor archived. Edits come from Conduit or from the web
 //! forms and actions ([`Source`]), which only differ by their content
 //! source. Left to PHP: everything else, with custom fields (the
@@ -47,6 +47,8 @@ const NAME_LENGTH: usize = 128;
 const OBJECT_HAS_WATCHER: i64 = crate::storage::OBJECT_HAS_WATCHER;
 /// `PhabricatorWatcherHasObjectEdgeType`.
 const WATCHER_HAS_OBJECT: i64 = 48;
+/// `PhabricatorProjectSilencedEdgeType`, which has no inverse.
+const SILENCED: i64 = 61;
 /// The content source of web requests (`PhabricatorWebContentSource`).
 const WEB_SOURCE: &str = r#"{"source":"web","params":[]}"#;
 
@@ -106,14 +108,18 @@ pub enum Change {
     Members(Operation, Vec<String>),
     /// The watcher edge transaction (`PhabricatorProjectWatchController`).
     Watchers(Operation, Vec<String>),
+    /// The silenced member edge transaction
+    /// (`PhabricatorProjectSilenceController`).
+    Silenced(Operation, Vec<String>),
 }
 
 impl Change {
-    /// The edge type of an edge transaction, and its inverse.
-    fn edge_types(&self) -> Option<(i64, i64)> {
+    /// The edge type of an edge transaction, and its inverse if it has one.
+    fn edge_types(&self) -> Option<(i64, Option<i64>)> {
         match self {
-            Self::Members(..) => Some((edges::PROJECT_HAS_MEMBER, edges::MEMBER_OF_PROJECT)),
-            Self::Watchers(..) => Some((OBJECT_HAS_WATCHER, WATCHER_HAS_OBJECT)),
+            Self::Members(..) => Some((edges::PROJECT_HAS_MEMBER, Some(edges::MEMBER_OF_PROJECT))),
+            Self::Watchers(..) => Some((OBJECT_HAS_WATCHER, Some(WATCHER_HAS_OBJECT))),
+            Self::Silenced(..) => Some((SILENCED, None)),
             _ => None,
         }
     }
@@ -145,6 +151,7 @@ struct Extra {
 struct Lists {
     members: Vec<String>,
     watchers: Vec<String>,
+    silenced: Vec<String>,
 }
 
 /// A transaction once its values are known.
@@ -567,11 +574,13 @@ fn plan_transaction(
                 None,
             )
         }
-        Change::Members(operation, phids) | Change::Watchers(operation, phids) => {
-            let old = if matches!(change, Change::Members(..)) {
-                &lists.members
-            } else {
-                &lists.watchers
+        Change::Members(operation, phids)
+        | Change::Watchers(operation, phids)
+        | Change::Silenced(operation, phids) => {
+            let old = match change {
+                Change::Members(..) => &lists.members,
+                Change::Watchers(..) => &lists.watchers,
+                _ => &lists.silenced,
             };
             let new = new_list(old, *operation, phids);
             let removed = minus(old, &new);
@@ -726,7 +735,7 @@ async fn validate(
     for change in changes {
         match change {
             Change::Slugs(given) => check_slugs(database, object, given).await?,
-            Change::Members(_, phids) | Change::Watchers(_, phids) => {
+            Change::Members(_, phids) | Change::Watchers(_, phids) | Change::Silenced(_, phids) => {
                 if !users_exist(database, phids).await? {
                     return Err(unsupported("members which are not users"));
                 }
@@ -780,6 +789,7 @@ async fn existing_state(
     for (edge_type, list) in [
         (edges::PROJECT_HAS_MEMBER, &mut lists.members),
         (OBJECT_HAS_WATCHER, &mut lists.watchers),
+        (SILENCED, &mut lists.silenced),
     ] {
         *list = edges::load_destination_phids(
             database,
@@ -849,8 +859,9 @@ async fn plan(
         let (planned, effect) = plan_transaction(change, &state, (&slugs, &lists), is_new);
         if let Some(extra) = &extra {
             let capability = match (&planned.change, &planned.edge) {
-                // See PHI1024: watching needs no capability.
-                (Change::Watchers(..), _) => None,
+                // See PHI1024: watching needs no capability, and members
+                // only silence themselves.
+                (Change::Watchers(..) | Change::Silenced(..), _) => None,
                 (_, Some((removed, added))) => {
                     member_capability(&actor, (removed, added), extra.is_membership_locked)
                 }
@@ -1200,6 +1211,30 @@ async fn write_herald(
     Ok(())
 }
 
+/// `PhabricatorEdgeEditor::save()` of the project's edges of a type, and
+/// of their inverses when the type has one.
+async fn save_edges(
+    connection: &mut MySqlConnection,
+    database: &Database,
+    (project, edge_type, inverse): (&str, i64, Option<i64>),
+    (removed, added): (&[String], &[String]),
+    now: i64,
+) -> Result<(), MethodError> {
+    if let Some(inverse) = inverse {
+        let types = (project, edge_type, inverse);
+        db_editor::save_edges(connection, database, types, (removed, added), now).await?;
+        return Ok(());
+    }
+    for dst in removed {
+        db_editor::delete_edge(connection, database, (project, edge_type, dst)).await?;
+    }
+    for (seq, dst) in (0..).zip(added) {
+        let edge = (project, edge_type, dst.as_str());
+        db_editor::insert_edge(connection, database, edge, seq, now).await?;
+    }
+    Ok(())
+}
+
 /// Writes the planned edit in one transaction, in PHP's order. Returns the
 /// project ID.
 async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<i64, MethodError> {
@@ -1279,7 +1314,7 @@ async fn write(request: &ApiRequest<'_>, plan: &Plan) -> Result<i64, MethodError
                     continue;
                 };
                 let types = (project, edge_type, inverse);
-                db_editor::save_edges(connection, database, types, (removed, added), now).await?;
+                save_edges(connection, database, types, (removed, added), now).await?;
                 materialize |= edge_type == edges::PROJECT_HAS_MEMBER;
             }
             _ => {}
