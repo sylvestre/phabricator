@@ -91,16 +91,16 @@ impl DialogPage {
 
 /// A policy option of the form.
 pub(crate) struct PolicyOption {
-    value: String,
-    label: String,
-    selected: bool,
+    pub(crate) value: String,
+    pub(crate) label: String,
+    pub(crate) selected: bool,
 }
 
 /// A policy field of the form.
 pub(crate) struct PolicyField {
-    key: &'static str,
-    label: &'static str,
-    options: Vec<PolicyOption>,
+    pub(crate) key: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) options: Vec<PolicyOption>,
 }
 
 /// An icon or color option.
@@ -213,7 +213,7 @@ pub(crate) async fn apply<S: WebState>(
     Ok(())
 }
 
-fn dialog<S: WebState>(
+pub(crate) fn dialog<S: WebState>(
     state: &S,
     viewer: &WebUser,
     uri: &Uri,
@@ -437,39 +437,36 @@ pub(crate) async fn unwatch_project<S: WebState>(
 }
 
 /// The global policies the policy controls offer
-/// (`PhabricatorPolicyQuery::getGlobalPolicies()` and the project's
-/// object policy), and their names.
-fn global_policies(allow_public: bool) -> Vec<(&'static str, &'static str)> {
+/// (`PhabricatorPolicyQuery::getGlobalPolicies()`, with the object policy
+/// of the edited object after "All Users"), and their names.
+fn global_policies(
+    allow_public: bool,
+    object_policy: Option<(&'static str, &'static str)>,
+) -> Vec<(&'static str, &'static str)> {
     let mut policies = Vec::new();
     if allow_public {
         policies.push(("public", "Public (No Login Required)"));
     }
-    policies.extend([
-        ("users", "All Users"),
-        ("obj.project.members", "Project Members"),
-        ("admin", "Administrators"),
-        ("no-one", "No One"),
-    ]);
+    policies.push(("users", "All Users"));
+    policies.extend(object_policy);
+    policies.extend([("admin", "Administrators"), ("no-one", "No One")]);
     policies
 }
 
-/// The policy fields, with the project's values selected. Policies the
-/// form doesn't list are named by their handle.
-async fn policy_fields<S: WebState>(
+/// The policy fields of a form (key, label and current value), with the
+/// global policies and `object_policy`. Policies the form doesn't list
+/// are named by their handle.
+pub(crate) async fn policy_controls<S: WebState>(
     state: &S,
     viewer: &WebUser,
-    project: &Project,
+    object_policy: Option<(&'static str, &'static str)>,
+    values: Vec<(&'static str, &'static str, String)>,
 ) -> Result<Vec<PolicyField>, PageError> {
     let allow_public = state
         .config()
         .value("policy.allow-public")
         .is_some_and(phab_core::php::is_truthy);
-    let globals = global_policies(allow_public);
-    let values = [
-        ("policy.view", "Visible To", &project.view_policy),
-        ("policy.edit", "Editable By", &project.edit_policy),
-        ("policy.join", "Joinable By", &project.join_policy),
-    ];
+    let globals = global_policies(allow_public, object_policy);
     let others: Vec<Phid> = values
         .iter()
         .filter(|(_, _, value)| !globals.iter().any(|(key, _)| key == value))
@@ -486,7 +483,7 @@ async fn policy_fields<S: WebState>(
                 .map(|(policy, name)| PolicyOption {
                     value: (*policy).to_owned(),
                     label: (*name).to_owned(),
-                    selected: policy == value,
+                    selected: *policy == value,
                 })
                 .collect();
             if !options.iter().any(|option| option.selected) {
@@ -503,7 +500,7 @@ async fn policy_fields<S: WebState>(
                 options.insert(
                     0,
                     PolicyOption {
-                        value: value.clone(),
+                        value,
                         label,
                         selected: true,
                     },
@@ -516,6 +513,22 @@ async fn policy_fields<S: WebState>(
             }
         })
         .collect())
+}
+
+/// The policy fields of the project form, with the project's values
+/// selected.
+async fn policy_fields<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    project: &Project,
+) -> Result<Vec<PolicyField>, PageError> {
+    let values = vec![
+        ("policy.view", "Visible To", project.view_policy.clone()),
+        ("policy.edit", "Editable By", project.edit_policy.clone()),
+        ("policy.join", "Joinable By", project.join_policy.clone()),
+    ];
+    let object_policy = Some(("obj.project.members", "Project Members"));
+    policy_controls(state, viewer, object_policy, values).await
 }
 
 /// The project `id` the edit form edits, or why PHP shows the form.
@@ -775,7 +788,7 @@ mod tests {
 
     #[test]
     fn public_is_offered_when_allowed() {
-        assert_eq!(global_policies(false)[0].0, "users");
-        assert_eq!(global_policies(true)[0].0, "public");
+        assert_eq!(global_policies(false, None)[0].0, "users");
+        assert_eq!(global_policies(true, None)[0].0, "public");
     }
 }

@@ -147,6 +147,11 @@ and silencing project mail (`/project/silence/N/`), through the Rust
 project editor with a web content source (`crates/phab-web/src/project_edit.rs`,
 `project_members.rs`);
 description and policy changes, subprojects and milestones go to PHP.
+So do the edit forms of panels and portals (`/dashboard/panel/edit/N/`,
+`/portal/edit/N/`: the name) and archiving panels and dashboards
+(`/dashboard/panel/archive/N/`, `/dashboard/archive/N/`), through the
+Rust dashboard editor with a web content source
+(`crates/phab-web/src/dashboards/edit.rs`); they aren't routed yet.
 `rust/scripts/web-write-parity.py`
 compares these writes with PHP's on the dev stack, with the scenarios of
 `parity/web-writes/`:

@@ -11,6 +11,7 @@
 
 mod configure;
 mod dashboard;
+mod edit;
 mod lists;
 mod portal;
 mod portals;
@@ -28,6 +29,7 @@ pub(crate) use configure::{
     favorites as configure_favorites, home as configure_home, portal as configure_portal,
 };
 pub(crate) use dashboard::show as dashboard;
+pub(crate) use edit::routes as edit_routes;
 pub(crate) use lists::{
     dashboard_query, dashboards as dashboard_list, panel, panel_query, panels as panel_list,
     parse_panel_monogram,

@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 25 | 75 | – | 11 | 9 | 120 |
-| Web routes | 52 | – | 64 | 16 | 246 | 378 |
+| Web routes | 52 | – | 64 | 20 | 242 | 378 |
 
 All 9 methods not ported write.
 
@@ -374,19 +374,19 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/W{id}` | `PhabricatorDashboardPanelViewController` | partial | panel page with its usage and timeline; query panels, panels used by other objects and timelines with text, tab or query changes 421 |
 | `/dashboard/[query/{queryKey}/]` | `PhabricatorDashboardListController` | partial | the builtin queries (`authored`, the default, `open`, `all`); saved queries and search parameters 421 |
 | `/dashboard/view/{id}/` | `PhabricatorDashboardViewController` | Rust | dashboard with its panels |
-| `/dashboard/archive/{id}/` | `PhabricatorDashboardArchiveController` | not ported | write (form or action) |
+| `/dashboard/archive/{id}/` | `PhabricatorDashboardArchiveController` | ported, not routed | write: the dialog, and archiving or activating with the Rust dashboard editor and a web content source; workflow posts and invalid CSRF tokens 421 |
 | `/dashboard/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardEditController` | not ported | write (form or action) |
 | `/dashboard/install/{id}/[{workflowKey}/[{modeKey}/]]` | `PhabricatorDashboardInstallController` | not ported | write (form or action) |
 | `/dashboard/console/` | `PhabricatorDashboardConsoleController` | Rust | console; read-only, static |
 | `/dashboard/adjust/{remove\|add\|move}/` | `PhabricatorDashboardAdjustController` | not ported | write (form or action) |
 | `/dashboard/panel/install/{engineKey}/[{queryKey}/]` | `PhabricatorDashboardQueryPanelInstallController` | not ported | write (form or action) |
 | `/dashboard/panel/[query/{queryKey}/]` | `PhabricatorDashboardPanelListController` | partial | the builtin queries (`authored`, the default, `active`, `all`); saved queries and search parameters 421 |
-| `/dashboard/panel/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPanelEditController` | not ported | write (form or action) |
+| `/dashboard/panel/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPanelEditController` | ported, not routed | write: `/dashboard/panel/edit/{id}/` of text and tab panels, the form and its posts which rename the panel (`dashboard.panel.edit`'s core with a web content source); text, policy changes, `?contextPHID=`, new panels, query panels and validation errors 421 before writing |
 | `/dashboard/panel/render/{id}/` | `PhabricatorDashboardPanelRenderController` | not ported | async panel rendering of PHP pages |
-| `/dashboard/panel/archive/{id}/` | `PhabricatorDashboardPanelArchiveController` | not ported | write (form or action) |
+| `/dashboard/panel/archive/{id}/` | `PhabricatorDashboardPanelArchiveController` | ported, not routed | write: the dialog, and archiving or activating with the Rust panel editor and a web content source |
 | `/dashboard/panel/tabs/{id}/{add\|move\|remove\|rename}/` | `PhabricatorDashboardPanelTabsController` | not ported | write (form or action) |
 | `/portal/[query/{queryKey}/[{queryAction}/]]` | `PhabricatorDashboardPortalListController` | partial | the builtin query (`all`); saved queries and query actions go to PHP |
-| `/portal/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPortalEditController` | not ported | write (form or action) |
+| `/portal/edit/[{id}/][{editAction}/]` | `PhabricatorDashboardPortalEditController` | ported, not routed | write: `/portal/edit/{id}/`, the form and its posts which rename the portal (`portal.edit`'s core with a web content source); policy and tag changes, new portals and validation errors 421 before writing |
 | `/portal/view/{portalID}/` | `PhabricatorDashboardPortalViewController` | Rust | portal with its menu and default dashboard |
 | `/portal/view/{portalID}/view/{itemID}/` | `PhabricatorDashboardPortalViewController` | partial | dashboard items (and identifiers no item has); the "Manage Portal" page and other items go to PHP |
 | `/portal/view/{portalID}/hide/{itemID}/` | `PhabricatorDashboardPortalViewController` | not ported | portal menu items (configure/edit write) |

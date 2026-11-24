@@ -316,6 +316,7 @@ pub fn router<S: WebState>() -> Router<Arc<S>> {
         .merge(revision_edit::routes::<S>())
         .merge(project_edit::routes::<S>())
         .merge(project_members::routes::<S>())
+        .merge(dashboards::edit_routes::<S>())
         .merge(people_and_activity::<S>())
         .merge(file_routes::<S>())
         .route("/flag/", routing::get(flags::list::<S>))
