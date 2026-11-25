@@ -6,10 +6,19 @@
 {%- if let Some(error) = error %}
 <div class="notice" role="alert">{{ error }}</div>
 {%- endif %}
-<form class="settings-form" method="post" action="/differential/revision/edit/{{ id }}/">
+<form class="settings-form" method="post" action="{{ action }}">
   {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
   <input type="hidden" name="__form__" value="1">
   <input type="hidden" name="editEngine" value="true">
+  {%- if let Some(update) = update %}
+  <input type="hidden" name="update[]" value="{{ update.diff_phid }}">
+  <div class="settings-field">
+    <p class="muted">Describe the updates you have made to the diff.</p>
+    <label for="update-comment">Comment</label>
+    <textarea id="update-comment" name="update.comment" rows="6" data-preview="update-comment-preview">{{ update.comment }}</textarea>
+    <div class="remarkup comment-preview" id="update-comment-preview" aria-live="polite" hidden></div>
+  </div>
+  {%- endif %}
   {%- for author in form.author %}
   <input type="hidden" name="author[]" value="{{ author }}">
   {%- endfor %}

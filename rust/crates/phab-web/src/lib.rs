@@ -13,6 +13,7 @@ mod changeset_ajax;
 mod changeset_view;
 mod dashboards;
 mod datasource;
+mod diff_create;
 mod diff_html;
 mod diff_page;
 mod diffusion;

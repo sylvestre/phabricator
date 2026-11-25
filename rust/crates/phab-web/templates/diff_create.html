@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1>{{ heading }}</h1>
+</header>
+{%- if advice %}
+<div class="notice" role="note">Please use moz-phab, arc, or another Phabricator client to submit patches if you want them to be landable using <a href="{{ lando_url }}" target="_blank">Lando</a>.</div>
+{%- endif %}
+{%- if let Some(error) = error %}
+<div class="notice" role="alert">{{ error }}</div>
+{%- endif %}
+<form class="settings-form" method="post" action="{{ action }}">
+  {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+  <input type="hidden" name="__form__" value="1">
+  {%- if let Some((monogram, title)) = revision %}
+  <p>Updating Revision <a href="/{{ monogram }}">{{ monogram }}: {{ title }}</a></p>
+  {%- endif %}
+  <div class="settings-field">
+    <label for="raw-diff">Raw Diff</label>
+    <textarea id="raw-diff" name="diff" rows="24">{{ diff }}</textarea>
+    <p class="muted">To upload a file containing a diff, use the old interface.</p>
+  </div>
+  <fieldset class="settings-field">
+    <legend>Repository</legend>
+    {%- if let Some(repository) = repository %}
+    <label><input type="checkbox" name="differential:repository[]" value="{{ repository.phid }}" checked> {{ repository.label }}</label>
+    {%- endif %}
+    <label>{% if repository.is_some() %}Replace with{% else %}Add{% endif %} <input type="text" name="rust.add.repository" value="{{ adding }}" placeholder="rMOZILLACENTRAL, mozilla-central" autocomplete="off"></label>
+  </fieldset>
+  <div class="settings-field">
+    <label for="view-policy">Visible To</label>
+    <select id="view-policy" name="viewPolicy">
+      {%- for policy in policies %}
+      <option value="{{ policy.value }}"{% if policy.selected %} selected{% endif %}>{{ policy.label }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <p class="muted">A repository typed in the "Add" field is added to the form first; submit again to create the diff.</p>
+  <button type="submit">{{ button }}</button>
+  <a href="{{ cancel }}">Cancel</a>
+</form>
+{%- if advice %}
+<div class="notice" role="note">
+  <p>The best way to create a diff is to use the Arcanist command-line tool. <a href="{{ arcanist_href }}" target="_blank">Learn More</a></p>
+  <p>You can also paste a diff above, or upload a file containing a diff (for example, from <tt>svn diff</tt>, <tt>git diff</tt> or <tt>hg diff --git</tt>).</p>
+</div>
+{%- endif %}
+{% endblock %}

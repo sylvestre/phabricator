@@ -30,6 +30,16 @@
 //! checkboxes and adds names typed in its own `rust.add.*` inputs: a post
 //! with such names doesn't write, it shows the form again with their tokens
 //! checked, so that the post which writes is a PHP form post.
+//!
+//! The same form updates a revision with a diff which has none
+//! (`/differential/revision/attach/<diffID>/to/<id>/`,
+//! `DifferentialRevisionEditController` giving the engine the diff): PHP
+//! adds the diff's invisible `update[]` field and the `update.comment`
+//! comment, whose transactions come first; an empty comment has no effect.
+//! Left to PHP there too: diffs already attached (PHP's dialog), posts
+//! which update with another diff, and new revisions
+//! (`/differential/revision/attach/<diffID>/to/`), whose policies PHP's
+//! form sets, which the Rust editor doesn't on creation.
 
 use std::sync::Arc;
 
@@ -46,7 +56,6 @@ use phab_db::edges;
 use phab_policy::application;
 use serde_json::{Value, json};
 
-use crate::actions;
 use crate::error::PageError;
 use crate::harbormaster::{self, Scope};
 use crate::login::request::LoginRequest;
@@ -55,6 +64,7 @@ use crate::shell::Shell;
 use crate::state::WebState;
 use crate::viewer::WebUser;
 use crate::web_edit::{self, FormAction};
+use crate::{actions, diff_page};
 
 /// `PhabricatorCookies::COOKIE_SUBMIT`.
 const SUBMIT_COOKIE: &str = "phfrm";
@@ -89,13 +99,24 @@ pub(crate) struct TokenField {
     adding: String,
 }
 
+/// What the form of an update with a diff adds.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Update {
+    diff_id: i64,
+    diff_phid: String,
+    /// `update.comment`.
+    comment: String,
+}
+
 #[derive(Template)]
 #[template(path = "revision_edit.html")]
 pub(crate) struct EditPage {
     shell: Shell,
     id: i64,
+    action: String,
     heading: String,
     error: Option<String>,
+    update: Option<Update>,
     form: Form,
     lists: Vec<TokenField>,
 }
@@ -424,13 +445,19 @@ fn list_change(
     Ok(changes.then_some(transaction))
 }
 
+/// `isEmptyComment()`: nothing but whitespace.
+fn is_empty_comment(text: &str) -> bool {
+    text.trim_matches([' ', '\t', '\n', '\r', '\0', '\x0B'])
+        .is_empty()
+}
+
 /// The editor's transactions for `form` on `revision`, in PHP's order, or
-/// why PHP must answer.
+/// why PHP must answer: with `update`, the diff and the comment first.
 fn transactions(
     config: &Config,
-    current: &Form,
-    form: &Form,
+    (current, form): (&Form, &Form),
     stored: &Stored,
+    update: Option<&Update>,
 ) -> Result<Vec<Value>, PageError> {
     let fallback = PageError::Fallback;
     let (Some(title), Some(summary), Some(test_plan)) =
@@ -472,6 +499,12 @@ fn transactions(
     }
 
     let mut transactions = Vec::new();
+    if let Some(update) = update {
+        transactions.push(json!({"type": "update", "value": update.diff_phid}));
+        if !is_empty_comment(&update.comment) {
+            transactions.push(json!({"type": "comment", "value": update.comment}));
+        }
+    }
     if Some(title) != current.title.as_ref() {
         transactions.push(json!({"type": "title", "value": title}));
     }
@@ -489,6 +522,7 @@ fn transactions(
         }
     }
     let bug_id = format_bug_id(form.bug_id.as_deref().unwrap_or_default());
+    // An update always has an effect.
     if transactions.is_empty() && stored.bug_id.as_deref() == Some(bug_id.as_str()) {
         // PHP still saves and publishes the revision.
         return Err(fallback("edits without effect"));
@@ -546,7 +580,7 @@ async fn add_names<S: WebState>(
 async fn page<S: WebState>(
     state: &S,
     viewer: &WebUser,
-    (revision, uri): (&Revision, &Uri),
+    (revision, uri, update): (&Revision, &Uri, Option<Update>),
     form: Form,
     (error, typed): (Option<String>, [String; 3]),
 ) -> Result<EditPage, PageError> {
@@ -587,16 +621,118 @@ async fn page<S: WebState>(
             },
         )
         .collect();
-    let heading = format!("Edit Revision D{}: {}", revision.id, revision.title);
+    // `getObjectEditTitleText()`.
+    let (verb, action) = match &update {
+        Some(update) => (
+            "Update",
+            format!(
+                "/differential/revision/attach/{}/to/{}/",
+                update.diff_id, revision.id
+            ),
+        ),
+        None => (
+            "Edit",
+            format!("/differential/revision/edit/{}/", revision.id),
+        ),
+    };
+    let heading = format!("{verb} Revision D{}: {}", revision.id, revision.title);
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
     Ok(EditPage {
         shell: Shell::for_user(state.config(), viewer, &heading, current),
         id: revision.id,
+        action,
         heading,
         error,
+        update,
         form,
         lists,
     })
+}
+
+/// The update of a post of the form with a diff: the posted `update[]`
+/// must be the diff (or missing, which is the diff too).
+fn posted_update(
+    request: &LoginRequest,
+    update: Option<&Update>,
+) -> Result<Option<Update>, PageError> {
+    let Some(update) = update else {
+        return Ok(None);
+    };
+    let exists = request.exists("update") || !request.array("update").is_empty();
+    if exists && list(request, "update") != [update.diff_phid.as_str()] {
+        return Err(PageError::Fallback("updates with another diff"));
+    }
+    Ok(Some(Update {
+        comment: text(request, "update.comment").unwrap_or_default(),
+        ..update.clone()
+    }))
+}
+
+/// The form of `revision`, or its post; with `update`, the form which
+/// updates it with a diff.
+async fn respond<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    (revision, update): (Revision, Option<Update>),
+    request: LoginRequest,
+) -> Result<Response, PageError> {
+    let uri = request.uri.clone();
+    let stored = Stored::load(state, &revision).await?;
+    let current = Form::of_revision(state, &revision, &stored).await?;
+    if !request.is_post() {
+        let page = page(
+            state,
+            viewer,
+            (&revision, &uri, update),
+            current,
+            (None, Default::default()),
+        )
+        .await?;
+        return Ok(Page(page).into_response());
+    }
+    web_edit::check_form_post(state, viewer, &request)?;
+    if !request.bool("editEngine") {
+        // PHP shows the form again.
+        return Err(PageError::Fallback("posts which aren't edit form posts"));
+    }
+    let update = posted_update(&request, update.as_ref())?;
+    let mut form = Form::from_request(&request);
+    let typed = LISTS.map(|(key, ..)| {
+        request
+            .str(&format!("rust.add.{key}"))
+            .unwrap_or_default()
+            .to_owned()
+    });
+    if typed.iter().any(|typed| !typed.trim().is_empty()) {
+        // The Rust form's additions: shown, not written.
+        let (error, typed) = match add_names(state, viewer, &mut form, &typed).await {
+            Ok(()) => (None, Default::default()),
+            Err(PageError::Invalid(message)) => (Some(message), typed),
+            Err(error) => return Err(error),
+        };
+        let page = page(
+            state,
+            viewer,
+            (&revision, &uri, update),
+            form,
+            (error, typed),
+        )
+        .await?;
+        return Ok(Page(page).into_response());
+    }
+    let transactions = transactions(state.config(), (&current, &form), &stored, update.as_ref())?;
+    web_edit::apply(
+        state,
+        viewer,
+        (revision.id, transactions),
+        Source::EditForm,
+        false,
+    )
+    .await?;
+    // `newEditResponse()`.
+    let mut request = request;
+    request.set_temporary_cookie(state.config(), SUBMIT_COOKIE, SUBMIT_KEY, state.now());
+    Ok(request.redirect(state.config(), &format!("/D{}", revision.id)))
 }
 
 /// `GET|POST /differential/revision/edit/{id}/`.
@@ -615,63 +751,86 @@ pub(crate) async fn edit_form<S: WebState>(
         return Err(PageError::Fallback("edit forms with parameters"));
     }
     let revision = editable(state, &viewer, &id).await?;
-    let stored = Stored::load(state, &revision).await?;
-    let current = Form::of_revision(state, &revision, &stored).await?;
-    let request = LoginRequest::new(method, uri.clone(), headers, &body);
-    if !request.is_post() {
-        let page = page(
-            state,
-            &viewer,
-            (&revision, &uri),
-            current,
-            (None, Default::default()),
-        )
-        .await?;
-        return Ok(Page(page).into_response());
-    }
-    web_edit::check_form_post(state, &viewer, &request)?;
-    if !request.bool("editEngine") {
-        // PHP shows the form again.
-        return Err(PageError::Fallback("posts which aren't edit form posts"));
-    }
-    let mut form = Form::from_request(&request);
-    let typed = LISTS.map(|(key, ..)| {
-        request
-            .str(&format!("rust.add.{key}"))
-            .unwrap_or_default()
-            .to_owned()
-    });
-    if typed.iter().any(|typed| !typed.trim().is_empty()) {
-        // The Rust form's additions: shown, not written.
-        let (error, typed) = match add_names(state, &viewer, &mut form, &typed).await {
-            Ok(()) => (None, Default::default()),
-            Err(PageError::Invalid(message)) => (Some(message), typed),
-            Err(error) => return Err(error),
-        };
-        let page = page(state, &viewer, (&revision, &uri), form, (error, typed)).await?;
-        return Ok(Page(page).into_response());
-    }
-    let transactions = transactions(state.config(), &current, &form, &stored)?;
-    web_edit::apply(
-        state,
-        &viewer,
-        (revision.id, transactions),
-        Source::EditForm,
-        false,
-    )
-    .await?;
-    // `newEditResponse()`.
-    let mut request = request;
-    request.set_temporary_cookie(state.config(), SUBMIT_COOKIE, SUBMIT_KEY, state.now());
-    Ok(request.redirect(state.config(), &format!("/D{}", revision.id)))
+    let request = LoginRequest::new(method, uri, headers, &body);
+    respond(state, &viewer, (revision, None), request).await
 }
 
-/// PHP's route of the edit form.
+/// The diff `id` of the attach route, which PHP loads for the viewer
+/// before the revision: an update needs one without a revision.
+async fn attachable_diff<S: WebState>(
+    state: &S,
+    viewer: &WebUser,
+    id: &str,
+) -> Result<Update, PageError> {
+    viewer
+        .require_application(state, application::DIFFERENTIAL)
+        .await?;
+    // `withIDs(array($id))`, which MySQL compares as a number.
+    if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(PageError::Fallback("unusual diff IDs"));
+    }
+    let id = id
+        .parse()
+        .map_err(|_| PageError::Fallback("unusual diff IDs"))?;
+    let diff = diff_page::load_diff(state, viewer, id).await?;
+    if diff.revision_id.is_some_and(|id| id != 0) {
+        // PHP's "Diff Already Attached" dialog.
+        return Err(PageError::Fallback("diffs already attached"));
+    }
+    Ok(Update {
+        diff_id: diff.id,
+        diff_phid: diff.phid.as_str().to_owned(),
+        comment: String::new(),
+    })
+}
+
+/// `GET|POST /differential/revision/attach/{diffID}/to/{id}/`: the form
+/// which updates revision `id` with the diff.
+pub(crate) async fn attach_form<S: WebState>(
+    State(state): State<Arc<S>>,
+    viewer: WebUser,
+    Path((diff_id, id)): Path<(String, String)>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, PageError> {
+    let state = state.as_ref();
+    if uri.query().is_some_and(|query| !query.is_empty()) {
+        return Err(PageError::Fallback("edit forms with parameters"));
+    }
+    let update = attachable_diff(state, &viewer, &diff_id).await?;
+    // `(?P<id>[0-9]\d*)`; anything else is an edit action of a new
+    // revision.
+    if crate::revision::parse_monogram(&format!("D{id}")).is_none() {
+        return Err(PageError::Fallback("new revisions from a diff"));
+    }
+    let revision = editable(state, &viewer, &id).await?;
+    let request = LoginRequest::new(method, uri, headers, &body);
+    respond(state, &viewer, (revision, Some(update)), request).await
+}
+
+/// PHP's routes of the edit form.
 pub(crate) fn routes<S: WebState>() -> Router<Arc<S>> {
-    Router::new().route(
-        "/differential/revision/edit/{id}/",
-        routing::get(edit_form::<S>).post(edit_form::<S>),
-    )
+    let new_revision = || async { crate::fallback_response("new revisions from a diff") };
+    let edit_action = || async { crate::fallback_response("edit actions of revision forms") };
+    Router::new()
+        .route(
+            "/differential/revision/edit/{id}/",
+            routing::get(edit_form::<S>).post(edit_form::<S>),
+        )
+        .route(
+            "/differential/revision/attach/{diff}/to/",
+            routing::any(new_revision),
+        )
+        .route(
+            "/differential/revision/attach/{diff}/to/{id}/",
+            routing::get(attach_form::<S>).post(attach_form::<S>),
+        )
+        .route(
+            "/differential/revision/attach/{diff}/to/{id}/{action}/",
+            routing::any(edit_action),
+        )
 }
 
 #[cfg(test)]
