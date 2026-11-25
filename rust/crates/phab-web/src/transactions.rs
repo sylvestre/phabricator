@@ -209,7 +209,7 @@ pub(crate) async fn history<S: WebState>(
 
 /// The comment of the transaction (`getComment()`), if the viewer can see
 /// it. A removed comment goes to PHP, which refuses it.
-async fn current_comment<S: WebState>(
+pub(crate) async fn current_comment<S: WebState>(
     state: &S,
     viewer: &WebUser,
     transaction: &Transaction,

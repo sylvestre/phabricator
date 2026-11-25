@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 28 | 76 | – | 13 | 3 | 120 |
-| Web routes | 55 | – | 64 | 23 | 236 | 378 |
+| Web routes | 55 | – | 66 | 22 | 235 | 378 |
 
 All 3 methods not ported write.
 
@@ -415,8 +415,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/differential/revision/update/{revisionID}/` | `DifferentialDiffCreateController` | ported, not routed | write: the same form for a revision the viewer can edit, starting with its repository, redirecting to the diff with `?revisionID=`; revisions the viewer can't see or edit 421 |
 | `/differential/revision/inlines/{id}/` | `DifferentialRevisionInlinesController` | Rust | the published inline comments the viewer sees, threaded, with their diff, state, author and age (`revision_pages.rs`); authors of types handles aren't ported for and changesets the viewer can't load (PHP fails) 421 |
 | `/differential/revision/paths/{id}/` | `DifferentialRevisionAffectedPathsController` | Rust | the affected path index, by path, with the repositories the viewer sees (`revision_pages.rs`) |
-| `/differential/comment/inline/edit/{id}/` | `DifferentialInlineCommentEditController` | not ported | write: draft inline comments (the Rust page posts inlines to PHP's Conduit API) |
-| `/differential/preview/` | `PhabricatorMarkupPreviewController` | not ported | Rust pages use `/rust-ui/preview` |
+| `/differential/comment/inline/edit/{id}/` | `DifferentialInlineCommentEditController` | partial | write (`inline_edit.rs`): the Ajax operations which don't render, as PHP writes them: `hide`, `show`, `done`, `delete`, `undelete`, `refdelete` (confirmed), `cancel` and `draft` (the comment's row, the purge of its versioned drafts, the revision's "has draft" edge). Left to PHP before writing: `new`, `reply`, `edit` and `save` (they answer with PHP's editor and comment HTML), the `refdelete` dialog, replies, bad CSRF tokens, comments or revisions which don't load or the viewer may not edit, unusual attributes or draft properties, and comments whose context PHP would compute and cache. The Rust revision page still posts its inline comments to PHP's Conduit API: it creates them with their text, which needs `new` and `save`. Scenarios in `parity/web-writes/differential-inline-editor.json`. |
+| `/differential/preview/` | `PhabricatorMarkupPreviewController` | not ported | Rust pages use `/rust-ui/preview`; PHP's renders with the `default` one-off engine (`preserve-linebreaks`) as JSON, whose configuration Rust's remarkup isn't checked against |
 
 ### Diffusion (`PhabricatorDiffusionApplication`)
 
@@ -752,10 +752,10 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/transactions/edit/{phid}/` | `PhabricatorApplicationTransactionCommentEditController` | partial | the form, for revision comments, as a page; the post (`PhabricatorApplicationTransactionCommentEditor`, not ported), the dialog (Ajax), removed comments and other objects 421 |
-| `/transactions/remove/{phid}/` | `PhabricatorApplicationTransactionCommentRemoveController` | partial | the confirmation, for revision comments, as a page; the post (`PhabricatorApplicationTransactionCommentEditor`, not ported), the dialog (Ajax), removed comments and other objects 421 |
+| `/transactions/edit/{phid}/` | `PhabricatorApplicationTransactionCommentEditController` | partial | the form, for revision comments, as a page; its post (`comment_edit.rs`, `PhabricatorApplicationTransactionCommentEditor`): the new comment version and the transaction pointing to it, for `core:comment` transactions of the viewer. The dialog (Ajax), removed or emptied comments, other objects and transactions, comments signed with MFA, texts with remarkup effects and edits which would subscribe the viewer (support transactions) 421 |
+| `/transactions/remove/{phid}/` | `PhabricatorApplicationTransactionCommentRemoveController` | partial | the confirmation, for revision comments, as a page; its post (`comment_edit.rs`) for the viewer's own `core:comment` transactions. The dialog (Ajax), removed comments, other objects, administrators removing others' comments, viewers with MFA factors (PHP prompts) and removals which would subscribe the viewer 421. Scenarios in `parity/web-writes/differential-comment-edits.json` |
 | `/transactions/history/{phid}/` | `PhabricatorApplicationTransactionCommentHistoryController` | partial | revision comments, as a page; the dialog (Ajax), removed comments and other objects 421 |
-| `/transactions/quote/{phid}/` | `PhabricatorApplicationTransactionCommentQuoteController` | ported, not routed | quote text for PHP comment forms: revision comments; removed comments and other objects 421 |
+| `/transactions/quote/{phid}/` | `PhabricatorApplicationTransactionCommentQuoteController` | partial | quote text for PHP comment forms: revision comments; removed comments and other objects 421 |
 | `/transactions/raw/{phid}/` | `PhabricatorApplicationTransactionCommentRawController` | partial | revision comments, as a page; the dialog (Ajax), removed comments and other objects 421 |
 | `/transactions/detail/{phid}/` | `PhabricatorApplicationTransactionDetailController` | partial | summary and test plan edits of revisions, as a page; the dialog (Ajax) and other transactions 421 |
 | `/transactions/showolder/{phid}/` | `PhabricatorApplicationTransactionShowOlderController` | not ported | timeline paging of PHP pages |

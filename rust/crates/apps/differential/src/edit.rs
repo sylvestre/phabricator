@@ -63,6 +63,7 @@ mod subscribers;
 mod tags;
 mod update;
 
+pub use inlines::{decode_attributes, encode_attributes};
 use phab_app_herald::engine::{self, Adapter, Applied, Evaluation, Rule, Subject};
 use phab_conduit::{ApiRequest, Context, Method, MethodError, MethodFuture};
 use phab_core::{Phid, PhidType, php, random};
@@ -2150,7 +2151,12 @@ fn check_new_texts(request: &ApiRequest<'_>, wanted: &Wanted) -> Result<(), Meth
 /// Whether remarkup has no effect on an edit: no mentions, references,
 /// files, dependencies or reverts.
 fn is_inert(request: &ApiRequest<'_>, text: &str) -> bool {
-    let config = &request.context.config;
+    is_inert_text(&request.context.config, text)
+}
+
+/// Whether `text` has no remarkup effect on a revision: it mentions no
+/// user or object, attaches no file, and names no dependency or revert.
+pub fn is_inert_text(config: &phab_core::Config, text: &str) -> bool {
     let engine = phab_remarkup::phabricator::engine(crate::markup::engine_config(config));
     let prepared = engine.prepare(text.as_bytes(), phab_remarkup::Mode::Html);
     prepared.mentioned_usernames().is_empty()

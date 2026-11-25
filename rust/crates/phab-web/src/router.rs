@@ -6,10 +6,11 @@ use axum::{Router, routing};
 
 use crate::state::WebState;
 use crate::{
-    actions, assets, changeset_view, dashboards, datasource, diff_create, diff_page, diffusion,
-    favorites, feed, files, flags, harbormaster, herald, login, notifications, opt_in, people,
-    people_lists, preview, project_edit, project_manage, project_members, projects, queue,
-    revision, revision_edit, revision_pages, settings, subscriptions, transactions, typeahead, web_edit,
+    actions, assets, changeset_view, comment_edit, dashboards, datasource, diff_create, diff_page,
+    diffusion, favorites, feed, files, flags, harbormaster, herald, inline_edit, login,
+    notifications, opt_in, people, people_lists, preview, project_edit, project_manage,
+    project_members, projects, queue, revision, revision_edit, revision_pages, settings,
+    subscriptions, transactions, typeahead, web_edit,
 };
 
 /// The login, registration and account linking pages (W7).
@@ -251,6 +252,10 @@ fn differential<S: WebState>() -> Router<Arc<S>> {
             "/differential/revision/paths/{id}/",
             routing::get(revision_pages::paths::<S>),
         )
+        .route(
+            "/differential/comment/inline/edit/{id}/",
+            routing::any(inline_edit::edit::<S>),
+        )
 }
 
 /// The pages of a transaction and its comment.
@@ -274,11 +279,11 @@ fn transaction_routes<S: WebState>() -> Router<Arc<S>> {
         )
         .route(
             "/transactions/edit/{phid}/",
-            routing::get(transactions::edit::<S>),
+            routing::get(transactions::edit::<S>).post(comment_edit::edit::<S>),
         )
         .route(
             "/transactions/remove/{phid}/",
-            routing::get(transactions::remove::<S>),
+            routing::get(transactions::remove::<S>).post(comment_edit::remove::<S>),
         )
 }
 

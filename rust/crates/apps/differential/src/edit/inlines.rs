@@ -290,7 +290,7 @@ fn table(request: &ApiRequest<'_>) -> String {
 /// `json_decode($attributes, true)` of a row's attributes: a dictionary.
 /// `None` for what PHP may decode or encode back differently: invalid
 /// JSON, lists, floats and integers beyond PHP's.
-fn decode_attributes(text: &str) -> Option<Map<String, Value>> {
+pub fn decode_attributes(text: &str) -> Option<Map<String, Value>> {
     fn plain(value: &Value) -> bool {
         match value {
             Value::Number(number) => number.is_i64(),
@@ -311,7 +311,7 @@ fn decode_attributes(text: &str) -> Option<Map<String, Value>> {
 }
 
 /// `phutil_json_encode()` of attributes: an empty array is a list.
-fn encode_attributes(attributes: Map<String, Value>) -> String {
+pub fn encode_attributes(attributes: Map<String, Value>) -> String {
     if attributes.is_empty() {
         return "[]".to_owned();
     }

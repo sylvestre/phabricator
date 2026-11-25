@@ -152,6 +152,12 @@ So do the edit forms of panels and portals (`/dashboard/panel/edit/N/`,
 (`/dashboard/panel/archive/N/`, `/dashboard/archive/N/`), through the
 Rust dashboard editor with a web content source
 (`crates/phab-web/src/dashboards/edit.rs`); they aren't routed yet.
+So do the posts editing and removing a revision comment
+(`/transactions/edit|remove/PHID-XACT-DREV-.../`, `comment_edit.rs`) and
+the inline comment editor's operations which don't render
+(`/differential/comment/inline/edit/N/`: hiding, "Done", deleting,
+restoring, cancelling and versioned drafts, `inline_edit.rs`); the
+editor's `new`, `reply`, `edit` and `save` go to PHP.
 `rust/scripts/web-write-parity.py`
 compares these writes with PHP's on the dev stack, with the scenarios of
 `parity/web-writes/`:

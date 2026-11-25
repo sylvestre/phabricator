@@ -1401,6 +1401,62 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_path",
         columns: &["id", "path", "pathHash"],
     },
+    // The inline comment editor (`/differential/comment/inline/edit/`).
+    TableContract {
+        database: "differential",
+        table: "differential_hiddencomment",
+        columns: &["userPHID", "commentID"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_transaction_comment",
+        columns: &[
+            "id",
+            "phid",
+            "authorPHID",
+            "viewPolicy",
+            "editPolicy",
+            "contentSource",
+            "commentVersion",
+            "content",
+            "isDeleted",
+            "dateModified",
+            "revisionPHID",
+            "changesetID",
+            "transactionPHID",
+            "fixedState",
+            "replyToCommentPHID",
+            "attributes",
+        ],
+    },
+    TableContract {
+        database: "draft",
+        table: "draft_versioneddraft",
+        columns: &[
+            "objectPHID",
+            "authorPHID",
+            "version",
+            "properties",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "differential",
+        table: "edge",
+        columns: &["src", "type", "dst", "dateCreated", "seq", "dataID"],
+    },
+    TableContract {
+        database: "cache",
+        table: "cache_general",
+        columns: &[
+            "cacheKeyHash",
+            "cacheKey",
+            "cacheFormat",
+            "cacheData",
+            "cacheExpires",
+        ],
+    },
     // The inline comments and affected paths pages of revisions.
     TableContract {
         database: "differential",
