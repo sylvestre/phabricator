@@ -1014,3 +1014,28 @@ web routes 52 Rust, 64 partial, 20 ported not routed, 242 not ported.
 - `phd` still runs the task classes phab-worker doesn't take.
 - User decisions: the W7, MFA and settings security review; the demo date.
 - W15 (removing PHP): only when asked.
+
+## 2026-11-25 (later): Differential and Herald web pages
+
+One agent at a time from here (three in parallel overloaded the disk).
+- Diff forms: `/differential/diff/create/`, `/differential/revision/update/N/` and the
+  attach form for existing revisions; `differential.createrawdiff` stores `viewPolicy`,
+  refusing policies which exclude the actor as PHP does. Left to PHP: file uploads
+  (multipart), creating a revision from a diff, whitespace-only update comments.
+- Revision pages: close explanation, inline comment list, affected paths; the inline
+  editor's hide/show/done/delete/undelete/refdelete/cancel/draft; saving comment edits
+  and removals (plain comments by their author); comment quotes routed. Left to PHP:
+  new, reply, edit and save of inlines (PHP's editor HTML), `/differential/preview/`.
+- Herald: `HeraldRuleEditor`, the rule editor (plain HTML form posting PHP's rule
+  JSON), the disable post, the test console's dry run, the webhook page, test requests
+  about the webhook, the HMAC key. Left to PHP: object rules, other adapters, unported
+  fields and actions, the webhook edit form.
+
+Verified against PHP, 0 different: diff forms and revision edit 17 same / 17 to PHP,
+`creatediff.json` 30 / 6, inline editor and comments 32 / 4, Herald web writes (run as
+admin) 18 / 9, Herald actions (Conduit) 48 same; nginx routing 163 ok; page comparison
+shows only the known presentation gaps. Workspace tests: 1519 passed.
+
+Bugs the comparisons caught: diffs no one may see were accepted; the attach form didn't
+subscribe the actor nor mark the default diff (`core.default`); Herald edits upgraded
+`configVersion` (PHP reloads the rule first); dry runs skipped already-applied rules.
