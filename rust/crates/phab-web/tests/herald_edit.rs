@@ -625,6 +625,16 @@ async fn rules_are_created_and_edited_from_the_web() {
         .await,
         ["2 null"]
     );
+    // The editor reloads the rule: it keeps its version.
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', name, configVersion) AS line FROM `{ns}_herald`.herald_rule \
+             WHERE id = 2",
+        )
+        .await,
+        ["Mine, renamed 37"]
+    );
     // Saved again unchanged: PHP saves it anyway.
     let response = post(
         &test_db,
@@ -672,7 +682,10 @@ async fn the_test_console_runs_the_rules_dry() {
                '{\"core.groupID\":\"g2\"}', 2, 2), \
              ('PHID-XACT-DREV-3', 'PHID-USER-alice', 'PHID-DREV-1', 'public', 'x', NULL, 0, \
                'core:edge', '[]', '[]', '{\"source\":\"herald\",\"params\":[]}', \
-               '{\"herald:transcriptID\":7,\"core.groupID\":\"g2\"}', 2, 2)",
+               '{\"herald:transcriptID\":7,\"core.groupID\":\"g2\"}', 2, 2); \
+             UPDATE `{ns}_herald`.herald_rule SET repetitionPolicy = 'first' WHERE id = 1; \
+             INSERT INTO `{ns}_herald`.herald_ruleapplied (phid, ruleID) VALUES \
+             ('PHID-DREV-1', 1)",
         )
         .await;
     let (status, body) = page(&test_db, "alice", "/herald/test/").await;
@@ -728,19 +741,21 @@ async fn the_test_console_runs_the_rules_dry() {
     // of the newest transaction, Herald's.
     assert!(rows[0].contains("s:16:\"PHID-XACT-DREV-2\""), "{}", rows[0]);
     assert!(!rows[0].contains("PHID-XACT-DREV-1"), "{}", rows[0]);
+    // H1 applied to D1 the first time already: a dry run evaluates it
+    // anyway.
     assert!(
         rows[0].contains("This was a dry run, so no actions were actually taken."),
         "{}",
         rows[0]
     );
-    // Nothing else is written.
+    // Nothing else is written: D1 keeps its one row.
     assert_eq!(
         lines(
             &test_db,
             "SELECT CAST(COUNT(*) AS CHAR) AS line FROM `{ns}_herald`.herald_ruleapplied",
         )
         .await,
-        ["0"]
+        ["1"]
     );
     test_db.drop_databases().await;
 }

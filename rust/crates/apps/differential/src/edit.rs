@@ -1638,24 +1638,9 @@ pub async fn herald_dry_run(request: &ApiRequest<'_>, id: i64) -> Result<i64, Me
         .await
         .map_err(unsupported)?;
     engine::check_supported(&rules, &RevisionAdapter).map_err(unsupported)?;
-    if !rules.is_empty() {
-        let sql = format!(
-            "SELECT ruleID FROM {} WHERE phid = ? AND ruleID IN ({})",
-            database.table("herald", "herald_ruleapplied"),
-            phab_db::placeholders(rules.len())
-        );
-        let query = phab_db::sqlx::query(&sql).bind(revision.phid.as_str());
-        let applied: Vec<String> =
-            phab_db::bind_all(query, rules.iter().map(|rule| rule.id.as_str()))
-                .fetch_all(database.pool())
-                .await?
-                .iter()
-                .map(|row| rows::int(row, "ruleID").map(|id| id.to_string()))
-                .collect::<Result<_, _>>()?;
-        for rule in &mut rules {
-            rule.applied_before = applied.contains(&rule.id);
-        }
-    }
+    // Both repetition checks (`already-applied`, `last-match`) skip dry
+    // runs: the rules are evaluated as if they never applied, so where
+    // they applied before (`needAppliedToPHIDs()`) is not read.
     for rule in rules.iter_mut().filter(|rule| rule.rule_type == "personal") {
         herald_actions::check_author(request, (&revision, &facts), rule).await?;
     }
