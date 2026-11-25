@@ -3223,6 +3223,17 @@ async fn write_text(
     insert_transaction(request, plan, connection, row).await
 }
 
+/// The metadata of the `update` transaction: the edit form's diff is the
+/// value its `update` field starts with, a default transaction
+/// (`setIsDefaultTransaction()`).
+fn update_metadata(plan: &Plan, metadata: &str) -> String {
+    if plan.source == Source::EditForm {
+        group_metadata(plan, json!({"core.default": true}))
+    } else {
+        metadata.to_owned()
+    }
+}
+
 /// The transaction of one action, and its effect.
 async fn write_action(
     request: &ApiRequest<'_>,
@@ -3237,17 +3248,8 @@ async fn write_action(
     match action {
         Action::Update => {
             if let Some(update) = &actions.update {
-                // The edit form's diff is the value its `update` field
-                // starts with: a default transaction
-                // (`setIsDefaultTransaction()`).
-                let default;
-                let metadata = if plan.source == Source::EditForm {
-                    default = group_metadata(plan, json!({"core.default": true}));
-                    &default
-                } else {
-                    metadata
-                };
-                update::write_transaction(request, plan, update, metadata, connection).await?;
+                let metadata = update_metadata(plan, metadata);
+                update::write_transaction(request, plan, update, &metadata, connection).await?;
             }
         }
         Action::Review => {
