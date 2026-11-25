@@ -315,6 +315,22 @@ fn herald_routes<S: WebState>() -> Router<Arc<S>> {
             "/herald/disable/{id}/{action}/",
             routing::get(herald::disable::<S>).post(herald::disable::<S>),
         )
+        .route(
+            "/herald/new/",
+            routing::get(herald::new_rule::<S>).post(herald::new_rule::<S>),
+        )
+        .route(
+            "/herald/create/",
+            routing::get(herald::new_rule::<S>).post(herald::new_rule::<S>),
+        )
+        .route(
+            "/herald/edit/",
+            routing::get(herald::rule_create::<S>).post(herald::rule_create::<S>),
+        )
+        .route(
+            "/herald/edit/{id}/",
+            routing::get(herald::rule_edit::<S>).post(herald::rule_edit::<S>),
+        )
         .route("/herald/test/", routing::get(herald::test_console::<S>))
         .route("/herald/webhook/", routing::get(herald::webhook_list::<S>))
         .route(

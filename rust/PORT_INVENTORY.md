@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 28 | 76 | – | 13 | 3 | 120 |
-| Web routes | 55 | – | 66 | 22 | 235 | 378 |
+| Web routes | 55 | – | 66 | 25 | 232 | 378 |
 
 All 3 methods not ported write.
 
@@ -571,9 +571,9 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 |---|---|---|---|
 | `/H{id}` | `HeraldRuleViewController` | Rust | Herald rule |
 | `/herald/[query/{queryKey}/]` | `HeraldRuleListController` | partial | builtin queries; saved queries 421 |
-| `/herald/new/` | `HeraldNewController` | not ported | write (form or action) |
-| `/herald/create/` | `HeraldNewController` | not ported | write (form or action) |
-| `/herald/edit/[{id}/]` | `HeraldRuleController` | not ported | write: the rule editor |
+| `/herald/new/` | `HeraldNewController` | ported, not routed | the content type menu, the rule type menu, and the redirect to the editor for global and personal rules; object rules (their object form) 421 |
+| `/herald/create/` | `HeraldNewController` | ported, not routed | as `/herald/new/` |
+| `/herald/edit/[{id}/]` | `HeraldRuleController` | ported, not routed | write: the rule editor (a plain HTML form posting PHP's fields, with the conditions and actions as the JSON PHP's script posts), its dialogs and `saveRule()` with its validation errors, then `HeraldRuleEditor` (`core:create`, `herald:edit`, `herald:name`, the conditions and actions), for global and personal revision rules whose fields and actions the Rust engine implements; object rules, other adapters, other fields and actions, bit conditions, regular expressions Rust can't validate, posts PHP answers with an exception and saves without effect 421 |
 | `/herald/disable/{id}/{action}/` | `HeraldDisableController` | partial | the confirmation and its post (`HeraldRuleEditor` in Rust: `herald:disable`, the transcript of `HeraldRuleAdapter` with no rule, the publish task mailing the actor and a personal rule's author), for global and personal rules the viewer may edit; object rules, posts without effect, rules of a newer Herald and installs with rules about Herald rules 421 |
 | `/herald/test/` | `HeraldTestConsoleController` | partial | the object form; the post, which runs the rules against the object (dry run, writes a transcript), 421 |
 | `/herald/transcript/` | `HeraldTranscriptListController` | Rust | default list |

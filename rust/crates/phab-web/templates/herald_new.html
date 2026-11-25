@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1>{{ title }}</h1>
+</header>
+<ul class="herald-menu">
+  {%- for item in items %}
+  <li{% if item.href.is_none() %} class="hm-disabled"{% endif %}>
+    {%- if let Some(href) = item.href %}
+    <h2><a href="{{ href }}">{{ item.name }}</a></h2>
+    {%- else %}
+    <h2>{{ item.name }}</h2>
+    {%- endif %}
+    {%- for html in item.description_html %}
+    <p>{{ html|safe }}</p>
+    {%- endfor %}
+  </li>
+  {%- endfor %}
+</ul>
+{%- if let Some(back) = back %}
+<p><a href="{{ back }}">Back to Content Types</a></p>
+{%- endif %}
+{% endblock %}

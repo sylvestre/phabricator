@@ -390,3 +390,259 @@ async fn rules_are_disabled_and_enabled_from_the_web() {
     assert!(body.contains("Really enable this rule?"), "{body}");
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn rules_are_created_and_edited_from_the_web() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    // The menus.
+    let (status, body) = page(&test_db, "alice", "/herald/new/").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("href=\"/herald/create/?adapter=differential\""),
+        "{body}"
+    );
+    assert!(body.contains("Differential Revisions"), "{body}");
+    let (status, body) = page(&test_db, "alice", "/herald/create/?adapter=differential").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("href=\"/herald/create/?adapter=differential&#38;type=personal\""),
+        "{body}"
+    );
+    assert!(
+        body.contains("You do not have permission to create or manage global rules."),
+        "{body}"
+    );
+    let response = post(
+        &test_db,
+        "root",
+        "/herald/create/?adapter=differential&type=global",
+        &[],
+    )
+    .await;
+    assert_eq!(
+        location(&response),
+        "http://phabricator.test/herald/edit/?content_type=differential&rule_type=global"
+    );
+    assert_eq!(
+        fallback_reason(
+            &post(
+                &test_db,
+                "root",
+                "/herald/create/?adapter=commit&type=object",
+                &[]
+            )
+            .await
+        ),
+        "the object form of object rules"
+    );
+
+    // The form of a new rule, and its dialogs.
+    let (status, body) = page(
+        &test_db,
+        "root",
+        "/herald/edit/?content_type=differential&rule_type=global",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("Create Herald Rule: Differential Revisions"),
+        "{body}"
+    );
+    let (_, body) = page(
+        &test_db,
+        "root",
+        "/herald/edit/?content_type=differential.diff&rule_type=personal",
+    )
+    .await;
+    assert!(body.contains("Rule/Content Mismatch"), "{body}");
+    let (_, body) = page(
+        &test_db,
+        "root",
+        "/herald/edit/?content_type=x&rule_type=global",
+    )
+    .await;
+    assert!(body.contains("Invalid Content Type"), "{body}");
+    let (status, body) = page(
+        &test_db,
+        "alice",
+        "/herald/edit/?content_type=differential&rule_type=global",
+    )
+    .await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST, "{body}");
+
+    let path = "/herald/edit/?content_type=differential&rule_type=global";
+    let form = |name: &'static str, rule: &'static str| {
+        vec![
+            ("content_type", "differential"),
+            ("rule_type", "global"),
+            ("save", "1"),
+            ("name", name),
+            ("must_match", "all"),
+            ("repetition_policy", "first"),
+            ("rule", rule),
+        ]
+    };
+    // PHP's errors, on the form again.
+    let rule = r#"{"conditions":[["differential.revision.title","regexp","nope"]],"actions":[["nothing",null]]}"#;
+    let response = post(&test_db, "root", path, &form("", rule)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8_lossy(&body);
+    assert!(body.contains("<li>Rule must have a name.</li>"), "{body}");
+    assert!(
+        body.contains("The regular expression &#34;nope&#34; is not valid."),
+        "{body}"
+    );
+    let long = "x".repeat(256);
+    let long: &'static str = Box::leak(long.into_boxed_str());
+    let rule = r#"{"conditions":[["always","unconditionally",null]],"actions":[["nothing",null]]}"#;
+    let response = post(&test_db, "root", path, &form(long, rule)).await;
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("Rule names can be no longer than 255 characters."),
+    );
+    for (rule, reason) in [
+        ("nope", "rule data PHP fails to decode"),
+        (
+            r#"{"conditions":[],"actions":[["nothing"]]}"#,
+            "rule data PHP fails to decode",
+        ),
+        (
+            r#"{"conditions":[["always","unconditionally",null]],"actions":[["flag",1]]}"#,
+            "a Herald action not ported",
+        ),
+    ] {
+        let response = post(&test_db, "root", path, &form("Flags", rule)).await;
+        assert_eq!(fallback_reason(&response), reason, "{rule}");
+    }
+    assert_eq!(transactions(&test_db).await, Vec::<String>::new());
+
+    // A new rule.
+    let rule = r#"{"conditions":[["differential.revision.author","isany",{"PHID-USER-alice":"Alice"}]],"actions":[["subscribers.add",{"PHID-USER-root":"Root"}]]}"#;
+    let response = post(&test_db, "root", path, &form("New", rule)).await;
+    assert_eq!(location(&response), "http://phabricator.test/H3");
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', name, authorPHID, contentType, mustMatchAll, configVersion, \
+               dateCreated, repetitionPolicy, ruleType, isDisabled) AS line \
+             FROM `{ns}_herald`.herald_rule WHERE id = 3",
+        )
+        .await,
+        [format!(
+            "New PHID-USER-root differential 1 38 {NOW} first global 0"
+        )]
+    );
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', fieldName, fieldCondition, value) AS line \
+             FROM `{ns}_herald`.herald_condition WHERE ruleID = 3 \
+             UNION ALL SELECT CONCAT_WS(' ', action, target) FROM `{ns}_herald`.herald_action \
+             WHERE ruleID = 3",
+        )
+        .await,
+        [
+            "differential.revision.author isany [\"PHID-USER-alice\"]",
+            "subscribers.add [\"PHID-USER-root\"]"
+        ]
+    );
+    let created = transactions(&test_db).await;
+    let phid = lines(
+        &test_db,
+        "SELECT phid AS line FROM `{ns}_herald`.herald_rule WHERE id = 3",
+    )
+    .await
+    .remove(0);
+    assert_eq!(
+        created,
+        [
+            format!(
+                "{phid} core:create null null PHID-USER-root PHID-USER-root {WEB_SOURCE} \
+                 {{\"core.create\":true,\"core.groupID\":\"G\"}}"
+            ),
+            format!(
+                "{phid} herald:edit {{\"match_all\":true,\"conditions\":[],\"actions\":[],\
+                 \"repetition_policy\":null}} {{\"match_all\":true,\"conditions\":[{{\"field\":\
+                 \"differential.revision.author\",\"condition\":\"isany\",\"value\":\
+                 [\"PHID-USER-alice\"]}}],\"actions\":[{{\"action\":\"subscribers.add\",\
+                 \"target\":[\"PHID-USER-root\"]}}],\"repetition_policy\":\"first\"}} \
+                 PHID-USER-root PHID-USER-root {WEB_SOURCE} \
+                 {{\"core.create\":true,\"core.groupID\":\"G\"}}"
+            ),
+            format!(
+                "{phid} herald:name null \"New\" PHID-USER-root PHID-USER-root {WEB_SOURCE} \
+                 {{\"core.create\":true,\"core.groupID\":\"G\"}}"
+            ),
+        ]
+    );
+    let task = last_task(&test_db).await;
+    assert_eq!(task["state"]["isNewObject"], true);
+    assert_eq!(task["state"]["heraldHeader"], "none");
+
+    // Editing H2, Alice's: its form, then a rename.
+    let (status, body) = page(&test_db, "alice", "/herald/edit/2/").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("Edit Herald Rule: Mine"), "{body}");
+    assert!(body.contains("&#34;cc&#34;"), "{body}");
+    let rule = r#"{"conditions":[["cc","exists",null]],"actions":[["email.self",null]]}"#;
+    let response = post(
+        &test_db,
+        "alice",
+        "/herald/edit/2/",
+        &[
+            ("content_type", "differential"),
+            ("rule_type", "personal"),
+            ("save", "1"),
+            ("name", "Mine, renamed"),
+            ("must_match", "any"),
+            ("repetition_policy", "first"),
+            ("rule", rule),
+        ],
+    )
+    .await;
+    assert_eq!(location(&response), "http://phabricator.test/H2");
+    let all = transactions(&test_db).await;
+    assert_eq!(
+        all.last().unwrap(),
+        &format!(
+            "PHID-HRUL-2 herald:name \"Mine\" \"Mine, renamed\" PHID-USER-alice PHID-USER-alice \
+             {WEB_SOURCE} {{\"core.groupID\":\"G\"}}"
+        )
+    );
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', id, value) AS line FROM `{ns}_herald`.herald_condition \
+             WHERE ruleID = 2",
+        )
+        .await,
+        ["2 null"]
+    );
+    // Saved again unchanged: PHP saves it anyway.
+    let response = post(
+        &test_db,
+        "alice",
+        "/herald/edit/2/",
+        &[
+            ("save", "1"),
+            ("name", "Mine, renamed"),
+            ("must_match", "any"),
+            ("repetition_policy", "first"),
+            ("rule", rule),
+        ],
+    )
+    .await;
+    assert_eq!(fallback_reason(&response), "edits without effect");
+    assert_eq!(
+        fallback_reason(&post(&test_db, "alice", "/herald/edit/1/", &[]).await),
+        "policy exceptions"
+    );
+    test_db.drop_databases().await;
+}

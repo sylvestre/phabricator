@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1>{{ title }}</h1>
+</header>
+{%- if !errors.is_empty() %}
+<ul class="errors" role="alert">
+  {%- for error in errors %}
+  <li>{{ error }}</li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+<form class="settings-form" id="herald-rule-edit-form" method="post" action="{{ action }}">
+  {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
+  <input type="hidden" name="__form__" value="1">
+  <input type="hidden" name="content_type" value="{{ content_type }}">
+  <input type="hidden" name="rule_type" value="{{ rule_type }}">
+  <input type="hidden" name="save" value="1">
+  <div class="settings-field">
+    <label for="herald-rule-name">Rule Name</label>
+    <input type="text" id="herald-rule-name" name="name" value="{{ name }}">
+    {%- if let Some(error) = name_error %}<span class="error">{{ error }}</span>{% endif %}
+  </div>
+  <p>This <strong>{{ rule_type_name }}</strong> rule triggers for <strong>{{ content_type_name }}</strong>.</p>
+  <div class="settings-field">
+    <label for="herald-must-match">When</label>
+    <select id="herald-must-match" name="must_match">
+      <option value="all"{% if match_all %} selected{% endif %}>all of</option>
+      <option value="any"{% if !match_all %} selected{% endif %}>any of</option>
+    </select>
+    these conditions are met, take these actions
+    <select name="repetition_policy">
+      {%- for (key, label, selected) in repetition %}
+      <option value="{{ key }}"{% if *selected %} selected{% endif %}>{{ label }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <div class="settings-field">
+    <label for="herald-rule">Conditions and actions</label>
+    <textarea id="herald-rule" name="rule" rows="16" spellcheck="false">{{ rule_json }}</textarea>
+    <p class="muted">JSON, as PHP's rule editor posts it: <code>{"conditions": [[field, condition, value], ...], "actions": [[action, target], ...]}</code>; a list of users, projects or statuses is an object keyed by their PHIDs or keys.</p>
+    <p class="muted">Fields: {% for key in fields %}<code>{{ key }}</code>{% if !loop.last %}, {% endif %}{% endfor %}.</p>
+    <p class="muted">Actions: {% for key in actions %}<code>{{ key }}</code>{% if !loop.last %}, {% endif %}{% endfor %}.</p>
+  </div>
+  <button type="submit">Save Rule</button>
+  <a href="{{ cancel }}">Cancel</a>
+</form>
+{% endblock %}
