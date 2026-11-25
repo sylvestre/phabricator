@@ -152,7 +152,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Method | PHP status | Port | Note |
 |---|---|---|---|
 | `harbormaster.artifact.search` | stable | shadowed |  |
-| `harbormaster.build.edit` | stable | ported, not routed | write: the one edit type is `mfa`; edits without transactions save the build and queue the publish task, and unknown builds and types are errors. Left to PHP: creations, `mfa`, builds the viewer can't see, parameters Lisk would encode differently. |
+| `harbormaster.build.edit` | stable | ported, not routed | write: there are no edit types (PHP's MFA extension is disabled, so `mfa` is unknown, as in PHP); edits without transactions save the build and queue the publish task, and unknown builds and types are errors. Left to PHP: creations, builds the viewer can't see, parameters Lisk would encode differently. |
 | `harbormaster.build.search` | stable | shadowed |  |
 | `harbormaster.buildable.edit` | stable | ported, not routed | write: as `harbormaster.build.edit`, for buildables. |
 | `harbormaster.buildable.search` | stable | shadowed |  |
@@ -164,7 +164,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `harbormaster.querybuildables` | stable | shadowed |  |
 | `harbormaster.querybuilds` | deprecated | shadowed |  |
 | `harbormaster.sendmessage` | stable | ported, not routed | write; waits for a Lando or CI contract run. |
-| `harbormaster.step.edit` | stable | ported, not routed | write: the text and select custom fields of the step implementations (`custom.*`, `core:customfield` into `details`) of steps the actor can edit, and edits without transactions. Left to PHP: creations, credentials, `mfa`, unknown implementations, steps the viewer can't see or edit. |
+| `harbormaster.step.edit` | stable | ported, not routed | write: the text and select custom fields of the step implementations (`custom.*`, `core:customfield` into `details`) of steps the actor can edit, and edits without transactions. Left to PHP: creations, credentials, unknown implementations, steps the viewer can't see or edit. |
 | `harbormaster.step.search` | stable | shadowed |  |
 | `harbormaster.target.search` | stable | shadowed |  |
 

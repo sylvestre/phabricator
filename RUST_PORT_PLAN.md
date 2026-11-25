@@ -485,3 +485,26 @@ Together that is ~75k lines that are never ported.
    projects, revisions with reviewers, inline comments, policies, stacks
    and BMO accounts. W2–W6 and phab-replay need it.
 3. Start W0, then W1 and W3 in parallel.
+
+### 9.6 Where it stands (2026-11-25)
+
+The §9.5 steps are done. By milestone (details in `RUST_PORT_STATUS.md`, counts in
+`rust/PORT_INVENTORY.md`):
+
+| Milestone | State |
+|---|---|
+| W0–W5 | done |
+| W6 | revision comments, inlines, subscribe, settings actions, project members and dashboard names are written from Rust; the other forms are left to PHP |
+| W7 | done behind `PHAB_RUST_LOGIN` (off by default); waits for the security review |
+| W8 | done: 76 read methods shadowed at 0 differences |
+| W9 | done for the parity corpus, Herald included (personal rules, repetition policies, blocking reviewers) |
+| W10 | ported; `creatediff`, `createrawdiff`, `setdiffproperty` and the verified flag, project, policy, user, file, Diffusion and dashboard writes are routed; the rest waits for moz-phab, Lando and CI contract runs |
+| W11 | `phab-worker` runs publish, feed, mail, search, Harbormaster and Git import; `phd` runs the rest |
+| W12 | `feed.for_email.*` and outbound mail ported |
+| W13 | Git import, the `diffusion.*` methods and pages, `diffusion.commit.edit`; close-on-commit is left |
+| W14 | settings pages and actions, read-only admin pages, `phab-cli`; config and auth provider admin are left |
+| W15 | not started; only when asked |
+
+Next: close-on-commit, then the contract runs and routing of the Conduit writes, then
+the remaining web routes by application (Diffusion, Transactions, People, Files,
+Dashboard, Project), then `phd`'s remaining task classes.

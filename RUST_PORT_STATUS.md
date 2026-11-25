@@ -972,3 +972,45 @@ Same dev-stack snapshot on both sides, PHP's daemons stopped:
   pages omit commit and buildable stories with a "not shown here yet" notice linking to PHP.
 Intermittent: same-second edge ordering in two-editor writes (createrevision with a tag,
 accept D7, a Harbormaster target); they pass when re-run alone.
+
+## 2026-11-25: the three WIP branches merged
+
+Merged from `fabrique-wip/commit-audits`, `feed-herald-transactions` and
+`dashboard-home-favorites`:
+- `diffusion.commit.edit` (comments, auditors, accept and concern, subscribers,
+  projects), routed to Rust with `diffusion.uri.edit` and `diffusion.updatecoverage`.
+  `diffusion.findsymbols` is shadowed (13 calls, 0 differences).
+- Feed: commit, build, project and application policy stories render, so the
+  "not shown here yet" notice no longer shows on the dev stack.
+- Herald disable confirmation, test console form and webhook lists; revision comment
+  raw, quote, edit and remove pages (their saves still go to PHP).
+- Dashboard console, portal list and items, menu configure routes, panel and portal
+  edit forms, panel and dashboard archive dialogs.
+
+Fixed while comparing: `mfa` is not a Harbormaster edit type (PHP's MFA extension is
+disabled); archiving an object the viewer can see but not edit goes to PHP (its policy
+dialog); the project member scenarios' SQL (MySQL 1046) and the dashboard scenarios'
+PHIDs. The Diffusion scenarios need `rust/scripts/seed-dev-git.sql` loaded.
+
+Verified: workspace tests 1494 passed, 0 failed; fmt and clippy clean; nginx routing
+test passes. Write parity: commit edits 14 same / 5 to PHP, Diffusion writes 16 / 9,
+Harbormaster edits 17 / 4, project member forms 7 / 4, dashboard forms 7 / 10, all 0
+different. Inventory: Conduit 28 Rust, 76 shadowed, 13 ported not routed, 3 not ported;
+web routes 52 Rust, 64 partial, 20 ported not routed, 242 not ported.
+
+### What is left
+
+- Close-on-commit (`DiffusionUpdateObjectAfterCommitWorker`'s close and the commit
+  message edits): the missing pieces are listed in
+  `rust/bins/phab-worker/src/handlers/update_after_commit.rs`.
+- Saving the forms whose pages are ported: Herald rules and test console, comment
+  edit and removal, dashboard edits beyond names and archiving.
+- Routing the 13 ported write methods (`differential.revision.edit`, the frozen
+  Differential writes, `createinline`, the Harbormaster messaging and edit methods):
+  waits for moz-phab, Lando and CI contract runs.
+- 3 Conduit methods (`conduit.connect`, `conduit.getcertificate`,
+  `reviewhelper.request`) and 242 web routes, mostly Diffusion (33), Auth (30, behind
+  the W7 review), Transactions, People, Files, Dashboard, Config and Project.
+- `phd` still runs the task classes phab-worker doesn't take.
+- User decisions: the W7, MFA and settings security review; the demo date.
+- W15 (removing PHP): only when asked.
