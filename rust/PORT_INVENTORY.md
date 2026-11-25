@@ -18,7 +18,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 26 | 76 | – | 15 | 3 | 120 |
+| Conduit methods | 28 | 76 | – | 13 | 3 | 120 |
 | Web routes | 52 | – | 64 | 20 | 242 | 378 |
 
 All 3 methods not ported write.
@@ -116,8 +116,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `diffusion.resolverefs` | stable | shadowed |  |
 | `diffusion.searchquery` | stable | shadowed |  |
 | `diffusion.tagsquery` | stable | shadowed |  |
-| `diffusion.updatecoverage` | unstable | ported, not routed | write: `repository_coverage`, and the branch's row when it has none. Left to PHP: repositories other than Git or the viewer can't see, commits named with a monogram, paths not in `repository_path`, an empty coverage map, values of unusual types, shadow calls. |
-| `diffusion.uri.edit` | stable | ported, not routed | write (EditEngine): `uri`, `io`, `display` and `disable` of existing URIs which are not builtin, in Git repositories, with `applyFinalEffects()` (the repository saved from its Observe URI, `repository_uriindex` rebuilt, `needs-update` cleared). Left to PHP: creations, `repository` and `credential`, builtin URIs and repositories with builtin URIs in use (from `diffusion.ssh-*` and the base URI), URIs `PhutilURI` may read differently (passwords, queries, unusual characters), cluster repositories, edits without effect, several validation errors. |
+| `diffusion.updatecoverage` | unstable | Rust | write: `repository_coverage`, and the branch's row when it has none. Left to PHP: repositories other than Git or the viewer can't see, commits named with a monogram, paths not in `repository_path`, an empty coverage map, values of unusual types, shadow calls. |
+| `diffusion.uri.edit` | stable | Rust | write (EditEngine): `uri`, `io`, `display` and `disable` of existing URIs which are not builtin, in Git repositories, with `applyFinalEffects()` (the repository saved from its Observe URI, `repository_uriindex` rebuilt, `needs-update` cleared). Left to PHP: creations, `repository` and `credential`, builtin URIs and repositories with builtin URIs in use (from `diffusion.ssh-*` and the base URI), URIs `PhutilURI` may read differently (passwords, queries, unusual characters), cluster repositories, edits without effect, several validation errors. |
 | `internal.commit.search` | stable | shadowed |  |
 
 ### Feed
