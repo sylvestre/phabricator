@@ -1401,6 +1401,24 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_path",
         columns: &["id", "path", "pathHash"],
     },
+    // The inline comments and affected paths pages of revisions.
+    TableContract {
+        database: "differential",
+        table: "differential_affectedpath",
+        columns: &["repositoryID", "pathID", "revisionID"],
+    },
+    TableContract {
+        database: "differential",
+        table: "differential_transaction_comment",
+        columns: &[
+            "id",
+            "revisionPHID",
+            "changesetID",
+            "fixedState",
+            "replyToCommentPHID",
+            "dateModified",
+        ],
+    },
     // diffusion.updatecoverage.
     TableContract {
         database: "repository",

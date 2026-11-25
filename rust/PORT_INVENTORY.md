@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 28 | 76 | – | 13 | 3 | 120 |
-| Web routes | 52 | – | 64 | 23 | 239 | 378 |
+| Web routes | 55 | – | 64 | 23 | 236 | 378 |
 
 All 3 methods not ported write.
 
@@ -411,10 +411,10 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/differential/changeset/` | `DifferentialChangesetViewController` | partial | the standalone changeset (a Rust page); the Ajax requests of PHP's revision and diff pages (each changeset, its "show more" context) answered with PHP's JSON from PHP's parse cache, side by side (`changeset_ajax.rs`, checked against `tests/oracle/changeset.php`); no cache yet, comparisons, view state changes, raw files (`?view=`), the unified renderer, inline comments, lint and coverage, document engines and property changes 421 |
 | `/differential/revision/edit/[{id}/][{editAction}/]` | `DifferentialRevisionEditController` | partial | the edit form `/differential/revision/edit/N/` (`revision_edit.rs`: title, summary, test plan, reviewers, tags, subscribers, Bugzilla bug ID; author, repository and policy changes, workflows and validation errors 421) and POST `/differential/revision/edit/N/comment/` (the comment form, `web_edit.rs`; 421 for workflows, drafts and unported actions); new revisions and other edit actions go to PHP |
 | `/differential/revision/attach/{diffID}/to/[{id}/][{editAction}/]` | `DifferentialRevisionEditController` | ported, not routed | write: `/attach/{diffID}/to/{id}/`, the edit form with the diff (`revision_edit.rs`): the `update` transaction, the `update.comment` and the edit form's fields, through the Rust editor; diffs already attached (PHP's dialog), posts without the diff or with another one, comments of whitespace, new revisions (`/attach/{diffID}/to/`, whose policy transactions the Rust editor doesn't write on creation), edit actions and what the edit form leaves to PHP 421 |
-| `/differential/revision/closedetails/{phid}/` | `DifferentialRevisionCloseDetailsController` | not ported | dialog; read-only |
+| `/differential/revision/closedetails/{phid}/` | `DifferentialRevisionCloseDetailsController` | Rust | why a commit closed the revision, as a page (`revision_pages.rs`); the dialog (Ajax), transactions of other objects and match data Rust doesn't read as PHP (values which aren't strings, numbers or booleans) 421 |
 | `/differential/revision/update/{revisionID}/` | `DifferentialDiffCreateController` | ported, not routed | write: the same form for a revision the viewer can edit, starting with its repository, redirecting to the diff with `?revisionID=`; revisions the viewer can't see or edit 421 |
-| `/differential/revision/inlines/{id}/` | `DifferentialRevisionInlinesController` | not ported | inline list; read-only, small |
-| `/differential/revision/paths/{id}/` | `DifferentialRevisionAffectedPathsController` | not ported | affected paths; read-only, small |
+| `/differential/revision/inlines/{id}/` | `DifferentialRevisionInlinesController` | Rust | the published inline comments the viewer sees, threaded, with their diff, state, author and age (`revision_pages.rs`); authors of types handles aren't ported for and changesets the viewer can't load (PHP fails) 421 |
+| `/differential/revision/paths/{id}/` | `DifferentialRevisionAffectedPathsController` | Rust | the affected path index, by path, with the repositories the viewer sees (`revision_pages.rs`) |
 | `/differential/comment/inline/edit/{id}/` | `DifferentialInlineCommentEditController` | not ported | write: draft inline comments (the Rust page posts inlines to PHP's Conduit API) |
 | `/differential/preview/` | `PhabricatorMarkupPreviewController` | not ported | Rust pages use `/rust-ui/preview` |
 

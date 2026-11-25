@@ -1,0 +1,8 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="dialog" aria-labelledby="dialog-title">
+  <h1 id="dialog-title">Commit Close Explanation</h1>
+  <p class="close-explanation">{{ explanation_html|safe }}</p>
+  <p><a class="hm-button" href="{{ revision_uri }}">Cancel</a></p>
+</section>
+{% endblock %}

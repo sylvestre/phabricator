@@ -43,6 +43,7 @@ pub mod remarkup;
 mod response;
 mod revision;
 mod revision_edit;
+mod revision_pages;
 mod router;
 mod search_form;
 pub mod searchfox;

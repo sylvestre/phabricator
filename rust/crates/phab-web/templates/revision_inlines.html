@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>{{ title }}</h1>
+  <p class="muted"><a href="{{ revision_uri }}">{{ monogram }}</a> · Inline Comments</p>
+  <p><a class="hm-button" href="{{ revision_uri }}"><span class="fa fa-chevron-left" aria-hidden="true"></span> Back to Revision</a></p>
+</header>
+<section class="hm-lint">
+  <h2>Inline Comments</h2>
+  <table class="hm-table">
+    <thead><tr><th>Diff</th><th>Status</th><th>Reviewer</th><th>Comment</th><th>Created</th></tr></thead>
+    <tbody>
+      {%- for row in rows %}
+      <tr>
+        <td>{% if let Some(diff) = row.diff %}Diff {{ diff }}{% else %}<strong>Current</strong>{% endif %}</td>
+        <td><span class="fa {{ row.status.0 }}" title="{{ row.status.1 }}" aria-label="{{ row.status.1 }}"></span></td>
+        <td>{{ row.author_html|safe }}</td>
+        <td class="hm-pri">{% if row.is_reply %}<span class="fa fa-reply" title="Reply" aria-label="Reply"></span> {% endif %}<a href="{{ row.uri }}">{{ row.content }}</a></td>
+        <td>{{ row.age }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- if rows.is_empty() %}
+  <p class="muted">No data available.</p>
+  {%- endif %}
+</section>
+{% endblock %}

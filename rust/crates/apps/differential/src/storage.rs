@@ -846,3 +846,143 @@ pub async fn load_application_comments(
         })
         .collect()
 }
+
+/// A published inline comment of a revision, as the list of its inline
+/// comments shows it (`/differential/revision/inlines/<id>/`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionInline {
+    /// The row ID.
+    pub id: i64,
+    /// The comment's PHID.
+    pub phid: Phid,
+    /// Its author.
+    pub author_phid: Phid,
+    /// The view policy.
+    pub view_policy: String,
+    /// The edit policy.
+    pub edit_policy: String,
+    /// The text, in Remarkup.
+    pub content: String,
+    /// The changeset it is on.
+    pub changeset_id: i64,
+    /// `fixedState`, like `done`.
+    pub fixed_state: Option<String>,
+    /// The comment it replies to.
+    pub reply_to: Option<Phid>,
+    /// When it last changed.
+    pub date_modified: i64,
+}
+
+impl RevisionInline {
+    /// As a policy object, like a comment.
+    pub fn subject(&self) -> PolicySubject {
+        authored_subject(
+            &self.phid,
+            &self.view_policy,
+            &self.edit_policy,
+            &self.author_phid,
+        )
+    }
+}
+
+/// The published inline comments of a revision, removed ones included,
+/// by ID (`DifferentialDiffInlineCommentQuery::withRevisionPHIDs()` and
+/// `withPublishedComments(true)`).
+pub async fn load_revision_inlines(
+    database: &Database,
+    revision: &Phid,
+) -> Result<Vec<RevisionInline>, DbError> {
+    let sql = format!(
+        "SELECT id, phid, authorPHID, viewPolicy, editPolicy, content, changesetID, fixedState, \
+           replyToCommentPHID, dateModified FROM {} \
+         WHERE revisionPHID = ? AND changesetID IS NOT NULL AND transactionPHID IS NOT NULL \
+         ORDER BY id",
+        database.table("differential", "differential_transaction_comment")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(revision.as_str())
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| {
+            Ok(RevisionInline {
+                id: rows::int(row, "id")?,
+                phid: Phid::new(rows::text(row, "phid")?),
+                author_phid: Phid::new(rows::text(row, "authorPHID")?),
+                view_policy: rows::text(row, "viewPolicy")?,
+                edit_policy: rows::text(row, "editPolicy")?,
+                content: rows::opt_text(row, "content")?.unwrap_or_default(),
+                changeset_id: rows::int(row, "changesetID")?,
+                fixed_state: rows::opt_text(row, "fixedState")?,
+                reply_to: rows::opt_phid(row, "replyToCommentPHID")?,
+                date_modified: rows::int(row, "dateModified")?,
+            })
+        })
+        .collect()
+}
+
+/// The diff of each of these changesets, by changeset ID.
+pub async fn load_changeset_diff_ids(
+    database: &Database,
+    ids: &[i64],
+) -> Result<HashMap<i64, i64>, DbError> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sql = format!(
+        "SELECT id, diffID FROM {} WHERE id IN ({})",
+        database.table("differential", "differential_changeset"),
+        phab_db::placeholders(ids.len())
+    );
+    phab_db::bind_all(phab_db::sqlx::query(&sql), ids.iter().copied())
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| Ok((rows::int(row, "id")?, rows::int(row, "diffID")?)))
+        .collect()
+}
+
+/// The `differential_affectedpath` rows of a revision, as
+/// `(repositoryID, pathID)`, in the order MySQL returns them.
+pub async fn load_affected_paths(
+    database: &Database,
+    revision_id: i64,
+) -> Result<Vec<(Option<i64>, i64)>, DbError> {
+    let sql = format!(
+        "SELECT repositoryID, pathID FROM {} WHERE revisionID = ?",
+        database.table("differential", "differential_affectedpath")
+    );
+    phab_db::sqlx::query(&sql)
+        .bind(revision_id)
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| {
+            Ok((
+                rows::opt_int(row, "repositoryID")?,
+                rows::int(row, "pathID")?,
+            ))
+        })
+        .collect()
+}
+
+/// The paths of these `repository_path` IDs (`DiffusionPathQuery`).
+pub async fn load_path_names(
+    database: &Database,
+    ids: &[i64],
+) -> Result<HashMap<i64, String>, DbError> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let sql = format!(
+        "SELECT id, path FROM {} WHERE id IN ({})",
+        database.table("repository", "repository_path"),
+        phab_db::placeholders(ids.len())
+    );
+    phab_db::bind_all(phab_db::sqlx::query(&sql), ids.iter().copied())
+        .fetch_all(database.pool())
+        .await?
+        .iter()
+        .map(|row| Ok((rows::int(row, "id")?, rows::text(row, "path")?)))
+        .collect()
+}

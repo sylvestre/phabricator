@@ -58,14 +58,14 @@ pub(crate) struct HistoryPage {
 }
 
 /// A request from a PHP page's dialog workflow.
-fn is_ajax(query: Option<&str>) -> bool {
+pub(crate) fn is_ajax(query: Option<&str>) -> bool {
     form_urlencoded::parse(query.unwrap_or("").as_bytes())
         .any(|(key, _)| key == "__ajax__" || key == "__dialog__")
 }
 
 /// The revision transaction with this PHID and its revision, as the
 /// viewer sees them (`PhabricatorObjectQuery`).
-async fn load<S: WebState>(
+pub(crate) async fn load<S: WebState>(
     state: &S,
     viewer: &WebUser,
     phid: &str,

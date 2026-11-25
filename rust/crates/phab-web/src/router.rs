@@ -9,7 +9,7 @@ use crate::{
     actions, assets, changeset_view, dashboards, datasource, diff_create, diff_page, diffusion,
     favorites, feed, files, flags, harbormaster, herald, login, notifications, opt_in, people,
     people_lists, preview, project_edit, project_manage, project_members, projects, queue,
-    revision, revision_edit, settings, subscriptions, transactions, typeahead, web_edit,
+    revision, revision_edit, revision_pages, settings, subscriptions, transactions, typeahead, web_edit,
 };
 
 /// The login, registration and account linking pages (W7).
@@ -238,6 +238,18 @@ fn differential<S: WebState>() -> Router<Arc<S>> {
         .route(
             "/differential/changeset/",
             routing::get(changeset_view::view::<S>).post(changeset_view::view::<S>),
+        )
+        .route(
+            "/differential/revision/closedetails/{phid}/",
+            routing::get(revision_pages::close_details::<S>),
+        )
+        .route(
+            "/differential/revision/inlines/{id}/",
+            routing::get(revision_pages::inlines::<S>),
+        )
+        .route(
+            "/differential/revision/paths/{id}/",
+            routing::get(revision_pages::paths::<S>),
         )
 }
 

@@ -38,6 +38,8 @@ PAGES = [
     "/herald/webhook/query/all/", "/transactions/raw/PHID-XACT-DREV-to3veya3jhdfy4p/",
     "/transactions/edit/PHID-XACT-DREV-to3veya3jhdfy4p/",
     "/transactions/remove/PHID-XACT-DREV-to3veya3jhdfy4p/",
+    "/differential/revision/inlines/1/", "/differential/revision/paths/1/",
+    "/differential/revision/paths/2/",
 ]
 
 # Words of the page chrome (menus, footers) that differ by design.

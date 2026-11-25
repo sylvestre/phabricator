@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="profile-header">
+  <h1>Affected Path Index</h1>
+  <p class="muted"><a href="{{ revision_uri }}">{{ monogram }}</a></p>
+</header>
+<section class="hm-lint">
+  <table class="hm-table">
+    <thead><tr><th>Repository ID</th><th>Repository</th><th>Path ID</th><th>Path</th></tr></thead>
+    <tbody>
+      {%- for row in rows %}
+      <tr>
+        <td>{% if let Some(id) = row.repository_id %}{{ id }}{% endif %}</td>
+        <td>{% if let Some(html) = row.repository_html %}{{ html|safe }}{% endif %}</td>
+        <td>{{ row.path_id }}</td>
+        <td class="hm-pri">{% if let Some(path) = row.path %}{{ path }}{% endif %}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- if rows.is_empty() %}
+  <p class="muted">This revision has no indexed affected paths.</p>
+  {%- endif %}
+</section>
+{% endblock %}
