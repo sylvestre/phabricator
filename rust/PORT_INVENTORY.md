@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 28 | 76 | – | 13 | 3 | 120 |
-| Web routes | 55 | – | 66 | 25 | 232 | 378 |
+| Web routes | 55 | – | 67 | 27 | 229 | 378 |
 
 All 3 methods not ported write.
 
@@ -580,10 +580,10 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/herald/transcript/[query/{queryKey}/]` | `HeraldTranscriptListController` | partial | builtin queries |
 | `/herald/transcript/{id}/[{view}/]` | `HeraldTranscriptController` | partial | transcripts of revisions, every view; transaction titles not ported 421 |
 | `/herald/webhook/[query/{queryKey}/[{queryAction}/]]` | `HeraldWebhookListController` | partial | the builtin queries `active` (default) and `all`; saved queries and filters 421 |
-| `/herald/webhook/view/{id}/[request/{requestID}/]` | `HeraldWebhookViewController` | not ported | webhook page; read-only (admin) |
-| `/herald/webhook/edit/[{id}/][{editAction}/]` | `HeraldWebhookEditController` | not ported | write (form or action) |
-| `/herald/webhook/test/{id}/` | `HeraldWebhookTestController` | not ported | write (form or action) |
-| `/herald/webhook/key/{view\|cycle}/{id}/` | `HeraldWebhookKeyController` | not ported | write (form or action) |
+| `/herald/webhook/view/{id}/[request/{requestID}/]` | `HeraldWebhookViewController` | partial | the webhook, its error backoff and silent mode warnings, the rules calling it and its recent requests (the timeline is left out); webhooks called by object rules 421 |
+| `/herald/webhook/edit/[{id}/][{editAction}/]` | `HeraldWebhookEditController` | not ported | write: the `HeraldWebhookEditEngine` form (name, URI, status, policies) |
+| `/herald/webhook/test/{id}/` | `HeraldWebhookTestController` | ported, not routed | the dialog and the test request about the webhook itself (the request row and its `HeraldWebhookWorker` task); requests about other objects 421 |
+| `/herald/webhook/key/{view\|cycle}/{id}/` | `HeraldWebhookKeyController` | ported, not routed | the key, and `cycle`'s confirmation and new key (saved without a transaction) |
 
 ### Home (`PhabricatorHomeApplication`)
 

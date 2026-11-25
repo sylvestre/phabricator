@@ -340,6 +340,22 @@ fn herald_routes<S: WebState>() -> Router<Arc<S>> {
             "/herald/webhook/query/{key}/",
             routing::get(herald::webhook_query::<S>),
         )
+        .route(
+            "/herald/webhook/view/{id}/",
+            routing::get(herald::webhook_view::<S>),
+        )
+        .route(
+            "/herald/webhook/view/{id}/request/{request}/",
+            routing::get(herald::webhook_request::<S>),
+        )
+        .route(
+            "/herald/webhook/test/{id}/",
+            routing::get(herald::webhook_test::<S>).post(herald::webhook_test::<S>),
+        )
+        .route(
+            "/herald/webhook/key/{action}/{id}/",
+            routing::get(herald::webhook_key::<S>).post(herald::webhook_key::<S>),
+        )
 }
 
 /// The pages, the static files and the interface switch. nginx decides

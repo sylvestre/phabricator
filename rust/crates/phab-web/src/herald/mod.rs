@@ -16,6 +16,7 @@ mod rule;
 mod rule_edit;
 mod test_console;
 mod transcript;
+mod webhook_view;
 mod webhooks;
 
 use std::collections::HashMap;
@@ -34,6 +35,9 @@ pub(crate) use rule::show as rule;
 pub(crate) use rule_edit::{create as rule_create, edit as rule_edit};
 pub(crate) use test_console::test_console;
 pub(crate) use transcript::{show as transcript, show_view as transcript_view};
+pub(crate) use webhook_view::{
+    key as webhook_key, test as webhook_test, view as webhook_view, view_request as webhook_request,
+};
 pub(crate) use webhooks::{webhooks as webhook_list, webhooks_query as webhook_query};
 
 use crate::diff_html::escape;

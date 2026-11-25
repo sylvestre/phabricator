@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block content %}
+<header class="settings-header">
+  <h1><span class="fa fa-cloud-upload" aria-hidden="true"></span> {{ name }}</h1>
+  <p><span class="tag tag-{{ status.1 }}"><span class="fa {{ status.0 }}" aria-hidden="true"></span> {{ status.2 }}</span></p>
+</header>
+{%- if backoff %}
+<p class="errors" role="alert">Many requests to this webhook have failed recently (at least 10 errors in the last 300 seconds). New requests are temporarily paused.</p>
+{%- endif %}
+{%- if silent %}
+<p class="errors" role="alert"><strong>Silent Mode</strong> This server is running in silent mode, so it will not publish webhooks. To adjust this setting, see phabricator.silent in Config.</p>
+{%- endif %}
+<ul class="hm-actions">
+  {%- for action in actions %}
+  <li>{% if action.enabled %}<a href="{{ action.uri }}"><span class="fa {{ action.icon }}" aria-hidden="true"></span> {{ action.name }}</a>{% else %}<span class="hm-disabled" aria-disabled="true"><span class="fa {{ action.icon }}" aria-hidden="true"></span> {{ action.name }}</span>{% endif %}</li>
+  {%- endfor %}
+</ul>
+<section>
+  <h2>Details</h2>
+  <dl>
+    <dt>URI</dt><dd>{{ uri }}</dd>
+    <dt>Status</dt><dd>{{ status.2 }}</dd>
+  </dl>
+</section>
+<section>
+  <h2>Called By Herald Rules <a href="/herald/?affectedPHID={{ phid }}">View All Rules</a></h2>
+  {%- if rules_html.is_empty() %}
+  <p class="muted">No active Herald rules call this webhook.</p>
+  {%- else %}
+  <ul>
+    {%- for html in rules_html %}
+    <li>{{ html|safe }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+</section>
+<section>
+  <h2>Recent Requests</h2>
+  <table>
+    <thead><tr><th>ID</th><th></th><th>Object</th><th>Type</th><th>Code</th><th>Requested At</th></tr></thead>
+    <tbody>
+      {%- for request in requests %}
+      <tr{% if request.highlighted %} class="highlighted"{% endif %}>
+        <td>{{ request.id }}</td>
+        <td><span class="fa {{ request.icon.0 }} {{ request.icon.1 }}" title="{{ request.icon.2 }}" aria-label="{{ request.icon.2 }}"></span></td>
+        <td>{{ request.object_html|safe }}</td>
+        <td>{{ request.error_type }}</td>
+        <td>{{ request.error_code }}</td>
+        <td>{% if let Some(at) = request.requested_at %}{{ at }}{% endif %}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- if requests.is_empty() %}<p class="muted">No data available.</p>{% endif %}
+</section>
+<p class="muted">Webhook {{ id }}: its history is shown in the old interface.</p>
+{% endblock %}

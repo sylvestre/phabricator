@@ -1,6 +1,6 @@
 //! `/herald/webhook/`: the builtin queries of `HeraldWebhookSearchEngine`
-//! (Active, All). Filters and saved queries are PHP's, and so are the
-//! webhook pages and their forms.
+//! (Active, All). Filters and saved queries are PHP's, and so is the
+//! webhook edit form.
 
 use std::sync::Arc;
 

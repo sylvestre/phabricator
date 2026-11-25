@@ -5,6 +5,7 @@ pub mod editor;
 pub mod engine;
 pub mod spaces;
 pub mod web;
+pub mod webhook;
 
 use std::collections::HashSet;
 use std::hash::BuildHasher;

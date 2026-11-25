@@ -744,3 +744,122 @@ async fn the_test_console_runs_the_rules_dry() {
     );
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn webhooks_are_shown_tested_and_rekeyed() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_herald`.herald_webhook (id, phid, name, webhookURI, viewPolicy, \
+               editPolicy, status, hmacKey, dateCreated, dateModified) VALUES \
+             (1, 'PHID-HWBH-1', 'CI', 'https://ci.example/', 'users', 'admin', 'enabled', \
+               'abcdefghijklmnopqrstuvwxyz234567', 1, 1), \
+             (2, 'PHID-HWBH-2', 'Secret', 'https://secret.example/', 'no-one', 'no-one', \
+               'enabled', 'k', 1, 1); \
+             INSERT INTO `{ns}_herald`.herald_webhookrequest (id, phid, webhookPHID, objectPHID, \
+               status, properties, lastRequestResult, lastRequestEpoch, dateCreated, \
+               dateModified) VALUES \
+             (5, 'PHID-HWBR-5', 'PHID-HWBH-1', 'PHID-USER-alice', 'failed', \
+               '{\"errorType\":\"hook\",\"errorCode\":\"silent\"}', 'fail', 1699999990, 1, 1); \
+             INSERT INTO `{ns}_herald`.herald_webhooktransaction (phid, authorPHID, objectPHID, \
+               viewPolicy, editPolicy, commentPHID, commentVersion, transactionType, oldValue, \
+               newValue, contentSource, metadata, dateCreated, dateModified) VALUES \
+             ('PHID-XACT-HWBH-1', 'PHID-USER-root', 'PHID-HWBH-1', 'public', 'x', NULL, 0, \
+               'name', 'null', '\"CI\"', '{}', '{}', 1, 1); \
+             INSERT INTO `{ns}_herald`.edge (src, type, dst, dateCreated, seq) VALUES \
+             ('PHID-HRUL-1', 69, 'PHID-HWBH-1', 1, 0)",
+        )
+        .await;
+    let (status, body) = page(&test_db, "alice", "/herald/webhook/view/1/request/5/").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("https://ci.example/"), "{body}");
+    assert!(body.contains("<a href=\"/H1\">H1 Tag CI</a>"), "{body}");
+    assert!(body.contains("<tr class=\"highlighted\">"), "{body}");
+    assert!(body.contains("In Silent Mode"), "{body}");
+    assert!(body.contains("Hook Error"), "{body}");
+    // Alice can't edit it.
+    assert!(
+        body.contains("aria-disabled=\"true\"><span class=\"fa fa-key\""),
+        "{body}"
+    );
+    let (status, _) = page(&test_db, "alice", "/herald/webhook/view/2/").await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+    let (status, _) = page(&test_db, "alice", "/herald/webhook/view/9/").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        fallback_reason(&post(&test_db, "alice", "/herald/webhook/test/1/", &[]).await),
+        "policy exceptions"
+    );
+
+    // A test request about the webhook itself.
+    let response = post(
+        &test_db,
+        "root",
+        "/herald/webhook/test/1/",
+        &[("object", "")],
+    )
+    .await;
+    assert_eq!(
+        location(&response),
+        "http://phabricator.test/herald/webhook/view/1/request/6/"
+    );
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', webhookPHID, objectPHID, status, properties, \
+               lastRequestResult, lastRequestEpoch, dateCreated) AS line \
+             FROM `{ns}_herald`.herald_webhookrequest WHERE id = 6",
+        )
+        .await,
+        [format!(
+            "PHID-HWBH-1 PHID-HWBH-1 queued {{\"retry\":\"never\",\"triggerPHIDs\":\
+             [\"PHID-USER-root\"],\"test\":true,\"transactionPHIDs\":[\"PHID-XACT-HWBH-1\"]}} \
+             none 0 {NOW}"
+        )]
+    );
+    let task = lines(
+        &test_db,
+        "SELECT CONCAT_WS(' ', t.taskClass, t.priority, CAST(d.data AS CHAR)) AS line \
+         FROM `{ns}_worker`.worker_activetask t JOIN `{ns}_worker`.worker_taskdata d \
+         ON d.id = t.dataID ORDER BY t.id DESC LIMIT 1",
+    )
+    .await;
+    assert!(task[0].starts_with("HeraldWebhookWorker 2000 {\"webhookRequestPHID\":\"PHID-HWBR-"));
+    let response = post(
+        &test_db,
+        "root",
+        "/herald/webhook/test/1/",
+        &[("object", "D1")],
+    )
+    .await;
+    assert_eq!(
+        fallback_reason(&response),
+        "test requests about other objects"
+    );
+
+    // The key, then a new one.
+    let (status, body) = page(&test_db, "root", "/herald/webhook/key/view/1/").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("value=\"abcdefghijklmnopqrstuvwxyz234567\""),
+        "{body}"
+    );
+    let (_, body) = page(&test_db, "root", "/herald/webhook/key/cycle/1/").await;
+    assert!(body.contains("Regnerate Key"), "{body}");
+    let response = post(&test_db, "root", "/herald/webhook/key/cycle/1/", &[]).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let key = lines(
+        &test_db,
+        "SELECT CONCAT_WS(' ', hmacKey, dateModified) AS line FROM `{ns}_herald`.herald_webhook \
+         WHERE id = 1",
+    )
+    .await
+    .remove(0);
+    assert_ne!(key, format!("abcdefghijklmnopqrstuvwxyz234567 {NOW}"));
+    assert!(key.ends_with(&format!(" {NOW}")), "{key}");
+    let (status, _) = page(&test_db, "root", "/herald/webhook/key/other/1/").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    test_db.drop_databases().await;
+}

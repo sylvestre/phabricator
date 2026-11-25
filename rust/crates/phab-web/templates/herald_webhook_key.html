@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block content %}
+<section class="dialog" aria-labelledby="dialog-title">
+  <h1 id="dialog-title">Webhook HMAC Key</h1>
+  <div class="settings-field">
+    <label for="webhook-key">HMAC Key</label>
+    <input type="text" id="webhook-key" value="{{ key }}" readonly>
+  </div>
+  <a href="{{ done }}">Done</a>
+</section>
+{% endblock %}

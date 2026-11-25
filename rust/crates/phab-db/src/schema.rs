@@ -1672,6 +1672,33 @@ pub const CONTRACT: &[TableContract] = &[
             "garbageCollected",
         ],
     },
+    // The webhook page, its test requests and its key.
+    TableContract {
+        database: "herald",
+        table: "herald_webhook",
+        columns: &["editPolicy", "hmacKey", "dateModified"],
+    },
+    TableContract {
+        database: "herald",
+        table: "herald_webhookrequest",
+        columns: &[
+            "id",
+            "phid",
+            "webhookPHID",
+            "objectPHID",
+            "status",
+            "properties",
+            "lastRequestResult",
+            "lastRequestEpoch",
+            "dateCreated",
+            "dateModified",
+        ],
+    },
+    TableContract {
+        database: "herald",
+        table: "herald_webhooktransaction",
+        columns: &["id", "phid", "objectPHID"],
+    },
 ];
 
 /// The columns `phab_db::editor::insert_transaction()` writes.
