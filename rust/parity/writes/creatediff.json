@@ -23,7 +23,7 @@
   {"name": "create an empty raw diff", "method": "differential.createrawdiff", "params": {"diff": " \n"}},
   {"name": "create a raw diff in an unknown repository", "method": "differential.createrawdiff", "params": {"diff": "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n", "repositoryPHID": "PHID-REPO-doesnotexist00000000"}},
   {"name": "create a raw diff visible to all users", "method": "differential.createrawdiff", "params": {"diff": "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n", "viewPolicy": "users"}},
-  {"name": "create a raw diff only its author sees", "method": "differential.createrawdiff", "params": {"diff": "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n", "viewPolicy": "no-one"}},
+  {"name": "create a raw diff no one may see (PHP's validation error)", "method": "differential.createrawdiff", "params": {"diff": "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n", "viewPolicy": "no-one"}},
   {"name": "create a Subversion raw diff", "method": "differential.createrawdiff", "params": {"diff": "Index: x\n===================================================================\n--- x\t(revision 1)\n+++ x\t(working copy)\n@@ -1 +1 @@\n-a\n+b\n"}},
   {"name": "create a raw diff with a view policy", "method": "differential.createrawdiff", "params": {"diff": "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n", "viewPolicy": "users"}},
   {"name": "create a malformed raw diff", "method": "differential.createrawdiff", "params": {"diff": "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1 @@\n-a\n"}},

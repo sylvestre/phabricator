@@ -2,16 +2,15 @@
 //! a diff from the text of a Git diff.
 //!
 //! Ported: Git diffs ([`phab_diff::arcanist::parse_diff`]),
-//! `repositoryPHID` and `viewPolicy`, which the diff's author may set to
-//! anything (a diff without a revision is always visible to its author,
-//! so `validatePolicyTransaction()` passes). Left to PHP: other diff
-//! formats and the diffs arcanist's parser rejects, object and custom
-//! view policies (which the policy filter loads first), and what
-//! [`crate::diff_editor`] leaves to PHP.
+//! `repositoryPHID` and the global and user `viewPolicy` values, which
+//! must let the actor view the diff. Left to PHP: other diff formats and
+//! the diffs arcanist's parser rejects, object, project and custom view
+//! policies, and what [`crate::diff_editor`] leaves to PHP.
 
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
-use phab_core::php;
+use phab_core::{Phid, PhidType, php};
 use phab_diff::arcanist::{self, ParseError};
+use phab_policy::Viewer;
 use serde_json::{Value, json};
 
 use crate::diff_editor::{self, DiffFields, PlannedDiff};
@@ -74,8 +73,9 @@ impl CreateRawDiff {
                     .to_owned(),
             ));
         }
-        let view_policy = view_policy(request.value("viewPolicy"))?;
+        // Herald's rules are left to PHP whatever the policy says.
         diff_editor::check_herald(request).await?;
+        let view_policy = view_policy(request.value("viewPolicy"), &request.viewer)?;
         let planned = PlannedDiff {
             changesets,
             line_count,
@@ -99,9 +99,17 @@ impl CreateRawDiff {
     }
 }
 
+/// PHP's error when the view policy excludes the actor.
+const EXCLUDED: &str = "Validation errors:\n  - You can not select this view policy, because you \
+                        would no longer be able to view the object.";
+
 /// The policy of the `TYPE_VIEW_POLICY` transaction PHP adds when
-/// `viewPolicy` is truthy.
-fn view_policy(value: Option<&Value>) -> Result<Option<String>, MethodError> {
+/// `viewPolicy` is truthy, once `validatePolicyTransaction()` checked
+/// that `viewer` can view the new diff with it. The diff has no author
+/// yet when PHP validates it (`updateDiffFromDict()` sets it later), so
+/// the author's automatic capability doesn't apply: the policy alone
+/// decides (`PhabricatorPolicyFilter::checkCapability()`).
+fn view_policy(value: Option<&Value>, viewer: &Viewer) -> Result<Option<String>, MethodError> {
     let policy = match value {
         None => return Ok(None),
         Some(value) if !php::is_truthy(value) => return Ok(None),
@@ -112,10 +120,26 @@ fn view_policy(value: Option<&Value>) -> Result<Option<String>, MethodError> {
             ));
         }
     };
-    // `PhabricatorPolicyQuery::isObjectPolicy()` and custom policies,
-    // which the filter loads before it checks the author.
-    if policy.starts_with("obj.") || policy.starts_with("PHID-PLCY-") {
-        return Err(MethodError::Unsupported("object and custom view policies"));
+    if policy.starts_with("obj.") {
+        return Err(MethodError::Unsupported("object view policies"));
+    }
+    let phid_type = Phid::new(policy.as_str()).phid_type();
+    if phid_type == PhidType::PROJECT || phid_type == PhidType::POLICY {
+        return Err(MethodError::Unsupported("project and custom view policies"));
+    }
+    // The viewer is logged in: "public" is "users" or itself, which both
+    // let them in. Unknown policies reject.
+    let allowed = match policy.as_str() {
+        "public" | "users" => true,
+        "admin" => viewer.is_admin,
+        _ if phid_type == PhidType::USER => viewer
+            .phid
+            .as_ref()
+            .is_some_and(|phid| phid.as_str() == policy),
+        _ => false,
+    };
+    if !allowed {
+        return Err(exception(EXCLUDED.to_owned()));
     }
     if policy.len() > 64 {
         return Err(MethodError::Unsupported("values longer than their column"));
@@ -155,20 +179,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn view_policies_are_read_like_php() {
-        assert_eq!(view_policy(None).ok(), Some(None));
-        assert_eq!(view_policy(Some(&json!(""))).ok(), Some(None));
-        assert_eq!(view_policy(Some(&json!("0"))).ok(), Some(None));
-        assert_eq!(
-            view_policy(Some(&json!("users"))).ok(),
-            Some(Some("users".to_owned()))
-        );
-        assert_eq!(
-            view_policy(Some(&json!("PHID-USER-abcdefghijklmnopqrst"))).ok(),
-            Some(Some("PHID-USER-abcdefghijklmnopqrst".to_owned()))
-        );
-        assert!(view_policy(Some(&json!("obj.differential.author"))).is_err());
-        assert!(view_policy(Some(&json!("PHID-PLCY-abcdefghijklmnopqrst"))).is_err());
-        assert!(view_policy(Some(&json!(["users"]))).is_err());
+    fn view_policies_must_let_the_actor_in() {
+        let bob = Viewer::user(Phid::new("PHID-USER-bobbobbobbobbobbobbo"), false);
+        let admin = Viewer::user(Phid::new("PHID-USER-adminadminadminadmi"), true);
+        let read = |value: Value, viewer: &Viewer| view_policy(Some(&value), viewer);
+        let set = |policy: &str| Some(Some(policy.to_owned()));
+        assert_eq!(view_policy(None, &bob).ok(), Some(None));
+        assert_eq!(read(json!(""), &bob).ok(), Some(None));
+        assert_eq!(read(json!("0"), &bob).ok(), Some(None));
+        for policy in ["users", "public", "PHID-USER-bobbobbobbobbobbobbo"] {
+            assert_eq!(read(json!(policy), &bob).ok(), set(policy));
+        }
+        assert_eq!(read(json!("admin"), &admin).ok(), set("admin"));
+        for policy in ["admin", "no-one", "PHID-USER-someoneelse000000", "nonsense"] {
+            assert!(
+                matches!(
+                    read(json!(policy), &bob),
+                    Err(MethodError::Conduit { info: Some(ref info), .. }) if info == EXCLUDED
+                ),
+                "{policy}"
+            );
+        }
+        for policy in [
+            json!("obj.differential.author"),
+            json!("PHID-PLCY-abcdefghijklmnopqrst"),
+            json!("PHID-PROJ-abcdefghijklmnopqrst"),
+            json!(["users"]),
+        ] {
+            assert!(matches!(
+                read(policy, &bob),
+                Err(MethodError::Unsupported(_))
+            ));
+        }
     }
 }

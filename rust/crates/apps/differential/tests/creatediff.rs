@@ -492,6 +492,18 @@ async fn creates_raw_diffs_like_php() {
             "No such repository \"PHID-REPO-nope\"!".to_owned()
         )
     );
+    // The new diff has no author when PHP checks its policy.
+    assert_eq!(
+        error(
+            &context,
+            "differential.createrawdiff",
+            json!({"diff": diff, "viewPolicy": "no-one"})
+        )
+        .await
+        .1,
+        "Validation errors:\n  - You can not select this view policy, because you would no \
+         longer be able to view the object."
+    );
     for params in [
         json!({"diff": "Index: x\n===\n"}),
         json!({"diff": diff, "viewPolicy": "obj.differential.author"}),
