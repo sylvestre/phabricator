@@ -338,7 +338,9 @@ pub(crate) async fn portal_edit<S: WebState>(
 }
 
 /// The object an archive action changes: PHP's query requires
-/// `CAN_VIEW` and `CAN_EDIT`, and answers 404 without them.
+/// `CAN_VIEW` and `CAN_EDIT`. It answers 404 for objects the viewer can't
+/// see; for those it can see but not edit, the policy exception is PHP's
+/// "You Shall Not Pass" dialog, which is left to PHP.
 async fn archivable<S: WebState, T: Policied>(
     state: &S,
     viewer: &WebUser,
@@ -346,7 +348,8 @@ async fn archivable<S: WebState, T: Policied>(
 ) -> Result<T, PageError> {
     match visible(state, viewer, rows).await? {
         Some((row, true)) => Ok(row),
-        _ => Err(PageError::NotFound),
+        Some((_, false)) => Err(PageError::Fallback("objects the viewer can't edit")),
+        None => Err(PageError::NotFound),
     }
 }
 

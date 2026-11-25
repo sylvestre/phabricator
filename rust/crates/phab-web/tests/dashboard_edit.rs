@@ -390,10 +390,10 @@ async fn panels_and_dashboards_are_archived_from_the_web() {
     assert!(body.contains("Archive Panel?"), "{body}");
     let (_, body) = page(&test_db, "/dashboard/panel/archive/4/").await;
     assert!(body.contains("Activate Panel?"), "{body}");
-    // PHP's query requires CAN_EDIT.
+    // PHP's query requires CAN_EDIT: Bob sees PHP's policy dialog.
     assert_eq!(
-        get(&test_db, "/dashboard/panel/archive/3/").await.status(),
-        StatusCode::NOT_FOUND
+        fallback_reason(&get(&test_db, "/dashboard/panel/archive/3/").await),
+        "objects the viewer can't edit"
     );
 
     let response = post(&test_db, "/dashboard/panel/archive/1/", &[]).await;
