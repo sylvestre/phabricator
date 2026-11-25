@@ -14,6 +14,7 @@ mod forms;
 mod lists;
 mod rule;
 mod rule_edit;
+mod test_console;
 mod transcript;
 mod webhooks;
 
@@ -25,12 +26,13 @@ use phab_db::phpser::Value as Php;
 use phab_policy::application;
 
 pub(crate) use create::new_rule;
-pub(crate) use forms::{disable, test_console};
+pub(crate) use forms::disable;
 pub(crate) use lists::{
     cursor, rules as rule_list, rules_query as rule_query, transcripts as transcript_list,
 };
 pub(crate) use rule::show as rule;
 pub(crate) use rule_edit::{create as rule_create, edit as rule_edit};
+pub(crate) use test_console::test_console;
 pub(crate) use transcript::{show as transcript, show_view as transcript_view};
 pub(crate) use webhooks::{webhooks as webhook_list, webhooks_query as webhook_query};
 

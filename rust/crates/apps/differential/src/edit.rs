@@ -1527,6 +1527,171 @@ async fn run_herald(
     })
 }
 
+/// What `HeraldTestConsoleController` reads of a revision's transactions,
+/// newest first: the content source of the newest
+/// (`newContentSource()`), and `loadAppliedTransactions()`, those of the
+/// newest group which Herald didn't apply.
+async fn test_console_transactions(
+    database: &Database,
+    revision: &Revision,
+) -> Result<(Option<String>, Vec<String>), MethodError> {
+    let sql = format!(
+        "SELECT phid, viewPolicy, contentSource, metadata FROM {} WHERE objectPHID = ? ORDER BY \
+         id DESC",
+        database.table("differential", "differential_transaction")
+    );
+    let found = phab_db::sqlx::query(&sql)
+        .bind(revision.phid.as_str())
+        .fetch_all(database.pool())
+        .await?;
+    let mut source = None;
+    let mut applied: Vec<String> = Vec::new();
+    let mut group: Option<Option<String>> = None;
+    for (index, row) in found.iter().enumerate() {
+        if rows::text(row, "viewPolicy")? != "public" {
+            return Err(MethodError::Unsupported(
+                "revisions with transactions which aren't public",
+            ));
+        }
+        if index == 0 {
+            let content_source = rows::json(row, "contentSource")?;
+            let kind = content_source
+                .get("source")
+                .and_then(Value::as_str)
+                .ok_or(MethodError::Unsupported("unusual content sources"))?;
+            source = Some(kind.to_owned());
+        }
+        let metadata = rows::json(row, "metadata")?;
+        if metadata
+            .get("herald:transcriptID")
+            .is_some_and(|value| !value.is_null())
+        {
+            continue;
+        }
+        let group_id = match metadata.get("core.groupID") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(text)) => Some(text.clone()),
+            Some(_) => return Err(MethodError::Unsupported("unusual transaction groups")),
+        };
+        let phid = rows::text(row, "phid")?;
+        match &group {
+            None => {
+                group = Some(group_id.clone());
+                applied.push(phid);
+                if group_id.is_none() {
+                    break;
+                }
+            }
+            Some(recent) if *recent == group_id => applied.push(phid),
+            Some(_) => break,
+        }
+        if applied.len() > 1000 {
+            return Err(MethodError::Unsupported("huge transaction groups"));
+        }
+    }
+    Ok((source, applied))
+}
+
+/// `HeraldTestConsoleController` on revision `id` (which the viewer must
+/// see): a dry run of the revision rules (`setDryRun(true)`) as the
+/// viewer, with the content source of the newest transaction (the
+/// request's, web, without any), and the transcript, whose ID it returns.
+/// No action applies and no rule is marked as applied.
+///
+/// # Errors
+///
+/// [`MethodError::Unsupported`], before anything is written, for rules,
+/// fields and transactions the editor leaves to PHP.
+pub async fn herald_dry_run(request: &ApiRequest<'_>, id: i64) -> Result<i64, MethodError> {
+    let mut params = Map::new();
+    params.insert("objectIdentifier".to_owned(), json!(id));
+    let lookup = ApiRequest {
+        context: request.context,
+        user: request.user.clone(),
+        viewer: request.viewer.clone(),
+        params,
+        strictly_typed: true,
+        now: request.now,
+        writes: request.writes,
+    };
+    let revision = load_revision(&lookup).await?;
+    let actor = phab_conduit::edit::actor(request)?;
+    phab_conduit::edit::require_writes(request)?;
+    let database = &request.context.database;
+    let facts = Facts::load(database, &revision).await?;
+    let (source, applied_phids) = test_console_transactions(database, &revision).await?;
+    let source = source.unwrap_or_else(|| "web".to_owned());
+    let input = herald_fields::Input {
+        actor: &actor,
+        is_new: false,
+        source: &source,
+        texts: Vec::new(),
+        removes_subscribers: false,
+        subscribed: Vec::new(),
+        tagged: Vec::new(),
+    };
+    let unsupported = |error: engine::HeraldError| match error {
+        engine::HeraldError::Unsupported(what) => MethodError::Unsupported(what),
+        other => MethodError::internal(other),
+    };
+    let mut rules = engine::load_rules(database, "differential")
+        .await
+        .map_err(unsupported)?;
+    engine::check_supported(&rules, &RevisionAdapter).map_err(unsupported)?;
+    if !rules.is_empty() {
+        let sql = format!(
+            "SELECT ruleID FROM {} WHERE phid = ? AND ruleID IN ({})",
+            database.table("herald", "herald_ruleapplied"),
+            phab_db::placeholders(rules.len())
+        );
+        let query = phab_db::sqlx::query(&sql).bind(revision.phid.as_str());
+        let applied: Vec<String> =
+            phab_db::bind_all(query, rules.iter().map(|rule| rule.id.as_str()))
+                .fetch_all(database.pool())
+                .await?
+                .iter()
+                .map(|row| rows::int(row, "ruleID").map(|id| id.to_string()))
+                .collect::<Result<_, _>>()?;
+        for rule in &mut rules {
+            rule.applied_before = applied.contains(&rule.id);
+        }
+    }
+    for rule in rules.iter_mut().filter(|rule| rule.rule_type == "personal") {
+        herald_actions::check_author(request, (&revision, &facts), rule).await?;
+    }
+    let subject = Subject {
+        phid: revision.phid.as_str().to_owned(),
+        content_type: "differential".to_owned(),
+        name: revision.title.clone(),
+        applied_transaction_phids: Some(applied_phids),
+    };
+    let used = engine::fields_used(&rules);
+    let values = herald_fields::values(database, &revision, &facts, &input, &used).await?;
+    let evaluation = engine::evaluate(&rules, &subject, &values);
+    if let Some(what) = evaluation.unsupported {
+        return Err(MethodError::Unsupported(what));
+    }
+    let transcript = evaluation.dry_run_transcript(&subject);
+    let inserted = phab_db::sqlx::query(&format!(
+        "INSERT INTO {} (phid, time, host, duration, objectPHID, dryRun, objectTranscript, \
+         ruleTranscripts, conditionTranscripts, applyTranscripts, garbageCollected) VALUES \
+         (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0)",
+        database.table("herald", "herald_transcript")
+    ))
+    .bind(Phid::generate(PhidType::HERALD_TRANSCRIPT, None).as_str())
+    .bind(request.now)
+    .bind(&request.context.hostname)
+    .bind(transcript.duration)
+    .bind(&transcript.object_phid)
+    .bind(&transcript.object_transcript)
+    .bind(&transcript.rule_transcripts)
+    .bind(&transcript.condition_transcripts)
+    .bind(&transcript.apply_transcripts)
+    .execute(database.pool())
+    .await?;
+    i64::try_from(inserted.last_insert_id()).map_err(MethodError::internal)
+}
+
 /// What Herald's evaluation and actions produce.
 struct HeraldOutcome {
     rules: Vec<Rule>,

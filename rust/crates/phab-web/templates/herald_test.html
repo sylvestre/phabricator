@@ -3,14 +3,32 @@
 <header class="settings-header">
   <h1>Test Console</h1>
 </header>
+{%- if !errors.is_empty() %}
+<ul class="errors" role="alert">
+  {%- for error in errors %}
+  <li>{{ error }}</li>
+  {%- endfor %}
+</ul>
+{%- endif %}
 <form class="settings-form" method="post" action="/herald/test/">
   {%- if let Some(token) = shell.csrf_token %}<input type="hidden" name="__csrf__" value="{{ token }}">{% endif %}
   <input type="hidden" name="__form__" value="1">
+  {%- if let Some((name, description)) = adapter %}
+  <input type="hidden" name="object_name" value="{{ object_name }}">
+  <fieldset class="settings-field">
+    <legend>Event</legend>
+    <label><input type="radio" name="adapter" value="differential" checked> {{ name }}</label>
+    <p class="muted">{{ description }}</p>
+  </fieldset>
+  <button type="submit">Run Test</button>
+  {%- else %}
   <div class="remarkup">{{ instructions_html|safe }}</div>
   <div class="settings-field">
     <label for="herald-object-name">Object Name</label>
-    <input type="text" id="herald-object-name" name="object_name" value="">
+    <input type="text" id="herald-object-name" name="object_name" value="{{ object_name }}">
+    {%- if let Some(error) = name_error %}<span class="error">{{ error }}</span>{% endif %}
   </div>
   <button type="submit">Continue</button>
+  {%- endif %}
 </form>
 {% endblock %}

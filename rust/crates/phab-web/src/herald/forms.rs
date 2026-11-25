@@ -1,17 +1,13 @@
-//! Herald's small forms: `/herald/disable/<id>/<action>/`
-//! (`HeraldDisableController`), whose post runs the Rust rule editor
-//! ([`phab_app_herald::editor`]), and the object form of the test console
-//! (`/herald/test/`, `HeraldTestConsoleController`).
+//! `/herald/disable/<id>/<action>/` (`HeraldDisableController`), whose
+//! post runs the Rust rule editor ([`phab_app_herald::editor`]).
 
 use std::sync::Arc;
 
-use askama::Template;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method, Uri};
 use axum::response::{IntoResponse, Response};
 use phab_app_herald::editor::{Change, Target};
-use phab_remarkup::Mode;
 
 use super::APPLICATION;
 use super::rule::{can_edit, visible_rules};
@@ -108,38 +104,4 @@ pub(crate) async fn disable<S: WebState>(
         format!("/{}", rule.monogram()),
     ))
     .into_response())
-}
-
-/// The instructions of the test console, in Remarkup.
-const TEST_INSTRUCTIONS: &str = "Enter an object to test rules for, like a Diffusion commit (e.g., \
-                                 `rX123`) or a Differential revision (e.g., `D123`). You will be \
-                                 shown the results of a dry run on the object.";
-
-#[derive(Template)]
-#[template(path = "herald_test.html")]
-pub(crate) struct TestConsolePage {
-    shell: Shell,
-    instructions_html: String,
-}
-
-/// `GET /herald/test/`: the form asking for the object to test rules on.
-/// PHP only reads the object name from a post.
-pub(crate) async fn test_console<S: WebState>(
-    State(state): State<Arc<S>>,
-    viewer: WebUser,
-    uri: Uri,
-) -> Result<Page<TestConsolePage>, PageError> {
-    viewer.require_application(&*state, APPLICATION).await?;
-    let markup = crate::remarkup::render(
-        state.as_ref(),
-        &viewer.user.viewer(),
-        TEST_INSTRUCTIONS,
-        Mode::Html,
-    )
-    .await?;
-    let current = uri.path_and_query().map_or("/", |path| path.as_str());
-    Ok(Page(TestConsolePage {
-        shell: Shell::for_user(state.config(), &viewer, "Test Console", current),
-        instructions_html: String::from_utf8_lossy(markup.as_bytes()).into_owned(),
-    }))
 }

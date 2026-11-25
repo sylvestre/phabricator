@@ -331,7 +331,10 @@ fn herald_routes<S: WebState>() -> Router<Arc<S>> {
             "/herald/edit/{id}/",
             routing::get(herald::rule_edit::<S>).post(herald::rule_edit::<S>),
         )
-        .route("/herald/test/", routing::get(herald::test_console::<S>))
+        .route(
+            "/herald/test/",
+            routing::get(herald::test_console::<S>).post(herald::test_console::<S>),
+        )
         .route("/herald/webhook/", routing::get(herald::webhook_list::<S>))
         .route(
             "/herald/webhook/query/{key}/",

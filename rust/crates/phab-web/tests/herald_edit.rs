@@ -646,3 +646,101 @@ async fn rules_are_created_and_edited_from_the_web() {
     );
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn the_test_console_runs_the_rules_dry() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, \
+               summary, testPlan, authorPHID, dateCreated, dateModified, attached, mailKey, \
+               viewPolicy, editPolicy, properties, activeDiffPHID) VALUES \
+             (1, 'Fix ci', 'PHID-DREV-1', 'needs-review', '', '', 'PHID-USER-alice', 1, 1, '{}', \
+               'k', 'users', 'users', '{}', 'PHID-DIFF-1'), \
+             (2, 'Hidden', 'PHID-DREV-2', 'needs-review', '', '', 'PHID-USER-root', 1, 1, '{}', \
+               'k', 'no-one', 'no-one', '{}', 'PHID-DIFF-2'); \
+             INSERT INTO `{ns}_differential`.differential_transaction (phid, authorPHID, \
+               objectPHID, viewPolicy, editPolicy, commentPHID, commentVersion, transactionType, \
+               oldValue, newValue, contentSource, metadata, dateCreated, dateModified) VALUES \
+             ('PHID-XACT-DREV-1', 'PHID-USER-alice', 'PHID-DREV-1', 'public', 'x', NULL, 0, \
+               'differential.revision.title', '\"\"', '\"Fix ci\"', \
+               '{\"source\":\"conduit\",\"params\":[]}', '{\"core.groupID\":\"g1\"}', 1, 1), \
+             ('PHID-XACT-DREV-2', 'PHID-USER-alice', 'PHID-DREV-1', 'public', 'x', NULL, 0, \
+               'core:comment', 'null', 'null', '{\"source\":\"conduit\",\"params\":[]}', \
+               '{\"core.groupID\":\"g2\"}', 2, 2), \
+             ('PHID-XACT-DREV-3', 'PHID-USER-alice', 'PHID-DREV-1', 'public', 'x', NULL, 0, \
+               'core:edge', '[]', '[]', '{\"source\":\"herald\",\"params\":[]}', \
+               '{\"herald:transcriptID\":7,\"core.groupID\":\"g2\"}', 2, 2)",
+        )
+        .await;
+    let (status, body) = page(&test_db, "alice", "/herald/test/").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("name=\"object_name\""), "{body}");
+
+    for (name, error) in [
+        (" ", "An object name is required."),
+        ("D2", "No object exists with that name."),
+        ("D99", "No object exists with that name."),
+    ] {
+        let response = post(&test_db, "alice", "/herald/test/", &[("object_name", name)]).await;
+        assert_eq!(response.status(), StatusCode::OK, "{name}");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert!(String::from_utf8_lossy(&body).contains(error), "{name}");
+    }
+    let response = post(
+        &test_db,
+        "alice",
+        "/herald/test/",
+        &[("object_name", "rX1")],
+    )
+    .await;
+    assert_eq!(fallback_reason(&response), "objects other than revisions");
+    let response = post(&test_db, "alice", "/herald/test/", &[("object_name", "D1")]).await;
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("name=\"adapter\" value=\"differential\""),);
+
+    let response = post(
+        &test_db,
+        "alice",
+        "/herald/test/",
+        &[("object_name", "D1"), ("adapter", "differential")],
+    )
+    .await;
+    assert_eq!(
+        location(&response),
+        "http://phabricator.test/herald/transcript/1/"
+    );
+    let rows = lines(
+        &test_db,
+        "SELECT CONCAT_WS(' ', objectPHID, dryRun, host, CAST(objectTranscript AS CHAR), \
+           CAST(applyTranscripts AS CHAR)) AS line FROM `{ns}_herald`.herald_transcript",
+    )
+    .await;
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].starts_with("PHID-DREV-1 1 web1 "), "{}", rows[0]);
+    // The newest group which Herald didn't apply, and the content source
+    // of the newest transaction, Herald's.
+    assert!(rows[0].contains("s:16:\"PHID-XACT-DREV-2\""), "{}", rows[0]);
+    assert!(!rows[0].contains("PHID-XACT-DREV-1"), "{}", rows[0]);
+    assert!(
+        rows[0].contains("This was a dry run, so no actions were actually taken."),
+        "{}",
+        rows[0]
+    );
+    // Nothing else is written.
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CAST(COUNT(*) AS CHAR) AS line FROM `{ns}_herald`.herald_ruleapplied",
+        )
+        .await,
+        ["0"]
+    );
+    test_db.drop_databases().await;
+}
