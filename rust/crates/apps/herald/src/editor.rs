@@ -382,8 +382,9 @@ fn plan(state: &mut State, change: Change) -> Result<(Vec<Planned>, bool), Metho
                 state.name = Some(name);
                 planned.push(xaction);
             }
-            // The controller upgrades the rule it saves.
-            state.config_version = CONFIG_VERSION;
+            // The controller upgrades the rule it shows, but the editor
+            // reloads an existing rule before it applies the transactions
+            // (`applyTransactions()`): only new rules get the version.
         }
     }
     let effective = planned.iter().any(|xaction| xaction.kind != "core:create") || is_new;
@@ -786,7 +787,7 @@ mod tests {
         assert_eq!(planned.len(), 1);
         assert_eq!(planned[0].kind, "herald:name");
         assert!(!children);
-        assert_eq!(state.config_version, CONFIG_VERSION);
+        assert_eq!(state.config_version, 37);
 
         // A new rule: created, edited and named.
         let mut state = new_state(
