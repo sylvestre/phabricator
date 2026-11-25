@@ -574,7 +574,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/herald/new/` | `HeraldNewController` | not ported | write (form or action) |
 | `/herald/create/` | `HeraldNewController` | not ported | write (form or action) |
 | `/herald/edit/[{id}/]` | `HeraldRuleController` | not ported | write: the rule editor |
-| `/herald/disable/{id}/{action}/` | `HeraldDisableController` | partial | the confirmation, for rules the viewer may edit; the post (`HeraldRuleEditor`, not ported) and object rules 421 |
+| `/herald/disable/{id}/{action}/` | `HeraldDisableController` | partial | the confirmation and its post (`HeraldRuleEditor` in Rust: `herald:disable`, the transcript of `HeraldRuleAdapter` with no rule, the publish task mailing the actor and a personal rule's author), for global and personal rules the viewer may edit; object rules, posts without effect, rules of a newer Herald and installs with rules about Herald rules 421 |
 | `/herald/test/` | `HeraldTestConsoleController` | partial | the object form; the post, which runs the rules against the object (dry run, writes a transcript), 421 |
 | `/herald/transcript/` | `HeraldTranscriptListController` | Rust | default list |
 | `/herald/transcript/[query/{queryKey}/]` | `HeraldTranscriptListController` | partial | builtin queries |

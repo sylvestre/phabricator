@@ -1619,6 +1619,59 @@ pub const CONTRACT: &[TableContract] = &[
         table: "repository_identity",
         columns: &["phid", "currentEffectiveUserPHID"],
     },
+    // HeraldRuleEditor: the rules, their children and transactions, and
+    // Herald's transcript of the edit.
+    TableContract {
+        database: "herald",
+        table: "herald_rule",
+        columns: &[
+            "id",
+            "phid",
+            "name",
+            "authorPHID",
+            "contentType",
+            "mustMatchAll",
+            "configVersion",
+            "dateCreated",
+            "dateModified",
+            "repetitionPolicy",
+            "ruleType",
+            "isDisabled",
+            "triggerObjectPHID",
+        ],
+    },
+    TableContract {
+        database: "herald",
+        table: "herald_condition",
+        columns: &["id", "ruleID", "fieldName", "fieldCondition", "value"],
+    },
+    TableContract {
+        database: "herald",
+        table: "herald_action",
+        columns: &["id", "ruleID", "action", "target"],
+    },
+    TableContract {
+        database: "herald",
+        table: "herald_ruletransaction",
+        columns: &TRANSACTION_COLUMNS,
+    },
+    TableContract {
+        database: "herald",
+        table: "herald_transcript",
+        columns: &[
+            "phid",
+            "time",
+            "host",
+            "duration",
+            "objectPHID",
+            "dryRun",
+            "objectTranscript",
+            "ruleTranscripts",
+            "conditionTranscripts",
+            "applyTranscripts",
+            "garbageCollected",
+        ],
+    },
 ];
 
 /// The columns `phab_db::editor::insert_transaction()` writes.

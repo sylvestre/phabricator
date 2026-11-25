@@ -313,7 +313,7 @@ fn herald_routes<S: WebState>() -> Router<Arc<S>> {
         )
         .route(
             "/herald/disable/{id}/{action}/",
-            routing::get(herald::disable::<S>),
+            routing::get(herald::disable::<S>).post(herald::disable::<S>),
         )
         .route("/herald/test/", routing::get(herald::test_console::<S>))
         .route("/herald/webhook/", routing::get(herald::webhook_list::<S>))

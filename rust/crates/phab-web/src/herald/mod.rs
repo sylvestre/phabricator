@@ -8,6 +8,7 @@
 //! a rule or transcript of another adapter, or naming a field, action or
 //! effect not listed here, goes to PHP.
 
+mod edit;
 mod forms;
 mod lists;
 mod rule;

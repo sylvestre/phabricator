@@ -1174,6 +1174,35 @@ impl Evaluation {
     }
 }
 
+impl Evaluation {
+    /// The transcript row of a dry run (`setDryRun(true)`): no effect
+    /// applies, and each says so in a sentence (`appliedReason` is a
+    /// string here).
+    pub fn dry_run_transcript(&self, subject: &Subject) -> TranscriptRow {
+        let private = |name| phpser::private("HeraldApplyTranscript", name);
+        let applied = self.effects.iter().map(|effect| Php::Object {
+            class: "HeraldApplyTranscript".to_owned(),
+            properties: vec![
+                (private("action"), Php::str(&effect.action)),
+                (private("target"), effect.target.clone()),
+                (private("ruleID"), Php::str(&effect.rule_id)),
+                (private("reason"), Php::str(&effect.reason)),
+                (private("applied"), Php::Bool(false)),
+                (
+                    private("appliedReason"),
+                    Php::str("This was a dry run, so no actions were actually taken."),
+                ),
+            ],
+        });
+        TranscriptRow {
+            apply_transcripts: phpser::serialize(&Php::list(
+                self.forbidden_transcripts.iter().cloned().chain(applied),
+            )),
+            ..self.transcript(subject, &[])
+        }
+    }
+}
+
 /// `getXHeraldRulesHeader()`: the IDs of the rules whose effects applied.
 pub fn rules_header(applied: &[Applied]) -> String {
     let mut ids: Vec<&str> = Vec::new();
@@ -1189,6 +1218,31 @@ pub fn rules_header(applied: &[Applied]) -> String {
         .map(|id| format!("<{id}>"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// `getHeraldRuleMonograms()` of a saved header: `<1>, <2>` is `["H1",
+/// "H2"]`; PHP unsets what is not a rule, so a list with holes is a JSON
+/// object.
+pub fn rule_monograms(header: &str) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    let mut holes = false;
+    for (index, item) in header
+        .split([',', ' '])
+        .filter(|part| !part.is_empty())
+        .enumerate()
+    {
+        let item = item.trim_matches(['<', '>']);
+        if item.is_empty() || !item.bytes().all(|byte| byte.is_ascii_digit()) {
+            continue;
+        }
+        holes |= index != map.len();
+        map.insert(index.to_string(), serde_json::json!(format!("H{item}")));
+    }
+    if holes {
+        serde_json::Value::Object(map)
+    } else {
+        serde_json::Value::Array(map.into_iter().map(|(_, value)| value).collect())
+    }
 }
 
 /// `combineXHeraldRulesHeaders()`: the saved header and the new one.

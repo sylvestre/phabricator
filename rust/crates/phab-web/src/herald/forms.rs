@@ -1,34 +1,43 @@
-//! The read side of Herald's forms: the confirmation of
-//! `/herald/disable/<id>/<action>/` (`HeraldDisableController`) and the
-//! object form of the test console (`/herald/test/`,
-//! `HeraldTestConsoleController`). Their posts, which edit the rule or run
-//! the rules and write a transcript, go to PHP.
+//! Herald's small forms: `/herald/disable/<id>/<action>/`
+//! (`HeraldDisableController`), whose post runs the Rust rule editor
+//! ([`phab_app_herald::editor`]), and the object form of the test console
+//! (`/herald/test/`, `HeraldTestConsoleController`).
 
 use std::sync::Arc;
 
 use askama::Template;
+use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::Uri;
+use axum::http::{HeaderMap, Method, Uri};
+use axum::response::{IntoResponse, Response};
+use phab_app_herald::editor::{Change, Target};
 use phab_remarkup::Mode;
 
 use super::APPLICATION;
 use super::rule::{can_edit, visible_rules};
 use crate::error::PageError;
 use crate::harbormaster::Scope;
+use crate::login::request::LoginRequest;
 use crate::project_edit::DialogPage;
 use crate::response::Page;
 use crate::shell::Shell;
 use crate::state::WebState;
 use crate::viewer::WebUser;
+use crate::web_edit;
 
-/// `GET /herald/disable/{id}/{action}/`: "Really disable this rule?", or
-/// enable it for any other action.
+/// `GET|POST /herald/disable/{id}/{action}/`: "Really disable this
+/// rule?", or enable it for any other action; the post disables or enables
+/// it and goes back to the rule (`setContinueOnNoEffect(true)`: a post
+/// without effect is left to PHP).
 pub(crate) async fn disable<S: WebState>(
     State(state): State<Arc<S>>,
     viewer: WebUser,
     Path((id, action)): Path<(String, String)>,
+    method: Method,
     uri: Uri,
-) -> Result<Page<DialogPage>, PageError> {
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, PageError> {
     // `(?P<id>[1-9]\d*)/(?P<action>\w+)/`.
     let id: i64 = id
         .strip_prefix(|first: char| ('1'..='9').contains(&first))
@@ -67,7 +76,16 @@ pub(crate) async fn disable<S: WebState>(
     if !can_edit(state, &scope, &rule).await? {
         return Err(PageError::PolicyDenied);
     }
-    let (title, body, button) = if action == "disable" {
+    let is_disable = action == "disable";
+    let request = LoginRequest::new(method, uri.clone(), headers, &body);
+    if request.is_post() {
+        web_edit::check_form_post(state, &viewer, &request)?;
+        let change = Change::Disable(is_disable);
+        super::edit::apply(state, &viewer, Target::Rule(rule.id), change).await?;
+        let next = format!("/{}", rule.monogram());
+        return Ok(request.redirect(state.config(), &next));
+    }
+    let (title, body, button) = if is_disable {
         (
             "Really disable this rule?",
             "This rule will no longer activate.",
@@ -88,7 +106,8 @@ pub(crate) async fn disable<S: WebState>(
         uri.path().to_owned(),
         Some(button),
         format!("/{}", rule.monogram()),
-    )))
+    ))
+    .into_response())
 }
 
 /// The instructions of the test console, in Remarkup.
