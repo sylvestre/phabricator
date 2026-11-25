@@ -73,6 +73,8 @@ SESSION_EXPIRES = re.compile(
     r"^(\(\d+,(?:_binary )?'[^']*',(?:_binary )?'[^']*',(?:_binary )?'[^']*',\d+,)\d+")
 # A new token's secret (`api-` and 28 random characters).
 TOKEN_SECRET = re.compile(r"'(api|cli|clr)-[a-z2-7]{28}'")
+# A webhook's HMAC key, which "cycle" regenerates at random (32 characters).
+WEBHOOK_KEY = re.compile(r"'[a-z2-7]{32}'(?=,\d+,(?:<now>|\d+)\);?$)")
 # A new address's verification code, and the link mail carries it in.
 VERIFICATION_CODE = re.compile(r"'[a-z2-7]{24}'")
 VERIFICATION_LINK = re.compile(r"(emailverify\\*/)[a-z2-7]{24}")
@@ -90,6 +92,8 @@ def settings_values(table, values):
         return SESSION_EXPIRES.sub(r"\1<expires>", values)
     if table == "phabricator_conduit.conduit_token":
         return TOKEN_SECRET.sub(r"'\1-<secret>'", values)
+    if table == "phabricator_herald.herald_webhook":
+        return WEBHOOK_KEY.sub("'<hmac key>'", values)
     if table == "phabricator_user.user_email":
         return VERIFICATION_CODE.sub("'<code>'", values)
     if table == "phabricator_metamta.metamta_mail":
