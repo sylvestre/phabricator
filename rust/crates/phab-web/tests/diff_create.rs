@@ -200,7 +200,8 @@ async fn post(test_db: &TestDatabase, path: &str, fields: &[(&str, &str)]) -> Re
     if !fields.iter().any(|(key, _)| *key == "__csrf__") {
         all.push(("__csrf__", &token));
     }
-    all.extend_from_slice(fields);
+    // `<none>` leaves a field out.
+    all.extend(fields.iter().filter(|(_, value)| *value != "<none>"));
     let request = Request::post(path)
         .header(header::COOKIE, BOB)
         .header(header::HOST, "phabricator.test")
@@ -406,7 +407,13 @@ async fn what_the_diff_forms_do_not_write_goes_to_php() {
                 ("diff", RAW_DIFF),
                 ("viewPolicy", "obj.differential.author"),
             ],
-            "object and custom view policies",
+            "object view policies",
+        ),
+        // The policy excludes Bob: PHP shows the form with its error.
+        (
+            CREATE,
+            &[("diff", RAW_DIFF), ("viewPolicy", "no-one")],
+            "diffs PHP refuses",
         ),
         (
             CREATE,
@@ -545,6 +552,58 @@ async fn revisions_are_updated_with_a_diff_as_php_form_does() {
 }
 
 #[tokio::test]
+async fn an_empty_comment_subscribes_who_updates_someone_elses_revision() {
+    let Some(test_db) = setup().await else {
+        return;
+    };
+    test_db
+        .execute(
+            "UPDATE `{ns}_differential`.differential_revision SET authorPHID = \
+             'PHID-USER-alice' WHERE id = 1",
+        )
+        .await;
+    let response = post(
+        &test_db,
+        ATTACH,
+        &attach_fields(&[("author[0]", "PHID-USER-alice")]),
+    )
+    .await;
+    assert_eq!(location(&response), "http://phabricator.test/D1");
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', transactionType, oldValue, newValue) AS line \
+             FROM `{ns}_differential`.differential_transaction ORDER BY id"
+        )
+        .await,
+        vec![
+            r#"core:subscribers [] ["PHID-USER-bob"]"#.to_owned(),
+            r#"differential:update "PHID-DIFF-1" "PHID-DIFF-new""#.to_owned(),
+            r#"core:customfield null """#.to_owned(),
+        ]
+    );
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', src, type, dst) AS line FROM `{ns}_differential`.edge \
+             WHERE type = 21"
+        )
+        .await,
+        vec!["PHID-DREV-1 21 PHID-USER-bob"]
+    );
+    // The diff is the default value of the form's `update` field.
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT LEFT(metadata, 20) AS line FROM `{ns}_differential`.differential_transaction \
+             WHERE transactionType = 'differential:update'"
+        )
+        .await,
+        vec![r#"{"core.default":true"#]
+    );
+}
+
+#[tokio::test]
 async fn what_the_attach_form_does_not_write_goes_to_php() {
     let Some(test_db) = setup().await else {
         return;
@@ -555,6 +614,12 @@ async fn what_the_attach_form_does_not_write_goes_to_php() {
             &[("update[]", "PHID-DIFF-2")],
             "updates with another diff",
         ),
+        (
+            ATTACH,
+            &[("update[]", "<none>")],
+            "updates without the diff",
+        ),
+        (ATTACH, &[("update.comment", "  \n")], "empty comments"),
         (
             ATTACH,
             &[("author[0]", "PHID-USER-alice")],

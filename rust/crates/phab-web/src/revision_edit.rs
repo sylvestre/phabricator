@@ -35,9 +35,11 @@
 //! (`/differential/revision/attach/<diffID>/to/<id>/`,
 //! `DifferentialRevisionEditController` giving the engine the diff): PHP
 //! adds the diff's invisible `update[]` field and the `update.comment`
-//! comment, whose transactions come first; an empty comment has no effect.
+//! comment, whose transactions come first; an empty comment has no effect
+//! but subscribes the actor, as a comment does.
 //! Left to PHP there too: diffs already attached (PHP's dialog), posts
-//! which update with another diff, and new revisions
+//! without `update[]` (PHP shows the form again) or with another diff,
+//! comments of whitespace (which the editor leaves to PHP), and new revisions
 //! (`/differential/revision/attach/<diffID>/to/`), whose policies PHP's
 //! form sets, which the Rust editor doesn't on creation.
 
@@ -445,12 +447,6 @@ fn list_change(
     Ok(changes.then_some(transaction))
 }
 
-/// `isEmptyComment()`: nothing but whitespace.
-fn is_empty_comment(text: &str) -> bool {
-    text.trim_matches([' ', '\t', '\n', '\r', '\0', '\x0B'])
-        .is_empty()
-}
-
 /// The editor's transactions for `form` on `revision`, in PHP's order, or
 /// why PHP must answer: with `update`, the diff and the comment first.
 fn transactions(
@@ -500,10 +496,10 @@ fn transactions(
 
     let mut transactions = Vec::new();
     if let Some(update) = update {
+        // The comment field always makes a transaction: an empty one
+        // still subscribes the actor, then has no effect.
         transactions.push(json!({"type": "update", "value": update.diff_phid}));
-        if !is_empty_comment(&update.comment) {
-            transactions.push(json!({"type": "comment", "value": update.comment}));
-        }
+        transactions.push(json!({"type": "comment", "value": update.comment}));
     }
     if Some(title) != current.title.as_ref() {
         transactions.push(json!({"type": "title", "value": title}));
@@ -650,7 +646,7 @@ async fn page<S: WebState>(
 }
 
 /// The update of a post of the form with a diff: the posted `update[]`
-/// must be the diff (or missing, which is the diff too).
+/// must be the diff (PHP shows the form again without it).
 fn posted_update(
     request: &LoginRequest,
     update: Option<&Update>,
@@ -659,7 +655,10 @@ fn posted_update(
         return Ok(None);
     };
     let exists = request.exists("update") || !request.array("update").is_empty();
-    if exists && list(request, "update") != [update.diff_phid.as_str()] {
+    if !exists {
+        return Err(PageError::Fallback("updates without the diff"));
+    }
+    if list(request, "update") != [update.diff_phid.as_str()] {
         return Err(PageError::Fallback("updates with another diff"));
     }
     Ok(Some(Update {

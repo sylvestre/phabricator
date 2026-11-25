@@ -16,7 +16,8 @@
 //! ([`reviewers`]); or a comment and one of those. With the review status
 //! change they cause, when Herald's rules are ones
 //! [`phab_app_herald::engine`] evaluates. A comment subscribes its author
-//! when nothing else does (`applyImplicitCC()`). A new diff ([`update`]),
+//! when nothing else does (`applyImplicitCC()`), and so does the edit
+//! form's empty comment, which then has no effect. A new diff ([`update`]),
 //! alone or with a comment, a new title, summary, test plan, subscribers
 //! or tags. Inline comments ([`inlines`]): the `inline` transactions, and
 //! the actor's drafts the comment form publishes ([`apply_with_drafts()`]),
@@ -327,6 +328,10 @@ struct Wanted {
     /// The comment form's empty comment, which it only sends when nothing
     /// else is published.
     empty_comment: bool,
+    /// The edit form's empty comment field (`update.comment`): a comment
+    /// transaction without effect, which PHP drops, but only after it
+    /// implied the actor's subscription (`applyImplicitCC()`).
+    form_comment: bool,
     /// The texts of the inline comments the edit publishes, once planned.
     inline_texts: Vec<String>,
     /// How many actions come before the first comment, inline comment or
@@ -341,7 +346,11 @@ struct Wanted {
 /// review, or both. `is_new` when they create a revision; `drafts` when
 /// the edit publishes the actor's draft inline comments, which make an
 /// empty comment unnecessary.
-fn wanted(request: &ApiRequest<'_>, is_new: bool, drafts: bool) -> Result<Wanted, MethodError> {
+fn wanted(
+    request: &ApiRequest<'_>,
+    (is_new, drafts): (bool, bool),
+    source: &Source,
+) -> Result<Wanted, MethodError> {
     let Some(Value::Array(transactions)) = request.value("transactions") else {
         return Err(MethodError::Unsupported("unusual transaction lists"));
     };
@@ -355,10 +364,14 @@ fn wanted(request: &ApiRequest<'_>, is_new: bool, drafts: bool) -> Result<Wanted
             transaction.get("value"),
         ) {
             (Some("comment"), Some(Value::String(text)))
-                if wanted.comment.is_none() && !wanted.empty_comment =>
+                if wanted.comment.is_none() && !wanted.empty_comment && !wanted.form_comment =>
             {
                 if drafts && text.is_empty() {
                     wanted.empty_comment = true;
+                    continue;
+                }
+                if *source == Source::EditForm && !is_new && text.is_empty() {
+                    wanted.form_comment = true;
                     continue;
                 }
                 if is_empty_comment(text) {
@@ -851,7 +864,8 @@ async fn plan_subscription(
     let database = &context.database;
     // shouldImplyCC(): only comments, inline ones too, subscribe their
     // author.
-    let commented = wanted.comment.is_some() || !wanted.inline_texts.is_empty();
+    let commented =
+        wanted.comment.is_some() || wanted.form_comment || !wanted.inline_texts.is_empty();
     let implicit = commented && implies_subscription(database, revision, facts, actor).await?;
     // Only new mentions count: text a field had mentioned no one anew.
     let mut mentioned: Vec<(String, bool, bool, bool)> = Vec::new();
@@ -2807,7 +2821,7 @@ async fn plan(
     editor: Editor,
 ) -> Result<Plan, MethodError> {
     let is_new = is_creation(request)?;
-    let wanted = wanted(request, is_new, editor.drafts)?;
+    let wanted = wanted(request, (is_new, editor.drafts), &editor.source)?;
     plan_wanted(request, finder, editor, (wanted, is_new)).await
 }
 
@@ -3223,6 +3237,16 @@ async fn write_action(
     match action {
         Action::Update => {
             if let Some(update) = &actions.update {
+                // The edit form's diff is the value its `update` field
+                // starts with: a default transaction
+                // (`setIsDefaultTransaction()`).
+                let default;
+                let metadata = if plan.source == Source::EditForm {
+                    default = group_metadata(plan, json!({"core.default": true}));
+                    &default
+                } else {
+                    metadata
+                };
                 update::write_transaction(request, plan, update, metadata, connection).await?;
             }
         }
