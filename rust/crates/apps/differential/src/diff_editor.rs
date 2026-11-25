@@ -54,13 +54,15 @@ pub(crate) struct DiffFields {
     pub(crate) unit_status: i64,
 }
 
-/// A planned diff: its changesets and fields, and the properties
+/// A planned diff: its changesets and fields, the view policy of a
+/// `TYPE_VIEW_POLICY` transaction, and the properties
 /// `differential.creatediff` saves after it, already encoded.
 #[derive(Debug, Clone)]
 pub(crate) struct PlannedDiff {
     pub(crate) changesets: Vec<NewChangeset>,
     pub(crate) line_count: i64,
     pub(crate) fields: DiffFields,
+    pub(crate) view_policy: Option<String>,
     pub(crate) properties: Vec<(String, String)>,
 }
 
@@ -426,8 +428,8 @@ async fn insert_diff(
     .bind(&fields.bookmark)
     .bind(&fields.creation_method)
     .bind(&fields.repository_uuid)
-    // `initializeNewDiff()`: the author's own until a revision has it.
-    .bind(&fields.author_phid)
+    // `initializeNewDiff()`: the author's own, unless the edit sets it.
+    .bind(planned.view_policy.as_ref().unwrap_or(&fields.author_phid))
     .bind(request.now)
     .bind(request.now)
     .execute(&mut *connection)
@@ -436,37 +438,48 @@ async fn insert_diff(
     i64::try_from(id).map_err(MethodError::internal)
 }
 
-/// The `differential:diff:create` transaction and the publish task.
+/// The `differential:diff:create` transaction, the `core:view-policy` one
+/// of `view_policy`, and the publish task.
 async fn publish(
     request: &ApiRequest<'_>,
     connection: &mut MySqlConnection,
-    actor: &str,
+    (actor, view_policy): (&str, Option<&str>),
     diff_phid: &str,
 ) -> Result<(), MethodError> {
     let database = &request.context.database;
     let metadata = php::json_encode(&json!({"core.groupID": random::random_characters(32)}));
-    let xaction_phid = Phid::generate(PhidType::TRANSACTION, Some(PhidType::DIFF)).into_string();
-    phab_db::editor::insert_transaction(
-        connection,
-        &database.table("differential", "differential_difftransaction"),
-        phab_db::editor::TransactionRow {
-            phid: &xaction_phid,
-            author: actor,
-            object: diff_phid,
-            kind: "differential:diff:create",
-            // The dictionary is consumed by the editor, which records `true`.
-            old: "null",
-            new: "true",
-            metadata: &metadata,
-            content_source: CONDUIT_SOURCE,
-        },
-        request.now,
-    )
-    .await?;
+    // The dictionary is consumed by the editor, which records `true`; the
+    // old policy of a new object is `null`.
+    let mut rows = vec![("differential:diff:create", "true".to_owned())];
+    if let Some(policy) = view_policy {
+        rows.push(("core:view-policy", php::json_encode(&json!(policy))));
+    }
+    let mut xaction_phids = Vec::new();
+    for (kind, new) in &rows {
+        let xaction_phid =
+            Phid::generate(PhidType::TRANSACTION, Some(PhidType::DIFF)).into_string();
+        phab_db::editor::insert_transaction(
+            connection,
+            &database.table("differential", "differential_difftransaction"),
+            phab_db::editor::TransactionRow {
+                phid: &xaction_phid,
+                author: actor,
+                object: diff_phid,
+                kind,
+                old: "null",
+                new,
+                metadata: &metadata,
+                content_source: CONDUIT_SOURCE,
+            },
+            request.now,
+        )
+        .await?;
+        xaction_phids.push(xaction_phid);
+    }
     let data = php::json_encode(&json!({
         "objectPHID": diff_phid,
         "actorPHID": actor,
-        "xactionPHIDs": [xaction_phid],
+        "xactionPHIDs": xaction_phids,
         "state": worker_state(),
     }));
     worker::schedule_task(
@@ -506,7 +519,14 @@ pub(crate) async fn save(
     for changeset in &changesets {
         changeset.insert(request, connection, diff_id).await?;
     }
-    publish(request, connection, &planned.fields.author_phid, &diff_phid).await?;
+    let view_policy = planned.view_policy.as_deref();
+    publish(
+        request,
+        connection,
+        (&planned.fields.author_phid, view_policy),
+        &diff_phid,
+    )
+    .await?;
     for (name, data) in &planned.properties {
         phab_db::sqlx::query(&format!(
             "INSERT INTO {} (diffID, name, data, dateCreated, dateModified) \

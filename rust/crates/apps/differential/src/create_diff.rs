@@ -258,6 +258,7 @@ impl CreateDiff {
             changesets,
             line_count,
             fields,
+            view_policy: None,
             properties: Vec::new(),
         };
         let (id, phid) = diff_editor::save(request, &planned).await?;

@@ -1,9 +1,12 @@
 //! `differential.createrawdiff` (`DifferentialCreateRawDiffConduitAPIMethod`):
 //! a diff from the text of a Git diff.
 //!
-//! Ported: Git diffs ([`phab_diff::arcanist::parse_diff`]) and
-//! `repositoryPHID`. Left to PHP: other diff formats and the diffs
-//! arcanist's parser rejects, `viewPolicy`, and what
+//! Ported: Git diffs ([`phab_diff::arcanist::parse_diff`]),
+//! `repositoryPHID` and `viewPolicy`, which the diff's author may set to
+//! anything (a diff without a revision is always visible to its author,
+//! so `validatePolicyTransaction()` passes). Left to PHP: other diff
+//! formats and the diffs arcanist's parser rejects, object and custom
+//! view policies (which the policy filter loads first), and what
 //! [`crate::diff_editor`] leaves to PHP.
 
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
@@ -71,9 +74,7 @@ impl CreateRawDiff {
                     .to_owned(),
             ));
         }
-        if request.value("viewPolicy").is_some_and(php::is_truthy) {
-            return Err(MethodError::Unsupported("raw diffs with a view policy"));
-        }
+        let view_policy = view_policy(request.value("viewPolicy"))?;
         diff_editor::check_herald(request).await?;
         let planned = PlannedDiff {
             changesets,
@@ -86,6 +87,7 @@ impl CreateRawDiff {
                 unit_status: diff_editor::STATUS_SKIP,
                 ..DiffFields::default()
             },
+            view_policy,
             properties: Vec::new(),
         };
         let (id, phid) = diff_editor::save(request, &planned).await?;
@@ -95,6 +97,30 @@ impl CreateRawDiff {
         );
         Ok(json!({"id": id, "phid": phid, "uri": uri}))
     }
+}
+
+/// The policy of the `TYPE_VIEW_POLICY` transaction PHP adds when
+/// `viewPolicy` is truthy.
+fn view_policy(value: Option<&Value>) -> Result<Option<String>, MethodError> {
+    let policy = match value {
+        None => return Ok(None),
+        Some(value) if !php::is_truthy(value) => return Ok(None),
+        Some(Value::String(policy)) => policy,
+        Some(_) => {
+            return Err(MethodError::Unsupported(
+                "view policies which are not strings",
+            ));
+        }
+    };
+    // `PhabricatorPolicyQuery::isObjectPolicy()` and custom policies,
+    // which the filter loads before it checks the author.
+    if policy.starts_with("obj.") || policy.starts_with("PHID-PLCY-") {
+        return Err(MethodError::Unsupported("object and custom view policies"));
+    }
+    if policy.len() > 64 {
+        return Err(MethodError::Unsupported("values longer than their column"));
+    }
+    Ok(Some(policy.clone()))
 }
 
 /// `PhabricatorEnv::getProductionURI()`'s base.
@@ -121,5 +147,28 @@ impl Method for CreateRawDiff {
 
     fn execute<'a>(&'a self, request: &'a ApiRequest<'a>) -> MethodFuture<'a> {
         Box::pin(Self::run(request))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn view_policies_are_read_like_php() {
+        assert_eq!(view_policy(None).ok(), Some(None));
+        assert_eq!(view_policy(Some(&json!(""))).ok(), Some(None));
+        assert_eq!(view_policy(Some(&json!("0"))).ok(), Some(None));
+        assert_eq!(
+            view_policy(Some(&json!("users"))).ok(),
+            Some(Some("users".to_owned()))
+        );
+        assert_eq!(
+            view_policy(Some(&json!("PHID-USER-abcdefghijklmnopqrst"))).ok(),
+            Some(Some("PHID-USER-abcdefghijklmnopqrst".to_owned()))
+        );
+        assert!(view_policy(Some(&json!("obj.differential.author"))).is_err());
+        assert!(view_policy(Some(&json!("PHID-PLCY-abcdefghijklmnopqrst"))).is_err());
+        assert!(view_policy(Some(&json!(["users"]))).is_err());
     }
 }

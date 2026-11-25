@@ -494,7 +494,8 @@ async fn creates_raw_diffs_like_php() {
     );
     for params in [
         json!({"diff": "Index: x\n===\n"}),
-        json!({"diff": diff, "viewPolicy": "users"}),
+        json!({"diff": diff, "viewPolicy": "obj.differential.author"}),
+        json!({"diff": diff, "viewPolicy": "PHID-PLCY-abcdefghijklmnopqrst"}),
         json!({"diff": "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n"}),
     ] {
         fallback(&context, "differential.createrawdiff", params).await;
@@ -503,6 +504,44 @@ async fn creates_raw_diffs_like_php() {
         count(&test_db, "`{ns}_differential`.differential_diff").await,
         4
     );
+
+    // A view policy is a second transaction, which the publish task lists.
+    let result = answer(
+        &context,
+        "differential.createrawdiff",
+        json!({"diff": diff, "viewPolicy": "users"}),
+    )
+    .await;
+    assert_eq!(result["id"], json!(104));
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT viewPolicy AS line FROM `{ns}_differential`.differential_diff WHERE id = 104"
+        )
+        .await,
+        ["users"]
+    );
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', x.transactionType, x.oldValue, x.newValue) AS line \
+               FROM `{ns}_differential`.differential_difftransaction x \
+               JOIN `{ns}_differential`.differential_diff d ON d.phid = x.objectPHID \
+               WHERE d.id = 104 ORDER BY x.id"
+        )
+        .await,
+        [
+            "differential:diff:create null true",
+            "core:view-policy null \"users\"",
+        ]
+    );
+    let data = lines(
+        &test_db,
+        "SELECT data AS line FROM `{ns}_worker`.worker_taskdata ORDER BY id DESC LIMIT 1",
+    )
+    .await;
+    let data: Value = serde_json::from_str(&data[0]).unwrap();
+    assert_eq!(data["xactionPHIDs"].as_array().map(Vec::len), Some(2));
 }
 
 #[tokio::test]
