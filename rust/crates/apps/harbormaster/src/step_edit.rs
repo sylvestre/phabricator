@@ -213,7 +213,7 @@ mod tests {
                 "custom.builtin.wait-for-message",
             ]
         );
-        assert!(edit_types(&[]).is_empty());
+        assert_eq!(edit_types(&[]), Vec::<String>::new());
     }
 
     #[test]
