@@ -19,7 +19,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
 | Conduit methods | 28 | 76 | – | 13 | 3 | 120 |
-| Web routes | 52 | – | 64 | 20 | 242 | 378 |
+| Web routes | 52 | – | 64 | 23 | 239 | 378 |
 
 All 3 methods not ported write.
 
@@ -67,7 +67,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `differential.createcomment` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the action and comment through the Rust editor (`legacy_edit.rs`); left to PHP: `attach_inlines` with draft inline comments, revisions the caller can't edit, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 | `differential.creatediff` | stable | Rust |  |
 | `differential.createinline` | stable | ported, not routed | write: draft inline comments (Lando, moz-phab), the comment's row as PHP saves it. Left to PHP: values PHP casts or compares loosely, paths several files of the diff have, revisions the caller can't see. Scenarios in `parity/writes/inline.json`. |
-| `differential.createrawdiff` | stable | Rust | write. |
+| `differential.createrawdiff` | stable | Rust | write; `viewPolicy` too (object and custom policies left to PHP). |
 | `differential.createrevision` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the commit message field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 | `differential.diff.search` | stable | shadowed |  |
 | `differential.getalldiffs` | deprecated | shadowed |  |
@@ -407,12 +407,12 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `/differential/[query/{queryKey}/[{queryAction}/]]` | `DifferentialRevisionListController` | partial | `/differential/` only (the queue); saved and builtin queries go to PHP |
 | `/differential/diff/{id}/` | `DifferentialDiffViewController` | Rust | a diff without a revision, with the revision page's renderer (diffs of revisions redirect to `/DN?id=`); its "Attach To" form posts to PHP (421) |
 | `/differential/diff/{id}/changesets/[query/{queryKey}/[{queryAction}/]]` | `DifferentialChangesetListController` | partial | the builtin query (All Changesets); saved queries, filters and query actions 421 |
-| `/differential/diff/create/` | `DifferentialDiffCreateController` | not ported | write: paste or upload a diff |
+| `/differential/diff/create/` | `DifferentialDiffCreateController` | ported, not routed | write (`diff_create.rs`): the form, and pasted diffs created as `differential.createrawdiff` (Rust) creates them, with the repository tokenizer and the view policy; an empty diff shows PHP's error; uploaded files (multipart posts), invalid CSRF tokens, workflow requests and what `differential.createrawdiff` leaves to PHP or refuses 421 before writing. Scenarios in `parity/web-writes/differential-diffs.json` |
 | `/differential/changeset/` | `DifferentialChangesetViewController` | partial | the standalone changeset (a Rust page); the Ajax requests of PHP's revision and diff pages (each changeset, its "show more" context) answered with PHP's JSON from PHP's parse cache, side by side (`changeset_ajax.rs`, checked against `tests/oracle/changeset.php`); no cache yet, comparisons, view state changes, raw files (`?view=`), the unified renderer, inline comments, lint and coverage, document engines and property changes 421 |
 | `/differential/revision/edit/[{id}/][{editAction}/]` | `DifferentialRevisionEditController` | partial | the edit form `/differential/revision/edit/N/` (`revision_edit.rs`: title, summary, test plan, reviewers, tags, subscribers, Bugzilla bug ID; author, repository and policy changes, workflows and validation errors 421) and POST `/differential/revision/edit/N/comment/` (the comment form, `web_edit.rs`; 421 for workflows, drafts and unported actions); new revisions and other edit actions go to PHP |
-| `/differential/revision/attach/{diffID}/to/[{id}/][{editAction}/]` | `DifferentialRevisionEditController` | not ported | write (form or action) |
+| `/differential/revision/attach/{diffID}/to/[{id}/][{editAction}/]` | `DifferentialRevisionEditController` | ported, not routed | write: `/attach/{diffID}/to/{id}/`, the edit form with the diff (`revision_edit.rs`): the `update` transaction, the `update.comment` and the edit form's fields, through the Rust editor; diffs already attached (PHP's dialog), posts with another diff, new revisions (`/attach/{diffID}/to/`, whose policy transactions the Rust editor doesn't write on creation), edit actions and what the edit form leaves to PHP 421 |
 | `/differential/revision/closedetails/{phid}/` | `DifferentialRevisionCloseDetailsController` | not ported | dialog; read-only |
-| `/differential/revision/update/{revisionID}/` | `DifferentialDiffCreateController` | not ported | write: paste or upload a diff |
+| `/differential/revision/update/{revisionID}/` | `DifferentialDiffCreateController` | ported, not routed | write: the same form for a revision the viewer can edit, starting with its repository, redirecting to the diff with `?revisionID=`; revisions the viewer can't see or edit 421 |
 | `/differential/revision/inlines/{id}/` | `DifferentialRevisionInlinesController` | not ported | inline list; read-only, small |
 | `/differential/revision/paths/{id}/` | `DifferentialRevisionAffectedPathsController` | not ported | affected paths; read-only, small |
 | `/differential/comment/inline/edit/{id}/` | `DifferentialInlineCommentEditController` | not ported | write: draft inline comments (the Rust page posts inlines to PHP's Conduit API) |
