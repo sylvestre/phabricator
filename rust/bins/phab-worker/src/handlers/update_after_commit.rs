@@ -22,7 +22,9 @@
 //!    `creationMethod` `commit`, the lint and unit statuses
 //!    `AUTO_SKIP`, the commit's epoch as `dateCreated`, its monogram as
 //!    description, the acting PHID as author and the parent as base
-//!    revision; the binary files attached to the diff; and the
+//!    revision; the binary files attached to the diff, with their 48 hour
+//!    TTL cleared so the garbage collector keeps them (Bug 2095239,
+//!    `attachBinaryFilesToDiff()`); and the
 //!    `local:commits` property (with the tree hash of the commit's ref).
 //! 2. `isDiffChangedBeforeCommit()` against the active diff: the paths of
 //!    the changesets, the contents of binary files (`diffusion.filecontentquery`
