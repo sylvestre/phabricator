@@ -402,7 +402,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Route | Controller | Port | Note |
 |---|---|---|---|
-| `/D{id}` | `DifferentialRevisionViewController` | Rust | revision page; `?id=` shows another of its diffs, `?download=true` its raw diff (Git and Mercurial repositories: the patch stored as a temporary file attached to the revision, as PHP does; unified diffs 421); comparisons (`?vs=`) 421; `/DN/action` (Rust only) posts its forms |
+| `/D{id}` | `DifferentialRevisionViewController` | Rust | revision page; `?id=` shows another of its diffs, `?download=true` its raw diff (Git and Mercurial repositories: the patch stored as a temporary file attached to the revision, as PHP does; unified diffs 421); comparisons (`?vs=`) 421; Mozilla's AI change box and its "Approve AI Change" checkbox (Bug 2091563); `/DN/action` (Rust only) posts its forms |
 | `/D{id}/new/` | `DifferentialRevisionViewController` | Rust | changes since the viewer's last action, read from the transactions: all changes with PHP's notice when there is no action, or no update since; the comparison with the diff of the last action is PHP's (421) |
 | `/differential/[query/{queryKey}/[{queryAction}/]]` | `DifferentialRevisionListController` | partial | `/differential/` only (the queue, with Mozilla's "Merge Conflict" marker, Bug 2094527); saved and builtin queries go to PHP |
 | `/differential/diff/{id}/` | `DifferentialDiffViewController` | Rust | a diff without a revision, with the revision page's renderer (diffs of revisions redirect to `/DN?id=`); its "Attach To" form posts to PHP (421) |

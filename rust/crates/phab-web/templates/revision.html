@@ -6,6 +6,31 @@
   <div>{{ warning.message_html|safe }}</div>
 </aside>
 {%- endfor %}
+{%- if let Some(ai) = ai_change %}
+<aside class="ai-change ai-change-{{ ai.severity.key() }}" role="status">
+  <strong>{{ ai.title }}</strong>
+  {%- for paragraph in ai.paragraphs_html %}
+  <p>{{ paragraph|safe }}</p>
+  {%- endfor %}
+  {%- if let Some((confidence, color)) = ai.confidence %}
+  <p class="ai-change-confidence-line"><span class="tag ai-change-confidence tag-{{ color }}">{{ confidence }}</span></p>
+  {%- endif %}
+  {%- if ai.has_more() %}
+  <details class="ai-change-more">
+    <summary>Show details</summary>
+    {%- if let Some(details) = ai.details_html %}
+    <div class="ai-change-section"><div class="ai-change-section-title">About this revision</div><div class="remarkup ai-change-details">{{ details|safe }}</div></div>
+    {%- endif %}
+    {%- if let Some(summary) = ai.summary %}
+    <div class="ai-change-section"><div class="ai-change-section-title">AI summary</div><p class="ai-change-summary">{{ summary }}</p></div>
+    {%- endif %}
+  </details>
+  {%- endif %}
+  {%- if let Some((uri, text)) = ai.compare %}
+  <p><a class="hm-button" href="{{ uri }}"><span class="fa fa-columns" aria-hidden="true"></span> {{ text }}</a></p>
+  {%- endif %}
+</aside>
+{%- endif %}
 <header class="revision-header">
   <h1>{{ monogram }}: {{ title }}</h1>
   <ul class="tags">

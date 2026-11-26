@@ -30,7 +30,7 @@ Pages ported so far:
 | Route | Page |
 |---|---|
 | `/`, `/differential/` | Review queue, with Mozilla's buckets (`?bucket=`) |
-| `/D<id>` | Revision: header, reviewers, bug, stack, secure revision warnings, build status, Lint and Unit fields, unit test results, lint/unit/draft warnings, summary, test plan, timeline, active diff with its inline comments |
+| `/D<id>` | Revision: header, reviewers, bug, stack, secure revision warnings, Mozilla's AI change box, build status, Lint and Unit fields, unit test results, lint/unit/draft warnings, summary, test plan, timeline, active diff with its inline comments |
 | `/differential/revision/{inlines,paths}/<id>/`, `/differential/revision/closedetails/<phid>/` | A revision's inline comments, its affected path index, and why a commit closed it |
 | `/p/<user>/` | Profile, with the user's recent activity |
 | `/tag/<slug>/`, `/project/view/<id>/`, `/project/profile/<id>/` | Project |

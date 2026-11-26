@@ -1610,3 +1610,89 @@ async fn comments_are_previewed() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     test_db.drop_databases().await;
 }
+
+#[tokio::test]
+async fn revisions_show_their_ai_change() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    insert_revision_fixtures(&test_db).await;
+    let store = |change: serde_json::Value, status: &'static str| {
+        let test_db = &test_db;
+        async move {
+            let properties = json!({"mozilla.ai-change": change});
+            test_db
+                .execute(&format!(
+                    "UPDATE `{{ns}}_differential`.differential_revision SET properties = \
+                     '{properties}', status = '{status}' WHERE id = 3"
+                ))
+                .await;
+            text(get(test_db, Config::default(), "/D3", Some("phsid=alice-token")).await).await
+        }
+    };
+    let pending = json!({
+        "kind": "merge-conflict", "changeDiffID": 7, "changeDiffPHID": "PHID-DIFF-seven",
+        "baseDiffID": 6, "summary": "Kept the beta API.", "confidence": "high",
+        "details": "Moved it into **updateOverflow**.", "requesterPHID": "PHID-USER-alice",
+        "requestEpoch": 1, "approverPHID": null, "approvalEpoch": null,
+    });
+    let page = store(pending.clone(), "needs-review").await;
+    for expected in [
+        "<strong>This revision has an AI merge conflict resolution to approve</strong>",
+        "use &quot;Approve AI Change&quot; in the actions below",
+        "<span class=\"tag ai-change-confidence tag-green\">Confidence: high</span>",
+        "<summary>Show details</summary>",
+        "<strong>updateOverflow</strong>",
+        "Kept the beta API.",
+        "href=\"/D3?vs=6&#38;id=7#toc\"",
+        "View AI changes (diff 6 to 7)",
+        "<input type=\"checkbox\" name=\"ai_change_approve\" value=\"7\">",
+    ] {
+        assert!(page.contains(expected), "{expected}: {page}");
+    }
+    // The details come before the summary, both folded away.
+    let more = page.find("<summary>Show details</summary>").unwrap();
+    let details = page.find("About this revision").unwrap();
+    let summary = page.find("AI summary").unwrap();
+    assert!(more < details && details < summary, "{page}");
+
+    let mut approved = pending.clone();
+    approved["approverPHID"] = json!("PHID-USER-mfa");
+    let page = store(approved.clone(), "needs-review").await;
+    assert!(
+        page.contains("<strong>AI merge conflict resolution approved</strong>"),
+        "{page}"
+    );
+    assert!(
+        page.contains("<a href=\"/p/mfa/\">mfa</a> approved the change in diff 7."),
+        "{page}"
+    );
+    assert!(!page.contains("ai_change_approve"), "{page}");
+
+    let mut lapsed = approved.clone();
+    lapsed["changeDiffPHID"] = json!("PHID-DIFF-old");
+    let page = store(lapsed, "needs-review").await;
+    assert!(
+        page.contains("AI change: approval no longer required"),
+        "{page}"
+    );
+    assert!(page.contains("approved the change in diff 7."), "{page}");
+
+    let page = store(approved, "published").await;
+    assert!(
+        page.contains("AI merge conflict resolution approved"),
+        "{page}"
+    );
+    assert!(!page.contains("no longer required"), "{page}");
+    let page = store(pending, "abandoned").await;
+    assert!(
+        page.contains("AI merge conflict resolution not approved"),
+        "{page}"
+    );
+    assert!(page.contains("closed before anyone approved"), "{page}");
+    assert!(!page.contains("ai_change_approve"), "{page}");
+
+    let page = store(json!([]), "needs-review").await;
+    assert!(!page.contains("ai-change"), "{page}");
+    test_db.drop_databases().await;
+}

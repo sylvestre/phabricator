@@ -422,3 +422,18 @@ h3.diffusion-date { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
 .diffusion-manage-group { margin: 16px 0 4px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
 .diffusion-manage-panel { flex: 1; min-width: 0; }
 .diffusion-buttons li.divider { border-left: 1px solid var(--border); padding-left: 16px; }
+
+/* Mozilla's AI change box (DifferentialAIChangeView, ai-change.css). */
+.ai-change { margin: 16px 0; padding: 8px 12px; border-left: 4px solid var(--border); }
+.ai-change p { margin: 0 0 6px; }
+.ai-change-warning { background: var(--warning-bg); border-left-color: var(--warning-border); }
+.ai-change-notice { border-left-color: var(--accent); }
+.ai-change-success { border-left-color: #1a7f37; }
+.ai-change-confidence { margin-right: 4px; white-space: nowrap; }
+.tag-green { border-color: #1a7f37; color: #1a7f37; }
+.tag-orange { border-color: #bc4c00; color: #bc4c00; }
+.tag-red { border-color: #cf222e; color: #cf222e; }
+.tag-grey { color: var(--muted); }
+.ai-change-more > summary { cursor: pointer; color: var(--accent); }
+.ai-change-section { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+.ai-change-section-title { font-weight: bold; margin-bottom: 4px; }
