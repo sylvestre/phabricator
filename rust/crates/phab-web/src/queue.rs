@@ -9,6 +9,7 @@ use askama::Template;
 use axum::extract::{Query, State};
 use axum::http::Uri;
 use phab_app_differential::buckets::{self, Bucket};
+use phab_app_differential::merge_conflict;
 use phab_app_differential::storage::{self, Revision};
 use phab_app_project as project;
 use phab_core::Phid;
@@ -35,6 +36,9 @@ pub(crate) struct Item {
     pub(crate) author: String,
     pub(crate) status: &'static str,
     pub(crate) updated: String,
+    /// Mozilla's "Merge Conflict" attribute (Bug 2094527), which only the
+    /// search engine's lists set (`setMergeConflicts()`).
+    pub(crate) merge_conflict: bool,
 }
 
 /// A group of the queue.
@@ -111,6 +115,7 @@ pub(crate) async fn items<S: WebState>(
                 .map_or_else(String::new, |user| user.user_name.clone()),
             status: status_name(&revision.status),
             updated: time::format_utc(revision.date_modified),
+            merge_conflict: false,
         })
         .collect())
 }
@@ -138,12 +143,21 @@ pub(crate) async fn active_groups<S: WebState>(
         .config()
         .value("differential.sticky-accept")
         .is_none_or(phab_core::php::is_truthy);
+    // `renderResultList()`: `loadConflictedRevisionPHIDs()` of the results.
+    let scope = crate::harbormaster::Scope::new(state, viewer);
+    let conflicts = merge_conflict::conflicted_revision_phids(&scope.request(), &revisions)
+        .await
+        .map_err(crate::harbormaster::method_error)?;
     let mut groups = Vec::new();
     for group in buckets::group(revisions, &phids, &viewer.user.phid, bucket, sticky_accept) {
+        let mut items = items(state, &group.revisions).await?;
+        for (item, revision) in items.iter_mut().zip(&group.revisions) {
+            item.merge_conflict = conflicts.contains(&revision.phid);
+        }
         groups.push(GroupView {
             name: group.name,
             no_data: group.no_data,
-            items: items(state, &group.revisions).await?,
+            items,
         });
     }
     Ok(groups)

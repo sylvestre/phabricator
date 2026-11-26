@@ -1,8 +1,9 @@
 //! `DifferentialMergeConflictStatusField` (moz-extensions): whether a
 //! revision's active diff merges cleanly into its target branch, as
 //! `RevisionMergeConflictWorker` stored it, and how Conduit
-//! (`getConduitDictionaryValue()`) and the revision page
-//! (`renderPropertyViewValue()`) show it.
+//! (`getConduitDictionaryValue()`), the revision page
+//! (`renderPropertyViewValue()`) and the search engine's revision lists
+//! (`loadConflictedRevisionPHIDs()`, Bug 2094527) show it.
 //!
 //! Values of types PHP would coerce or choke on (a number where a string
 //! is expected, say) are left to PHP (`MethodError::Unsupported`).
@@ -506,6 +507,47 @@ async fn shown<'r>(
     Ok(shown)
 }
 
+/// `loadConflictedRevisionPHIDs()` (Bug 2094527): the revisions of
+/// `revisions` the revision lists mark "Merge Conflict", those not closed,
+/// of a checked repository the viewer sees, whose stored status is a
+/// conflict for their active diff (`isConflictForActiveDiff()`: a verdict
+/// for an earlier diff is "Recomputing", not a conflict).
+pub async fn conflicted_revision_phids(
+    request: &ApiRequest<'_>,
+    revisions: &[Revision],
+) -> Result<HashSet<Phid>, MethodError> {
+    let shown = shown(request, revisions).await?;
+    let stored = load_stored(&request.context.database, &shown).await?;
+    let mut conflicted = HashSet::new();
+    for revision in shown {
+        // `phutil_json_decode()`: what doesn't decode is skipped.
+        let Some(Ok(value)) = stored
+            .get(&revision.phid)
+            .map(|stored| serde_json::from_str::<Value>(stored))
+        else {
+            continue;
+        };
+        let active = revision.active_diff_phid.as_ref().map(Phid::as_str);
+        if is_conflict_for_active_diff(&value, active)? {
+            conflicted.insert(revision.phid.clone());
+        }
+    }
+    Ok(conflicted)
+}
+
+/// `isConflictForActiveDiff()`: a stored conflict whose checked diff is
+/// the active one (or unknown).
+fn is_conflict_for_active_diff(value: &Value, active: Option<&str>) -> Result<bool, MethodError> {
+    let Value::Object(value) = value else {
+        return Ok(false);
+    };
+    if value.get(KEY_STATUS).and_then(Value::as_str) != Some("conflict") {
+        return Ok(false);
+    }
+    let checked = optional_string(value, KEY_DIFF_PHID)?;
+    Ok(!is_checked_diff_stale(checked, active))
+}
+
 /// `getConduitDictionaryValue()` of each revision, by PHID; `None` when
 /// the field is disabled, and the key absent.
 pub(crate) async fn conduit_values(
@@ -695,6 +737,23 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn finds_conflicts_for_the_active_diff_like_php() {
+        let conflict = json!({"status": "conflict", "checkedAgainstDiffPHID": "PHID-DIFF-active"});
+        let found = |value: &Value, active| is_conflict_for_active_diff(value, active).unwrap();
+        assert!(found(&conflict, Some("PHID-DIFF-active")));
+        // A conflict for an earlier diff is stale, not a conflict.
+        assert!(!found(&conflict, Some("PHID-DIFF-newer")));
+        for status in ["clean", "unknown"] {
+            let mut value = conflict.clone();
+            value["status"] = json!(status);
+            assert!(!found(&value, Some("PHID-DIFF-active")), "{status}");
+        }
+        assert!(!found(&Value::Null, Some("PHID-DIFF-active")));
+        assert!(!found(&json!([]), Some("PHID-DIFF-active")));
+        assert!(!found(&json!({}), Some("PHID-DIFF-active")));
+    }
 
     #[test]
     fn decodes_like_set_value_from_storage() {

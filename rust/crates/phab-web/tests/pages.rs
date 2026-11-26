@@ -1103,11 +1103,9 @@ async fn revision_pages_have_what_the_script_needs() {
     test_db.drop_databases().await;
 }
 
-#[tokio::test]
-async fn the_queue_groups_revisions_by_required_action() {
-    let Some(test_db) = setup(true).await else {
-        return;
-    };
+/// The revisions of the queue tests: D1 for Alice to review, D2 hers to
+/// land, D3 hidden, D4 for her team.
+async fn insert_queue_fixtures(test_db: &TestDatabase) {
     test_db
         .execute(
             "INSERT INTO `{ns}_differential`.differential_revision (id, title, phid, status, summary, \
@@ -1136,6 +1134,14 @@ async fn the_queue_groups_revisions_by_required_action() {
                ('PHID-USER-alice', 14, 'PHID-PROJ-team', 1, 0)",
         )
         .await;
+}
+
+#[tokio::test]
+async fn the_queue_groups_revisions_by_required_action() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    insert_queue_fixtures(&test_db).await;
     let response = get(
         &test_db,
         Config::default(),
@@ -1158,6 +1164,79 @@ async fn the_queue_groups_revisions_by_required_action() {
     assert!(section("Ready to Review").contains("Review me"), "{page}");
     assert!(section("Ready to Land").contains("Mine to land"), "{page}");
     assert!(!page.contains("Hidden"), "{page}");
+    assert!(!page.contains("Merge Conflict"), "{page}");
+
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn the_queue_marks_merge_conflicts() {
+    let Some(test_db) = setup(true).await else {
+        return;
+    };
+    insert_queue_fixtures(&test_db).await;
+    // Mozilla's merge conflicts (Bug 2094527): a conflict for the active
+    // diff is marked; one for an earlier diff ("Recomputing") is not.
+    let index = hash::digest_for_index(b"differential:merge-conflict-status");
+    test_db
+        .execute(&format!(
+            "INSERT INTO `{{ns}}_repository`.repository (id, phid, name, callsign, \
+               versionControlSystem, details, dateCreated, dateModified, viewPolicy, editPolicy, \
+               pushPolicy) VALUES \
+             (1, 'PHID-REPO-g', 'Git', 'G', 'git', '{{}}', 1, 1, 'users', 'users', 'users'); \
+             UPDATE `{{ns}}_differential`.differential_revision SET repositoryPHID = \
+               'PHID-REPO-g', activeDiffPHID = CONCAT('PHID-DIFF-', id); \
+             INSERT INTO `{{ns}}_differential`.differential_customfieldstorage (objectPHID, \
+               fieldIndex, fieldValue) VALUES \
+             ('PHID-DREV-one', '{index}', \
+               '{{\"status\":\"conflict\",\"checkedAgainstDiffPHID\":\"PHID-DIFF-1\"}}'), \
+             ('PHID-DREV-two', '{index}', \
+               '{{\"status\":\"conflict\",\"checkedAgainstDiffPHID\":\"PHID-DIFF-old\"}}'), \
+             ('PHID-DREV-four', '{index}', \
+               '{{\"status\":\"clean\",\"checkedAgainstDiffPHID\":\"PHID-DIFF-4\"}}')"
+        ))
+        .await;
+    let mut config = Config::default();
+    if let serde_json::Value::Object(map) = json!({
+        "merge.conflict.enabled": true,
+        "merge.conflict.repository-phids": ["PHID-REPO-g"],
+    }) {
+        config.push_layer("test", map);
+    }
+    let page = text(
+        get(
+            &test_db,
+            config,
+            "/differential/",
+            Some("phsid=alice-token"),
+        )
+        .await,
+    )
+    .await;
+    let row = |title: &str| {
+        let start = page
+            .find(title)
+            .unwrap_or_else(|| panic!("no {title}: {page}"));
+        let end = page[start..]
+            .find("</tr>")
+            .map_or(page.len(), |end| start + end);
+        page[start..end].to_owned()
+    };
+    assert!(row("Review me").contains("Merge Conflict"), "{page}");
+    assert!(!row("Mine to land").contains("Merge Conflict"), "{page}");
+    assert!(!row("For my team").contains("Merge Conflict"), "{page}");
+    // Disabled, nothing is marked.
+    let disabled = text(
+        get(
+            &test_db,
+            Config::default(),
+            "/differential/",
+            Some("phsid=alice-token"),
+        )
+        .await,
+    )
+    .await;
+    assert!(!disabled.contains("Merge Conflict"), "{disabled}");
     test_db.drop_databases().await;
 }
 

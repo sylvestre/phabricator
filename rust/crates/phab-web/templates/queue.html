@@ -18,7 +18,7 @@
     {%- for item in group.items %}
     <tr>
       <td class="queue-monogram"><a href="/{{ item.monogram }}">{{ item.monogram }}</a></td>
-      <td><a href="/{{ item.monogram }}">{{ item.title }}</a></td>
+      <td><a href="/{{ item.monogram }}">{{ item.title }}</a>{% if item.merge_conflict %} <span class="tag merge-conflict"><span class="fa fa-code-fork remarkup-icon-red" aria-hidden="true"></span> Merge Conflict</span>{% endif %}</td>
       <td class="muted">{{ item.author }}</td>
       <td>{{ item.status }}</td>
       <td class="muted"><time>{{ item.updated }}</time></td>
