@@ -1,0 +1,7 @@
+[
+  {"name": "web: approve the AI change in D3", "path": "/differential/revision/edit/3/comment/", "fields": {"editengine.actions": [{"type": "ai-change.approve", "value": ["3"], "initialValue": []}], "comment": "", "comment_metadata": "{}"}},
+  {"name": "web: approve the AI change in D3 and accept it", "path": "/differential/revision/edit/3/comment/", "fields": {"editengine.actions": [{"type": "accept", "value": true, "initialValue": null}, {"type": "ai-change.approve", "value": ["3"], "initialValue": []}], "comment": "Checked it.", "comment_metadata": "{}"}},
+  {"name": "web: approve the AI change in D3, unticked (invalid)", "path": "/differential/revision/edit/3/comment/", "fields": {"editengine.actions": [{"type": "ai-change.approve", "value": [], "initialValue": []}], "comment": "", "comment_metadata": "{}"}},
+  {"name": "web: approve a stale diff of D3 (invalid)", "path": "/differential/revision/edit/3/comment/", "fields": {"editengine.actions": [{"type": "ai-change.approve", "value": ["2"], "initialValue": []}], "comment": "", "comment_metadata": "{}"}},
+  {"name": "web: approve D5's approved AI change with a comment (the action is dropped)", "path": "/differential/revision/edit/5/comment/", "fields": {"editengine.actions": [{"type": "ai-change.approve", "value": ["5"], "initialValue": []}], "comment": "Again.", "comment_metadata": "{}"}}
+]

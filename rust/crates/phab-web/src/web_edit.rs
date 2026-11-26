@@ -242,6 +242,28 @@ pub(crate) fn list_transaction(
     }
 }
 
+/// `DifferentialAIChangeApproveEditField::getValueFromComment()`: the
+/// first ticked key of the checkboxes, as an integer when it is digits;
+/// `null` when none is ticked.
+fn ai_change_value(value: &Value) -> Value {
+    let value = match value {
+        Value::Array(items) => match items.first() {
+            Some(first) => first,
+            None => return Value::Null,
+        },
+        other => other,
+    };
+    match value {
+        Value::String(text)
+            if !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            // (int) saturates.
+            json!(text.parse::<i64>().unwrap_or(i64::MAX))
+        }
+        other => other.clone(),
+    }
+}
+
 /// The Conduit transactions of the form: its actions' (`generateTransactions()`),
 /// then the comment, if it has text or there is nothing else. Also says
 /// whether an action needs `CAN_EDIT`.
@@ -255,6 +277,11 @@ fn transactions(form: &CommentForm) -> Result<(Vec<Value>, bool), &'static str> 
             }
             needs_edit |= !is_review;
             transactions.push(json!({"type": action.kind, "value": true}));
+        } else if action.kind == "ai-change.approve" {
+            // Mozilla's "Approve AI Change", which doesn't need CAN_EDIT
+            // here (the editor checks it).
+            transactions
+                .push(json!({"type": action.kind, "value": ai_change_value(&action.value)}));
         } else if let Some((_, edit_type)) = LISTS.iter().find(|(key, _)| *key == action.kind) {
             needs_edit = true;
             transactions.push(list_transaction(edit_type, action)?);
@@ -699,6 +726,15 @@ mod tests {
         assert!(parse_actions("{}").is_err());
         assert!(parse_actions("[1]").is_err());
         assert!(parse_actions(r#"[{"type": "accept", "value": true}]"#).is_err());
+    }
+
+    #[test]
+    fn ai_change_checkboxes_become_diff_ids() {
+        assert_eq!(ai_change_value(&json!(["12"])), json!(12));
+        assert_eq!(ai_change_value(&json!([])), Value::Null);
+        assert_eq!(ai_change_value(&json!("12")), json!(12));
+        assert_eq!(ai_change_value(&json!(["x"])), json!("x"));
+        assert_eq!(ai_change_value(&json!(true)), json!(true));
     }
 
     #[test]

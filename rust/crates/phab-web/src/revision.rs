@@ -90,6 +90,8 @@ pub(crate) struct RevisionPage {
     shell: Shell,
     warnings: Vec<Warning>,
     actions: &'static [(&'static str, &'static str)],
+    /// The diff "Approve AI Change" approves, when the viewer may.
+    ai_change_approval: Option<i64>,
     monogram: String,
     title: String,
     status: &'static str,
@@ -991,6 +993,8 @@ async fn page<S: WebState>(
     let monogram = format!("D{}", revision.id);
     let current = uri.path_and_query().map_or("/", |path| path.as_str());
     let warnings = warnings(state, &as_viewer, &revision).await?;
+    let ai_change = crate::ai_change::load(database, &revision).await?;
+    let ai_change_approval = crate::ai_change::approvable_diff(&ai_change, &revision, &viewer.user);
     let timeline = crate::timeline::entries(state, &as_viewer, &revision).await?;
     let checks = match &details.active_diff_phid {
         Some(diff) => crate::harbormaster::diff_checks(state, viewer, &revision.phid, diff).await?,
@@ -999,6 +1003,7 @@ async fn page<S: WebState>(
     Ok(RevisionPage {
         warnings,
         actions: crate::actions::ACTIONS,
+        ai_change_approval,
         shell: Shell::for_user(
             state.config(),
             viewer,

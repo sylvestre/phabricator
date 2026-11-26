@@ -20,18 +20,28 @@ pub const PROPERTY: &str = "mozilla.ai-change";
 /// The `fields` key of `differential.revision.search`.
 pub const CONDUIT_KEY: &str = "aiChange";
 
-// The keys of the stored property.
-pub(crate) const KEY_KIND: &str = "kind";
-pub(crate) const KEY_CHANGE_DIFF_ID: &str = "changeDiffID";
-pub(crate) const KEY_CHANGE_DIFF_PHID: &str = "changeDiffPHID";
-pub(crate) const KEY_BASE_DIFF_ID: &str = "baseDiffID";
-pub(crate) const KEY_SUMMARY: &str = "summary";
-pub(crate) const KEY_CONFIDENCE: &str = "confidence";
-pub(crate) const KEY_DETAILS: &str = "details";
-pub(crate) const KEY_REQUESTER_PHID: &str = "requesterPHID";
-pub(crate) const KEY_REQUEST_EPOCH: &str = "requestEpoch";
-pub(crate) const KEY_APPROVER_PHID: &str = "approverPHID";
-pub(crate) const KEY_APPROVAL_EPOCH: &str = "approvalEpoch";
+/// `DifferentialAIChange::KEY_KIND`.
+pub const KEY_KIND: &str = "kind";
+/// `DifferentialAIChange::KEY_CHANGE_DIFF_ID`.
+pub const KEY_CHANGE_DIFF_ID: &str = "changeDiffID";
+/// `DifferentialAIChange::KEY_CHANGE_DIFF_PHID`.
+pub const KEY_CHANGE_DIFF_PHID: &str = "changeDiffPHID";
+/// `DifferentialAIChange::KEY_BASE_DIFF_ID`.
+pub const KEY_BASE_DIFF_ID: &str = "baseDiffID";
+/// `DifferentialAIChange::KEY_SUMMARY`.
+pub const KEY_SUMMARY: &str = "summary";
+/// `DifferentialAIChange::KEY_CONFIDENCE`.
+pub const KEY_CONFIDENCE: &str = "confidence";
+/// `DifferentialAIChange::KEY_DETAILS`.
+pub const KEY_DETAILS: &str = "details";
+/// `DifferentialAIChange::KEY_REQUESTER_PHID`.
+pub const KEY_REQUESTER_PHID: &str = "requesterPHID";
+/// `DifferentialAIChange::KEY_REQUEST_EPOCH`.
+pub const KEY_REQUEST_EPOCH: &str = "requestEpoch";
+/// `DifferentialAIChange::KEY_APPROVER_PHID`.
+pub const KEY_APPROVER_PHID: &str = "approverPHID";
+/// `DifferentialAIChange::KEY_APPROVAL_EPOCH`.
+pub const KEY_APPROVAL_EPOCH: &str = "approvalEpoch";
 
 /// `KIND_MERGE_CONFLICT`, `KIND_REQUESTED_EDIT` and their names
 /// (`getKindNames()`), in PHP's order.
@@ -100,6 +110,11 @@ impl AiChange {
     /// The stored value of `key`, if any and not `null`.
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.data.get(key).filter(|value| !value.is_null())
+    }
+
+    /// The stored data, for the edits which write it back.
+    pub(crate) fn into_data(self) -> Map<String, Value> {
+        self.data
     }
 
     /// `getStatus()` for the revision's `activeDiffPHID`: a newer diff

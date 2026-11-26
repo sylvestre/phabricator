@@ -35,6 +35,8 @@ const ACTIONS: &[(&str, &str)] = &[
     ("differential.revision.plan", "Planned Changes"),
     ("differential.revision.request", "Requested Review"),
     ("differential.revision.close", "Closed"),
+    // Mozilla's (Bug 2091563).
+    ("mozilla.ai-change.approve", "Approved AI Change"),
 ];
 
 /// A loaded transaction, with its comment.

@@ -143,6 +143,9 @@
         {%- for (key, label) in actions %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
       </select>
     </label>
+    {%- if let Some(diff) = ai_change_approval %}
+    <label class="ai-change-approve"><input type="checkbox" name="ai_change_approve" value="{{ diff }}"> Approve AI Change: I checked the AI change in Diff {{ diff }}</label>
+    {%- endif %}
     <label>Add reviewers
       <input type="text" name="reviewers" placeholder="alice, #team, bob! (blocking)" autocomplete="off" data-typeahead>
     </label>

@@ -8,6 +8,7 @@
 //! request against PHP, so the user sees the PHP page instead.
 
 mod actions;
+mod ai_change;
 pub mod assets;
 mod changeset_ajax;
 mod changeset_view;

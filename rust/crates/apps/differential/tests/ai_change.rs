@@ -262,3 +262,142 @@ async fn leaves_refused_requests_to_php() {
     assert_eq!(stored["kind"], "requested-edit");
     test_db.drop_databases().await;
 }
+
+fn approve(id: i64, value: Value) -> Value {
+    transactions(id, json!([{"type": "ai-change.approve", "value": value}]))
+}
+
+/// Stores a pending request on `id`, for diff `diff`.
+async fn store_request(test_db: &TestDatabase, id: i64, diff: i64) {
+    let data = json!({
+        "kind": "merge-conflict", "changeDiffID": diff,
+        "changeDiffPHID": format!("PHID-DIFF-{diff}"), "baseDiffID": null, "summary": null,
+        "confidence": null, "details": null, "requesterPHID": "PHID-USER-lando",
+        "requestEpoch": 1_600_000_000, "approverPHID": null, "approvalEpoch": null,
+    });
+    let properties = json!({"draft.broadcast": true, "mozilla.ai-change": data});
+    test_db
+        .execute(&format!(
+            "UPDATE `{{ns}}_differential`.differential_revision SET properties = \
+             '{properties}' WHERE id = {id}"
+        ))
+        .await;
+}
+
+#[tokio::test]
+async fn approves_like_php() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    store_request(&test_db, 1, 11).await;
+    test_db
+        .execute(
+            "INSERT INTO `{ns}_differential`.differential_reviewer (revisionPHID, reviewerPHID, \
+             reviewerStatus, dateCreated, dateModified, options) VALUES \
+             ('PHID-DREV-1', 'PHID-USER-bob', 'added', 1, 1, '{}')",
+        )
+        .await;
+    // With "Accept Revision", in one submission.
+    let response = edit(
+        &context,
+        transactions(
+            1,
+            json!([
+                {"type": "ai-change.approve", "value": 11},
+                {"type": "accept", "value": true},
+            ]),
+        ),
+    )
+    .await;
+    assert!(answered(&response), "{response:?}");
+    let rows = texts(
+        &test_db,
+        "SELECT CONCAT(transactionType, ' ', oldValue, ' ', newValue) AS value FROM \
+         `{ns}_differential`.differential_transaction ORDER BY id",
+    )
+    .await;
+    assert_eq!(rows[0], "mozilla.ai-change.approve null 11");
+    assert_eq!(rows[1], "differential.revision.accept false true");
+    let stored = &properties(&test_db, 1).await["mozilla.ai-change"];
+    assert_eq!(stored["approverPHID"], "PHID-USER-bob");
+    assert_eq!(stored["approvalEpoch"], json!(NOW));
+    assert_eq!(stored["requesterPHID"], "PHID-USER-lando");
+    // The keys keep their place.
+    assert_eq!(
+        stored
+            .as_object()
+            .unwrap()
+            .keys()
+            .next_back()
+            .map(String::as_str),
+        Some("approvalEpoch")
+    );
+
+    let Response::Envelope(Envelope {
+        result,
+        error_code: None,
+        ..
+    }) = call_method(
+        &context,
+        "transaction.search",
+        json!({"objectIdentifier": "D1"}),
+    )
+    .await
+    else {
+        panic!("expected an answer");
+    };
+    let approval = result["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|xaction| xaction["type"] == "ai-change.approve")
+        .expect("the approval");
+    assert_eq!(approval["fields"], json!({"diffID": 11}));
+    assert_eq!(approval["authorPHID"], "PHID-USER-bob");
+
+    // Approved already.
+    let response = edit(&context, approve(1, json!(11))).await;
+    assert!(matches!(response, Response::Fallback(_)), "{response:?}");
+    test_db.drop_databases().await;
+}
+
+#[tokio::test]
+async fn leaves_refused_approvals_to_php() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    // No request on D2; D3 is closed.
+    store_request(&test_db, 3, 3).await;
+    // D1's request is for a diff which isn't active any more.
+    store_request(&test_db, 1, 10).await;
+    for (id, value) in [
+        (2, json!(2)),
+        (3, json!(3)),
+        (1, json!(10)),
+        (1, json!(11)),
+        (1, json!(true)),
+        (1, Value::Null),
+    ] {
+        let response = edit(&context, approve(id, value.clone())).await;
+        assert!(
+            matches!(response, Response::Fallback(_)),
+            "D{id} {value}: {response:?}"
+        );
+    }
+    // A stale page approves the diff it saw.
+    store_request(&test_db, 1, 11).await;
+    let response = edit(&context, approve(1, json!(10))).await;
+    assert!(matches!(response, Response::Fallback(_)), "{response:?}");
+    // Bots can't approve.
+    test_db
+        .execute("UPDATE `{ns}_user`.user SET isSystemAgent = 1 WHERE phid = 'PHID-USER-bob'")
+        .await;
+    let response = edit(&context, approve(1, json!(11))).await;
+    assert!(matches!(response, Response::Fallback(_)), "{response:?}");
+    test_db
+        .execute("UPDATE `{ns}_user`.user SET isSystemAgent = 0 WHERE phid = 'PHID-USER-bob'")
+        .await;
+    let response = edit(&context, approve(1, json!(11))).await;
+    assert!(answered(&response), "{response:?}");
+    test_db.drop_databases().await;
+}

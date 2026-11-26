@@ -335,6 +335,7 @@ pub fn feed_title(transaction: &Transaction) -> Result<Option<Title>, Unsupporte
                 object,
             ],
         ))),
+        "mozilla.ai-change.approve" => simple("%s approved the AI change in %s."),
         "harbormaster:buildable" => buildable_title(
             transaction,
             "%s completed remote builds in %s for %s.",
@@ -1171,6 +1172,16 @@ mod tests {
         assert_eq!(
             request(Value::Null),
             "[PHID-USER-alice] requested approval of an AI change in [PHID-DREV-1]."
+        );
+        assert_eq!(
+            text_of(feed_title(&of(
+                "PHID-DREV-1",
+                "mozilla.ai-change.approve",
+                Value::Null,
+                json!(2),
+                json!({}),
+            ))),
+            "[PHID-USER-alice] approved the AI change in [PHID-DREV-1]."
         );
     }
 }

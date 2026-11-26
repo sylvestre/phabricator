@@ -1,25 +1,57 @@
 //! Mozilla's AI change transactions (Bug 2091563): requesting an approval
 //! (`DifferentialRevisionAIChangeRequestTransaction`, `ai-change.request`,
-//! which Lando sends after uploading an AI's change as the active diff).
+//! which Lando sends after uploading an AI's change as the active diff),
+//! and approving it (`DifferentialRevisionAIChangeApproveTransaction`,
+//! `ai-change.approve`, the "Approve AI Change" comment action, whose value
+//! is the ID of the diff approved).
 //!
-//! The request is validated as PHP does; a request PHP refuses (an
-//! unknown key or kind, a text too long, a diff which isn't the active
-//! one or a base diff of another revision) is left to PHP, which explains
-//! it, and so is one sent with a diff update
-//! (`DifferentialAIChangeEditorExtension`). The internal effect replaces
-//! the revision's `mozilla.ai-change` property, and any approval with it.
+//! Both are validated as PHP does; what PHP refuses (an unknown key or
+//! kind, a text too long, a diff which isn't the active one or a base diff
+//! of another revision; approving as a bot, on a closed revision, a change
+//! which isn't pending or another diff than the pending one) is left to
+//! PHP, which explains it, and so is a request sent with a diff update
+//! (`DifferentialAIChangeEditorExtension`). A request replaces the
+//! revision's `mozilla.ai-change` property, and any approval with it; an
+//! approval records its approver and time there. Both need `CAN_EDIT`, as
+//! modular transactions do (`getRequiredCapabilities()`).
 
 use phab_conduit::{ApiRequest, MethodError};
 use phab_core::php;
 use phab_db::rows;
 use serde_json::{Map, Value, json};
 
-use super::Plan;
-use crate::ai_change as state;
+use super::{Facts, Plan};
+use crate::ai_change::{self as state, AiChange, Status};
 use crate::storage::Revision;
 
 /// `DifferentialRevisionAIChangeRequestTransaction::TRANSACTIONTYPE`.
-pub(super) const REQUEST_TYPE: &str = "mozilla.ai-change.request";
+const REQUEST_TYPE: &str = "mozilla.ai-change.request";
+
+/// `DifferentialRevisionAIChangeApproveTransaction::TRANSACTIONTYPE`.
+const APPROVE_TYPE: &str = "mozilla.ai-change.approve";
+
+/// An AI change transaction of the call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Wanted {
+    /// `ai-change.request`, whose Conduit type takes any value.
+    Request(Value),
+    /// `ai-change.approve`: the diff ID (`ConduitIntParameterType`).
+    Approve(i64),
+}
+
+/// The transaction of `kind`, once its Conduit parameter type accepts
+/// `value`. An approval without an integer is refused (a bad parameter, or
+/// "Tick ..." for `null`), which is left to PHP.
+pub(super) fn parse(kind: &str, value: &Value) -> Result<Wanted, MethodError> {
+    if kind == "ai-change.request" {
+        return Ok(Wanted::Request(value.clone()));
+    }
+    value
+        .as_i64()
+        .filter(|_| !value.is_f64())
+        .map(Wanted::Approve)
+        .ok_or(MethodError::Unsupported("AI change approvals PHP refuses"))
+}
 
 /// The keys a request may have, in PHP's order (`$known_keys`).
 const REQUEST_KEYS: &[&str] = &[
@@ -42,11 +74,12 @@ fn refused() -> MethodError {
     MethodError::Unsupported("AI change requests PHP refuses")
 }
 
-/// The planned `mozilla.ai-change.request` transaction.
-pub(super) struct PlannedRequest {
+/// The planned transaction.
+pub(super) struct Planned {
     pub(super) phid: String,
+    kind: &'static str,
     /// `generateNewValue()`.
-    new: Map<String, Value>,
+    new: Value,
 }
 
 /// `isDiffID()`: a positive integer, or a string of digits (form-encoded
@@ -106,13 +139,43 @@ async fn load_diff(
     )))
 }
 
+/// Validates the transaction and plans it, with the property its internal
+/// effect sets.
+pub(super) async fn plan(
+    request: &ApiRequest<'_>,
+    (revision, facts): (&Revision, &Facts),
+    wanted: &Wanted,
+    actor: &str,
+) -> Result<(Planned, (String, Value)), MethodError> {
+    let (kind, new, data) = match wanted {
+        Wanted::Request(value) => {
+            let new = plan_request(request, revision, value).await?;
+            let data = request_data(&new, actor, request.now);
+            (REQUEST_TYPE, Value::Object(new), data)
+        }
+        Wanted::Approve(diff_id) => {
+            let data = plan_approval(request, (revision, facts), *diff_id, actor).await?;
+            (APPROVE_TYPE, json!(diff_id), data)
+        }
+    };
+    if !super::can_edit(request, revision).await? {
+        return Err(MethodError::Unsupported("edits the actor may not make"));
+    }
+    let planned = Planned {
+        phid: super::transaction_phid(),
+        kind,
+        new,
+    };
+    Ok((planned, (state::PROPERTY.to_owned(), Value::Object(data))))
+}
+
 /// `validateRequest()` then `generateNewValue()`: the new value of a
-/// request PHP accepts on `revision`. Requesting needs `CAN_EDIT`.
-pub(super) async fn plan_request(
+/// request PHP accepts on `revision`.
+async fn plan_request(
     request: &ApiRequest<'_>,
     revision: &Revision,
     value: &Value,
-) -> Result<PlannedRequest, MethodError> {
+) -> Result<Map<String, Value>, MethodError> {
     // A JSON list is an array too, but without a kind PHP refuses it.
     let Value::Object(value) = value else {
         return Err(refused());
@@ -162,9 +225,6 @@ pub(super) async fn plan_request(
             Some(base_id)
         }
     };
-    if !super::can_edit(request, revision).await? {
-        return Err(MethodError::Unsupported("edits the actor may not make"));
-    }
     let text = |key: &str| value.get(key).cloned().unwrap_or(Value::Null);
     let mut new = Map::new();
     new.insert(state::KEY_KIND.to_owned(), text(state::KEY_KIND));
@@ -178,39 +238,110 @@ pub(super) async fn plan_request(
     ] {
         new.insert(key.to_owned(), text(key));
     }
-    Ok(PlannedRequest {
-        phid: super::transaction_phid(),
-        new,
-    })
+    Ok(new)
 }
 
 /// `writeRequest()`: the property the request stores, replacing any
 /// earlier request and its approval.
-pub(super) fn request_property(planned: &PlannedRequest, actor: &str, now: i64) -> (String, Value) {
-    let mut data = planned.new.clone();
+fn request_data(new: &Map<String, Value>, actor: &str, now: i64) -> Map<String, Value> {
+    let mut data = new.clone();
     data.insert(state::KEY_REQUESTER_PHID.to_owned(), json!(actor));
     data.insert(state::KEY_REQUEST_EPOCH.to_owned(), json!(now));
     data.insert(state::KEY_APPROVER_PHID.to_owned(), Value::Null);
     data.insert(state::KEY_APPROVAL_EPOCH.to_owned(), Value::Null);
-    (state::PROPERTY.to_owned(), Value::Object(data))
+    data
 }
 
-/// The request's transaction: `null` to the new value.
-pub(super) async fn write_request(
+/// `validateAction()` and `validateTransactions()` of an approval of
+/// `diff_id`, then `writeApproval()`: the property with its approver.
+async fn plan_approval(
+    request: &ApiRequest<'_>,
+    (revision, facts): (&Revision, &Facts),
+    diff_id: i64,
+    actor: &str,
+) -> Result<Map<String, Value>, MethodError> {
+    if request.viewer.is_omnipotent || request.viewer.phid.is_none() {
+        return Err(MethodError::Unsupported("AI change approvals by daemons"));
+    }
+    // Bots can't approve a tool's change.
+    let database = &request.context.database;
+    let sql = format!(
+        "SELECT isSystemAgent, isMailingList FROM {} WHERE phid = ?",
+        database.table("user", "user")
+    );
+    let row = phab_db::sqlx::query(&sql)
+        .bind(actor)
+        .fetch_optional(database.pool())
+        .await?
+        .ok_or(MethodError::Unsupported(
+            "AI change approvals by unknown users",
+        ))?;
+    if rows::flag(&row, "isSystemAgent")? || rows::flag(&row, "isMailingList")? {
+        return Err(MethodError::Unsupported("AI change approvals PHP refuses"));
+    }
+    let properties = facts
+        .properties
+        .as_ref()
+        .ok_or(MethodError::Unsupported("unusual revision properties"))?;
+    let change = AiChange::from_properties(&Value::Object(properties.clone()))?;
+    let active = revision
+        .active_diff_phid
+        .as_ref()
+        .map(phab_core::Phid::as_str);
+    if revision.is_closed() || change.status(active) != Status::Pending {
+        return Err(MethodError::Unsupported("AI change approvals PHP refuses"));
+    }
+    // `$value !== (int)$diff_id`.
+    let pending = match change.get(state::KEY_CHANGE_DIFF_ID) {
+        Some(Value::Number(number)) if number.is_i64() => number.as_i64(),
+        _ => None,
+    };
+    if pending != Some(diff_id) {
+        return Err(MethodError::Unsupported("AI change approvals PHP refuses"));
+    }
+    let mut data = change.into_data();
+    data.insert(state::KEY_APPROVER_PHID.to_owned(), json!(actor));
+    data.insert(state::KEY_APPROVAL_EPOCH.to_owned(), json!(request.now));
+    Ok(data)
+}
+
+/// The transaction: `null` to the new value.
+pub(super) async fn write(
     request: &ApiRequest<'_>,
     plan: &Plan,
-    planned: &PlannedRequest,
+    planned: &Planned,
     metadata: &str,
     connection: &mut phab_db::sqlx::MySqlConnection,
 ) -> Result<(), MethodError> {
-    let new = php::json_encode(&Value::Object(planned.new.clone()));
-    let row = (planned.phid.as_str(), REQUEST_TYPE, "null", &*new, metadata);
+    let new = php::json_encode(&planned.new);
+    let row = (planned.phid.as_str(), planned.kind, "null", &*new, metadata);
     super::insert_transaction(request, plan, connection, row).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn approvals_take_integers() {
+        assert_eq!(
+            parse("ai-change.approve", &json!(3)),
+            Ok(Wanted::Approve(3))
+        );
+        for value in [
+            json!(true),
+            json!(null),
+            json!("3"),
+            json!(3.0),
+            json!(["3"]),
+        ] {
+            assert!(parse("ai-change.approve", &value).is_err(), "{value}");
+        }
+        assert_eq!(
+            parse("ai-change.request", &json!("yes")),
+            Ok(Wanted::Request(json!("yes")))
+        );
+    }
 
     #[test]
     fn diff_ids_follow_php() {

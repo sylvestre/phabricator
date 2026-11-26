@@ -719,7 +719,12 @@ fn type_and_fields(
                 comment.ok_or(MethodError::Unsupported("an inline the viewer can't see"))?;
             Ok((Some("inline"), inline_fields(comment, changesets)?))
         }
-        // Mozilla's AI change (Bug 2091563): the request's new value.
+        // Mozilla's AI change (Bug 2091563): the request's new value, the
+        // approved diff.
+        "mozilla.ai-change.approve" => Ok((
+            Some("ai-change.approve"),
+            json!({"diffID": php::round_trip(&transaction.new_value)}),
+        )),
         "mozilla.ai-change.request" => Ok((
             Some("ai-change.request"),
             php::round_trip(&transaction.new_value),

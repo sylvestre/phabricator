@@ -353,7 +353,10 @@ async fn returns_the_ai_change() {
         .map(|revision| {
             let fields = revision["fields"].as_object().expect("fields");
             // The extension's field comes last.
-            assert_eq!(fields.keys().next_back().map(String::as_str), Some("aiChange"));
+            assert_eq!(
+                fields.keys().next_back().map(String::as_str),
+                Some("aiChange")
+            );
             (revision["id"].as_i64().unwrap(), fields["aiChange"].clone())
         })
         .collect();

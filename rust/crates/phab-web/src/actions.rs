@@ -56,6 +56,9 @@ pub(crate) struct ActionForm {
     /// Users and `#projects` to add as subscribers.
     #[serde(default)]
     subscribers: String,
+    /// The diff ID of the ticked "Approve AI Change" checkbox.
+    #[serde(default)]
+    ai_change_approve: String,
     /// A reviewer to remove, by PHID (the "×" next to them).
     #[serde(default)]
     remove_reviewer: String,
@@ -271,6 +274,9 @@ fn transactions(
         }
         transactions.push(json!({"type": form.action, "value": true}));
     }
+    if let Some(diff) = ai_change_approval(form).ok()? {
+        transactions.push(json!({"type": "ai-change.approve", "value": diff}));
+    }
     if !reviewers.is_empty() {
         let value: Vec<String> = reviewers
             .iter()
@@ -310,6 +316,19 @@ fn transactions(
         transactions.push(json!({"type": "comment", "value": form.comment}));
     }
     Some(transactions)
+}
+
+/// The diff the form approves the AI change of, if any; an error for what
+/// isn't a diff ID.
+fn ai_change_approval(form: &ActionForm) -> Result<Option<i64>, &'static str> {
+    let diff = &form.ai_change_approve;
+    if diff.is_empty() {
+        return Ok(None);
+    }
+    if !diff.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("not a diff ID");
+    }
+    diff.parse().map(Some).map_err(|_| "not a diff ID")
 }
 
 /// The PHID in a reviewer token, `PHID` or `blocking(PHID)`.
@@ -364,6 +383,14 @@ async fn comment_form<S: WebState>(
             kind: form.action.clone(),
             value: json!(true),
             initial: Value::Null,
+        });
+    }
+    // The checkboxes' ticked keys, which start unticked.
+    if !form.ai_change_approve.is_empty() {
+        actions.push(FormAction {
+            kind: "ai-change.approve".to_owned(),
+            value: json!([form.ai_change_approve]),
+            initial: json!([]),
         });
     }
     // getReviewerPHIDsForEdit().
@@ -553,9 +580,25 @@ mod tests {
             reviewers: String::new(),
             subscribers: String::new(),
             inlines: String::new(),
+            ai_change_approve: String::new(),
             remove_reviewer: String::new(),
             remove_subscriber: String::new(),
         }
+    }
+
+    #[test]
+    fn approving_an_ai_change_is_a_transaction() {
+        let mut approving = form("accept", "");
+        approving.ai_change_approve = "12".to_owned();
+        assert_eq!(
+            transactions(&approving, &[], &[], vec![]),
+            Some(vec![
+                json!({"type": "accept", "value": true}),
+                json!({"type": "ai-change.approve", "value": 12}),
+            ])
+        );
+        approving.ai_change_approve = "12a".to_owned();
+        assert_eq!(transactions(&approving, &[], &[], vec![]), None);
     }
 
     #[test]
