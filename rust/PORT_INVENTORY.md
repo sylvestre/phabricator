@@ -65,7 +65,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `differential.changeset.search` | stable | shadowed |  |
 | `differential.close` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the `close` action through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 | `differential.createcomment` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the action and comment through the Rust editor (`legacy_edit.rs`); left to PHP: `attach_inlines` with draft inline comments, revisions the caller can't edit, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
-| `differential.creatediff` | stable | Rust |  |
+| `differential.creatediff` | stable | Rust | with Mozilla's `properties` (Bug 2074873); floats in property values and names the unique key compares as the same go to PHP |
 | `differential.createinline` | stable | ported, not routed | write: draft inline comments (Lando, moz-phab), the comment's row as PHP saves it. Left to PHP: values PHP casts or compares loosely, paths several files of the diff have, revisions the caller can't see. Scenarios in `parity/writes/inline.json`. |
 | `differential.createrawdiff` | stable | Rust | write; `viewPolicy` too (object and custom policies left to PHP). |
 | `differential.createrevision` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the commit message field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |

@@ -362,18 +362,31 @@ async fn creates_diffs_like_php() {
             "Diff may not be empty.".to_owned()
         )
     );
-    let mut params = create_params(&json!([change("x", "+x\n")]));
-    // This fork's method has no `properties` parameter.
-    params["properties"] = json!({"local:commits": {}});
-    assert_eq!(
-        error(&context, "differential.creatediff", params).await,
-        (
-            "ERR-CONDUIT-CALL".to_owned(),
-            "API Method \"differential.creatediff\" does not define these parameters: \
-             'properties'."
-                .to_owned()
-        )
-    );
+    // `properties` which aren't a map of names of 1 to 128 bytes, checked
+    // before the changes.
+    let long = "x".repeat(129);
+    for properties in [
+        json!("local:commits"),
+        json!(["a"]),
+        json!({"0": "a", "1": "b"}),
+        json!({"0": "a"}),
+        json!({"": "a"}),
+        json!({long: "a"}),
+        json!(false),
+    ] {
+        let mut params = create_params(&json!([{"hunks": []}]));
+        params["properties"] = properties.clone();
+        assert_eq!(
+            error(&context, "differential.creatediff", params).await,
+            (
+                "ERR-INVALID-PROPERTIES".to_owned(),
+                "Properties must be a map of non-empty property names, up to 128 bytes, to \
+                 values."
+                    .to_owned()
+            ),
+            "{properties}"
+        );
+    }
     let mut params = create_params(&json!([change("x", "+x\n")]));
     params["sourcePath"] = json!("");
     assert_eq!(
@@ -416,6 +429,59 @@ async fn creates_diffs_like_php() {
         5
     );
     assert_eq!(count(&test_db, "`{ns}_worker`.worker_activetask").await, 2);
+}
+
+/// Mozilla's `properties` (Bug 2074873): saved with the diff, as given
+/// (not JSON strings), as Lisk encodes them; an empty map, an empty list
+/// or `null` are none.
+#[tokio::test]
+async fn creates_diffs_with_properties() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    let mut params = create_params(&json!([change("x", "+x\n")]));
+    params["properties"] = json!({
+        "local:commits": {"abc": {"commit": "abc", "firstPublicParent": "0123", "tree": {}}},
+        "1": "one",
+        "n": null,
+        "\u{e9}t\u{e9}/x": [1, true],
+    });
+    let result = answer(&context, "differential.creatediff", params).await;
+    let id = result["diffid"].as_i64().expect("an ID");
+    assert_eq!(
+        lines(
+            &test_db,
+            "SELECT CONCAT_WS(' ', diffID, name, data, dateCreated) AS line \
+             FROM `{ns}_differential`.differential_diffproperty ORDER BY id"
+        )
+        .await,
+        [
+            format!(
+                "{id} local:commits \
+                 {{\"abc\":{{\"commit\":\"abc\",\"firstPublicParent\":\"0123\",\"tree\":[]}}}} {NOW}"
+            ),
+            format!("{id} 1 \"one\" {NOW}"),
+            format!("{id} n null {NOW}"),
+            format!("{id} \u{e9}t\u{e9}/x [1,true] {NOW}"),
+        ]
+    );
+    for properties in [json!({}), json!([]), json!(null)] {
+        let mut params = create_params(&json!([change("x", "+x\n")]));
+        params["properties"] = properties;
+        answer(&context, "differential.creatediff", params).await;
+    }
+    assert_eq!(
+        count(&test_db, "`{ns}_differential`.differential_diffproperty").await,
+        4
+    );
+    // Floats, which PHP prints its own way, and names the unique key
+    // compares as the same, are left to PHP.
+    for properties in [json!({"f": 1.5}), json!({"a": 1, "a ": 2})] {
+        let mut params = create_params(&json!([change("x", "+x\n")]));
+        params["properties"] = properties;
+        fallback(&context, "differential.creatediff", params).await;
+    }
+    test_db.drop_databases().await;
 }
 
 #[tokio::test]

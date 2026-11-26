@@ -931,8 +931,8 @@
     "name": "differential.creatediff",
     "application_name": "differential",
     "application": "PhabricatorDifferentialApplication",
-    "summary": "Create a new Differential diff.",
-    "description": "Create a new Differential diff.",
+    "summary": "Create a new Differential diff.\n\n`properties` sets diff properties when the diff is created, like `differential.setdiffproperty` does. Unlike that method, values are stored as given, so pass the value itself, not a JSON-encoded string.",
+    "description": "Create a new Differential diff.\n\n`properties` sets diff properties when the diff is created, like `differential.setdiffproperty` does. Unlike that method, values are stored as given, so pass the value itself, not a JSON-encoded string.",
     "status": "stable",
     "status_description": null,
     "return_type": "nonempty dict",
@@ -986,6 +986,10 @@
         "type": "optional phid"
       },
       {
+        "name": "properties",
+        "type": "optional map<string, wild>"
+      },
+      {
         "name": "parentRevisionID",
         "type": "deprecated"
       },
@@ -1006,6 +1010,10 @@
       {
         "code": "ERR-USAGE-NO-SOURCE-PATH",
         "meaning": "You must specify a source path."
+      },
+      {
+        "code": "ERR-INVALID-PROPERTIES",
+        "meaning": "Properties must be a map of non-empty property names, up to 128 bytes, to values."
       }
     ],
     "scope": "scope.never",

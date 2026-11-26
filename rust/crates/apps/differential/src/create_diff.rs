@@ -2,12 +2,14 @@
 //! a diff from arcanist's change dictionaries, as `arc` and `moz-phab`
 //! send them.
 //!
-//! Ported: every parameter, for Git working copies. This fork's method has
-//! no `properties` parameter (moz-phab sets them with
-//! `differential.setdiffproperty`). Left to PHP: form-encoded calls, change dictionaries missing keys
-//! or with values of types PHP would convert or reject, other version
+//! Ported: every parameter, for Git working copies, with Mozilla's
+//! `properties` (Bug 2074873): diff properties saved with the diff, their
+//! values as given, as `differential.setdiffproperty` would save them.
+//! Left to PHP: form-encoded calls, change dictionaries missing keys or
+//! with values of types PHP would convert or reject, other version
 //! control systems, a missing `repositoryPHID` when PHP would guess the
-//! repository from the base commit or a repository UUID, and what
+//! repository from the base commit or a repository UUID, property values
+//! with floats, property names MySQL compares as the same, and what
 //! [`crate::diff_editor`] leaves to PHP.
 
 use phab_conduit::{ApiRequest, Application, Method, MethodError, MethodFuture};
@@ -19,6 +21,11 @@ use crate::diff_editor::{self, DiffFields, PlannedDiff};
 
 const ERR_NO_CONTENT: &str = "ERR-NO-CONTENT";
 const ERR_NO_SOURCE_PATH: &str = "ERR-USAGE-NO-SOURCE-PATH";
+const ERR_INVALID_PROPERTIES: &str = "ERR-INVALID-PROPERTIES";
+
+/// `getColumnMaximumByteLength('name')` of `differential_diffproperty`
+/// (`text128`).
+const PROPERTY_NAME_BYTES: usize = 128;
 
 fn conduit_error(code: &str) -> MethodError {
     MethodError::Conduit {
@@ -187,6 +194,51 @@ async fn repository(
     Ok((phid, uuid))
 }
 
+/// Whether a key of a decoded JSON object is an integer key of a PHP
+/// array: the decimal form of an integer, which PHP stores as one.
+fn is_integer_key(key: &str) -> Option<i64> {
+    let value: i64 = key.parse().ok()?;
+    (value.to_string() == key).then_some(value)
+}
+
+/// `properties`: a map (a PHP array which isn't a non-empty list) of names
+/// of 1 to 128 bytes to values, or `ERR-INVALID-PROPERTIES`. The names and
+/// the values as Lisk stores them.
+fn properties(request: &ApiRequest<'_>) -> Result<Vec<(String, String)>, MethodError> {
+    let invalid = || conduit_error(ERR_INVALID_PROPERTIES);
+    let map = match request.value("properties") {
+        // `coalesce(idx(...), array())`: an explicit null is the default.
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Array(items)) if items.is_empty() => return Ok(Vec::new()),
+        Some(Value::Object(map)) => map,
+        Some(_) => return Err(invalid()),
+    };
+    // phutil_is_natural_list(): keys 0, 1, ... in order.
+    let natural = map
+        .keys()
+        .enumerate()
+        .all(|(index, key)| is_integer_key(key) == i64::try_from(index).ok());
+    if !map.is_empty() && natural {
+        return Err(invalid());
+    }
+    if map
+        .keys()
+        .any(|name| name.is_empty() || name.len() > PROPERTY_NAME_BYTES)
+    {
+        return Err(invalid());
+    }
+    // The unique key on the name pads with spaces: PHP's second save of
+    // such a name fails after the diff is created.
+    let mut padded: Vec<&str> = map.keys().map(|name| name.trim_end_matches(' ')).collect();
+    padded.sort_unstable();
+    if padded.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(unsupported("property names MySQL compares as the same"));
+    }
+    map.iter()
+        .map(|(name, data)| Ok((name.clone(), diff_editor::encode(data)?)))
+        .collect()
+}
+
 /// The `TYPE_DIFF_CREATE` dictionary, after the steps of `execute()`
 /// which precede it.
 async fn fields(request: &ApiRequest<'_>, actor: String) -> Result<DiffFields, MethodError> {
@@ -247,6 +299,7 @@ impl CreateDiff {
         if !php::is_truthy(change_data) {
             return Err(conduit_error(ERR_NO_CONTENT));
         }
+        let properties = properties(request)?;
         let changes = entries(change_data)?
             .into_iter()
             .map(change)
@@ -259,7 +312,7 @@ impl CreateDiff {
             line_count,
             fields,
             view_policy: None,
-            properties: Vec::new(),
+            properties,
         };
         let (id, phid) = diff_editor::save(request, &planned).await?;
         let uri = request
@@ -289,6 +342,7 @@ impl Method for CreateDiff {
             "lintStatus",
             "unitStatus",
             "repositoryPHID",
+            "properties",
             "parentRevisionID",
             "authorPHID",
             "repositoryUUID",
@@ -303,6 +357,11 @@ impl Method for CreateDiff {
         &[
             (ERR_NO_CONTENT, "Diff may not be empty."),
             (ERR_NO_SOURCE_PATH, "You must specify a source path."),
+            (
+                ERR_INVALID_PROPERTIES,
+                "Properties must be a map of non-empty property names, up to 128 bytes, to \
+                 values.",
+            ),
         ]
     }
 
@@ -314,6 +373,16 @@ impl Method for CreateDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_integer_keys_like_php() {
+        assert_eq!(is_integer_key("0"), Some(0));
+        assert_eq!(is_integer_key("12"), Some(12));
+        assert_eq!(is_integer_key("-3"), Some(-3));
+        for key in ["01", "+1", " 1", "1.0", "", "x", "99999999999999999999"] {
+            assert_eq!(is_integer_key(key), None, "{key}");
+        }
+    }
 
     #[test]
     fn reads_changes_like_arcanist() {
