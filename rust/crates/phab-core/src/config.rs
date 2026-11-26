@@ -118,6 +118,8 @@ fn default_values() -> Map<String, Value> {
         ("auth.require-approval".to_owned(), Value::Bool(true)),
         ("user.require-real-name".to_owned(), Value::Bool(true)),
         ("events.listeners".to_owned(), Value::Array(Vec::new())),
+        // On by default since Bug 2093445.
+        ("pygments.enabled".to_owned(), Value::Bool(true)),
     ]);
     defaults
 }

@@ -5,8 +5,10 @@
 // context), with the parse cache it stores, for tests/changeset_pages.rs.
 //
 // It runs the repository's DifferentialChangesetParser and renderers on
-// changesets built in memory, without a database (pygments.enabled is off,
-// which only changes the cached highlighting), and answers as
+// changesets built in memory, without a database (pygments.enabled is
+// turned off, which only changes the cached highlighting: since Bug 2093445
+// it defaults to on, and every language is plain text without it), and
+// answers as
 // DifferentialChangesetViewController and AphrontAjaxResponse do. Arcanist
 // must be checked out next to the repository, or in ARCANIST_ROOT:
 //
@@ -24,6 +26,9 @@ require_once $arcanist.'/support/init/init-script.php';
 phutil_load_library($arcanist.'/src');
 phutil_load_library($root.'/src');
 PhabricatorEnv::initializeScriptEnvironment(true);
+
+$oracle_env = PhabricatorEnv::beginScopedEnv();
+$oracle_env->overrideEnvConfig('pygments.enabled', false);
 
 // The Ajax requests carry the page's metadata block.
 $_REQUEST['__metablock__'] = '3';

@@ -1,14 +1,14 @@
 //! Code block highlighting: `PhutilLanguageGuesser` and the highlighters
 //! of `PhutilDefaultSyntaxHighlighterEngine` that need no external tool.
 //!
-//! Languages PHP highlights with its lexers or Pygments go to the
-//! engine's [`Highlighter`] (syntect for the pages), or are shown as plain
-//! text.
+//! Since Bug 2093445 PHP highlights every language with Pygments (its
+//! lexers for PHP, Python, Java and JSON, and its console highlighter, are
+//! gone): those go to the engine's [`Highlighter`] (syntect for the pages),
+//! or are shown as plain text.
 
 use crate::engine::Highlighter;
 use crate::markup::{self, Content, Markup};
 use crate::preg::{self, Pattern};
-use crate::rule;
 
 static GUESSES: [(Pattern, Guess); 7] = [
     (Pattern::new(r"^#!.*bin/env\s+(\S+)"), Guess::Group),
@@ -48,50 +48,11 @@ pub fn guess_language(source: &[u8]) -> Option<Vec<u8>> {
 /// `PhutilDefaultSyntaxHighlighterEngine::highlightSource()`.
 pub fn highlight(language: &[u8], source: &[u8], highlighter: Option<&Highlighter>) -> Markup {
     match language {
-        b"console" => console(source),
         b"invisible" => invisible(source),
         _ => highlighter
             .and_then(|highlighter| (highlighter.0)(language, source))
             .unwrap_or_else(|| Markup::text(source).into_escaped()),
     }
-}
-
-/// `PhutilConsoleSyntaxHighlighter`: prompts, commands and comments.
-fn console(source: &[u8]) -> Markup {
-    static START: Pattern = Pattern::new(r"^(\S+[\\/] )?([$] .*?)(#.*|\\)?$");
-    static CONTINUED: Pattern = Pattern::new(r"()(.*?)(#.*|\\)?$");
-    let mut in_command = false;
-    let lines: Vec<Option<Markup>> = source
-        .split(|byte| *byte == b'\n')
-        .map(|line| {
-            let pattern = if in_command { &CONTINUED } else { &START };
-            Some(match preg::captures(pattern, line) {
-                Some(groups) => {
-                    let comment = groups.get(3);
-                    let comment = if comment.is_empty() || comment == b"0" {
-                        Markup::default()
-                    } else {
-                        rule::hsprintf("<span class=\"k\">%s</span>", &[&Markup::text(comment)])
-                    };
-                    in_command = comment_is_continuation(groups.get(3));
-                    rule::hsprintf(
-                        "%s<span class=\"gp\">%s</span>%s",
-                        &[
-                            &Markup::text(groups.get(1)),
-                            &Markup::text(groups.get(2)),
-                            &comment,
-                        ],
-                    )
-                }
-                None => rule::hsprintf("<span class=\"go\">%s</span>", &[&Markup::text(line)]),
-            })
-        })
-        .collect();
-    markup::implode_html(&Markup::text("\n"), lines.iter().map(Option::as_ref))
-}
-
-fn comment_is_continuation(comment: &[u8]) -> bool {
-    comment == b"\\"
 }
 
 /// `PhutilInvisibleSyntaxHighlighter`: control characters as visible
@@ -139,10 +100,10 @@ mod tests {
     }
 
     #[test]
-    fn console_marks_prompts() {
+    fn console_is_plain_without_a_highlighter() {
         assert_eq!(
-            highlight(b"console", b"$ ls # list\nfile", None).as_bytes(),
-            b"<span class=\"gp\">$ ls </span><span class=\"k\"># list</span>\n<span class=\"go\">file</span>"
+            highlight(b"console", b"$ ls # list\n<file>", None).as_bytes(),
+            b"$ ls # list\n&lt;file&gt;"
         );
     }
 }

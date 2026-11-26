@@ -2680,9 +2680,9 @@
   {
     "key": "pygments.enabled",
     "type": "bool",
-    "default": false,
+    "default": true,
     "summary": "Use Pygments to highlight code?",
-    "description": "Syntax highlighting a supported for a few languages by default, but you can install Pygments (a third-party syntax highlighting tool) to provide support for many more languages.\n\nTo install Pygments, visit [[ http://pygments.org | pygments.org ]] and follow the download and install instructions.\n\nOnce Pygments is installed, enable this option (`pygments.enabled`) to make use of Pygments when highlighting source code.\n\nAfter you install and enable Pygments, newly created source code (like diffs and pastes) should highlight correctly. You may need to clear caches to get previously existing source code to highlight. For instructions on managing caches, see [[ https://secure.phabricator.com/diviner/find/?name=Managing%20Caches&type=article&jump=1 | Managing Caches ]].",
+    "description": "Source code is syntax highlighted with Pygments, a third-party syntax highlighting tool. If you disable this option, source code is shown without syntax highlighting.\n\nTo install Pygments, visit [[ http://pygments.org | pygments.org ]] and follow the download and install instructions.\n\nAfter you install and enable Pygments, newly created source code (like diffs and pastes) should highlight correctly. You may need to clear caches to get previously existing source code to highlight. For instructions on managing caches, see [[ https://secure.phabricator.com/diviner/find/?name=Managing%20Caches&type=article&jump=1 | Managing Caches ]].",
     "locked": false,
     "hidden": false,
     "locked_message": null,

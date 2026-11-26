@@ -17,23 +17,6 @@ fn unescape(text: &str) -> String {
         .join("\n")
 }
 
-/// Files where PHP highlights code with its lexers and Rust does not
-/// (yet): the HTML is compared without the highlighting spans.
-const HIGHLIGHTED: &[&str] = &["quoted-code-block.txt"];
-
-fn strip_spans(html: &str) -> String {
-    let mut output = String::new();
-    let mut rest = html;
-    while let Some(start) = rest.find("<span class=\"") {
-        output.push_str(&rest[..start]);
-        let after = &rest[start..];
-        let end = after.find('>').map_or(after.len(), |end| end + 1);
-        rest = &after[end..];
-    }
-    output.push_str(rest);
-    output.replace("</span>", "")
-}
-
 fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../src/infrastructure/markup/remarkup/__tests__/remarkup")
@@ -82,12 +65,10 @@ fn corpus_matches_php() {
                 .unwrap_or_default();
             actual = format!("{toc}\n\n{actual}");
         }
-        let (expected_html, actual) = if HIGHLIGHTED.contains(&file.as_str()) {
-            (strip_spans(&html), strip_spans(&actual))
-        } else {
-            (html.clone(), actual)
-        };
-        if actual != expected_html {
+        // Since Bug 2093445, PHP's lexers are gone: without Pygments, code
+        // blocks are plain text in every language, as Rust shows them.
+        let expected_html = &html;
+        if actual != *expected_html {
             failures.push(format!(
                 "{file} (html)\n--- expected\n{expected_html}\n--- actual\n{actual}"
             ));

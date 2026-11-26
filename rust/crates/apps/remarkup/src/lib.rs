@@ -100,10 +100,10 @@ fn contents(value: Option<&Value>) -> Result<Vec<String>, MethodError> {
 }
 
 /// The languages `PhutilDefaultSyntaxHighlighterEngine` highlights with
-/// its own lexers.
-const LEXER_LANGUAGES: &[&str] = &[
-    "php", "diviner", "remarkup", "rainbow", "py", "python", "java", "json",
-];
+/// its own highlighters, which Rust doesn't have; every other one is
+/// Pygments' or plain text (Bug 2093445 dropped the lexers of PHP,
+/// Python, Java and JSON, and the console highlighter).
+const LEXER_LANGUAGES: &[&str] = &["diviner", "remarkup", "rainbow"];
 
 /// Whether PHP shows code in `language` as plain text, like the engine
 /// does without a highlighter.
@@ -341,7 +341,12 @@ mod tests {
         assert!(is_plain(b"text", true));
         assert!(is_plain(b"rust", false));
         assert!(!is_plain(b"rust", true));
-        assert!(!is_plain(b"json", false));
+        // PHP's JSON, PHP, Python and Java lexers are gone (Bug 2093445).
+        for language in ["json", "php", "py", "java", "console"] {
+            assert!(is_plain(language.as_bytes(), false), "{language}");
+            assert!(!is_plain(language.as_bytes(), true), "{language}");
+        }
+        assert!(!is_plain(b"rainbow", false));
     }
 
     #[test]

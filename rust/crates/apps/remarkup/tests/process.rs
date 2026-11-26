@@ -176,6 +176,49 @@ async fn rejects_unknown_contexts() {
     test_db.drop_databases().await;
 }
 
+/// Without Pygments, PHP shows code in every language as plain text since
+/// Bug 2093445 (its PHP, Python, Java and JSON lexers and its console
+/// highlighter are gone); Pygments is on by default.
+#[tokio::test]
+async fn shows_code_as_plain_text_without_pygments() {
+    let Some((test_db, context)) = setup(json!({"pygments.enabled": false})).await else {
+        return;
+    };
+    for (language, code, html) in [
+        (
+            "php",
+            "<?php\n$foo = 'bar';",
+            "&lt;?php\n$foo = &#039;bar&#039;;",
+        ),
+        ("json", "{\"a\": 1}", "{&quot;a&quot;: 1}"),
+        ("py", "x = 1", "x = 1"),
+        ("console", "$ ls # all", "$ ls # all"),
+    ] {
+        assert_eq!(
+            answer(
+                &context,
+                json!({"context": "differential", "contents": [format!("```lang={language}\n{code}\n```")]})
+            )
+            .await,
+            json!([{"content": format!(
+                "<div class=\"remarkup-code-block\" data-code-lang=\"{language}\" \
+                 data-sigil=\"remarkup-code-block\"><pre class=\"remarkup-code\">{html}</pre></div>"
+            )}]),
+            "{language}"
+        );
+    }
+    test_db.drop_databases().await;
+    let Some((test_db, context)) = setup(json!({})).await else {
+        return;
+    };
+    let params = json!({"context": "differential", "contents": ["```lang=php\n$x\n```"]});
+    assert!(
+        matches!(query(&context, params.clone()).await, Response::Fallback(_)),
+        "{params}"
+    );
+    test_db.drop_databases().await;
+}
+
 #[tokio::test]
 async fn leaves_phabricator_rules_to_php() {
     let Some((test_db, context)) = setup(json!({"pygments.enabled": true})).await else {
@@ -191,9 +234,11 @@ async fn leaves_phabricator_rules_to_php() {
         // Rules which are not ported, and handles the pages don't load.
         "B12",
         "{PHID-CMIT-abcdefghijklmnopqrst}",
-        // Highlighted by Pygments or PHP's lexers.
+        // Highlighted by Pygments, or PHP's own highlighters.
         "```lang=rust\nfn main() {}\n```",
         "```lang=json\n{}\n```",
+        "```\n$ ls\n```",
+        "```lang=rainbow\nx\n```",
     ] {
         let params = json!({"context": "differential", "contents": ["ok", content]});
         assert!(

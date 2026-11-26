@@ -465,6 +465,12 @@ fn code_blocks_use_the_highlighter() {
             .contains("<pre class=\"remarkup-code\">rust:fn x</pre>"),
         "{output:?}"
     );
+    // Console sessions go to the highlighter too (Pygments, since Bug
+    // 2093445).
     let console = engine.markup(b"```\n$ ls\n```", Mode::Html).output;
-    assert!(String::from_utf8_lossy(console.as_bytes()).contains("class=\"gp\""));
+    assert!(
+        String::from_utf8_lossy(console.as_bytes())
+            .contains("<pre class=\"remarkup-code\">console:$ ls</pre>"),
+        "{console:?}"
+    );
 }

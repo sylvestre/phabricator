@@ -27,7 +27,7 @@ use crate::diff_html::escape;
 use crate::error::PageError;
 
 /// `DifferentialChangesetParser::CACHE_VERSION`.
-const CACHE_VERSION: i64 = 14;
+const CACHE_VERSION: i64 = 15;
 
 /// `DifferentialChangesetParser::HIGHLIGHT_BYTE_LIMIT`.
 const HIGHLIGHT_BYTE_LIMIT: u64 = 262_144;
