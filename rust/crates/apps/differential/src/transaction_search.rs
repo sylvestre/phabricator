@@ -719,6 +719,11 @@ fn type_and_fields(
                 comment.ok_or(MethodError::Unsupported("an inline the viewer can't see"))?;
             Ok((Some("inline"), inline_fields(comment, changesets)?))
         }
+        // Mozilla's AI change (Bug 2091563): the request's new value.
+        "mozilla.ai-change.request" => Ok((
+            Some("ai-change.request"),
+            php::round_trip(&transaction.new_value),
+        )),
         "core:comment" => Ok((Some("comment"), empty())),
         "core:create" => Ok((Some("create"), empty())),
         "core:subscribers" => Ok((Some("subscribers"), edge_operations(transaction)?)),

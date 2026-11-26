@@ -326,6 +326,15 @@ pub fn feed_title(transaction: &Transaction) -> Result<Option<Title>, Unsupporte
             .and_then(status_title)
             .map(|format| pht(format, &[object]))),
         "differential.revision.reviewers" => reviewers_title(transaction).map(Some),
+        // Mozilla's AI change (Bug 2091563).
+        "mozilla.ai-change.request" => Ok(Some(pht(
+            "%s requested approval of an %s in %s.",
+            &[
+                author,
+                text(crate::ai_change::kind_name(new.get("kind"))),
+                object,
+            ],
+        ))),
         "harbormaster:buildable" => buildable_title(
             transaction,
             "%s completed remote builds in %s for %s.",
@@ -1136,6 +1145,32 @@ mod tests {
                 json!({})
             ))
             .is_err()
+        );
+    }
+
+    #[test]
+    fn ai_change_titles() {
+        let request = |kind: Value| {
+            text_of(feed_title(&of(
+                "PHID-DREV-1",
+                "mozilla.ai-change.request",
+                Value::Null,
+                json!({"kind": kind, "changeDiffID": 2}),
+                json!({}),
+            )))
+        };
+        assert_eq!(
+            request(json!("merge-conflict")),
+            "[PHID-USER-alice] requested approval of an AI merge conflict resolution in \
+             [PHID-DREV-1]."
+        );
+        assert_eq!(
+            request(json!("requested-edit")),
+            "[PHID-USER-alice] requested approval of an AI edit in [PHID-DREV-1]."
+        );
+        assert_eq!(
+            request(Value::Null),
+            "[PHID-USER-alice] requested approval of an AI change in [PHID-DREV-1]."
         );
     }
 }

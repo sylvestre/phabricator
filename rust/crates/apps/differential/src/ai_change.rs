@@ -51,9 +51,13 @@ pub fn kind_name(kind: Option<&Value>) -> &'static str {
 /// `getStatus()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
+    /// No request.
     None,
+    /// Requested on the active diff, not approved.
     Pending,
+    /// Approved, on the active diff.
     Approved,
+    /// Requested on another diff than the active one.
     Lapsed,
 }
 
@@ -131,18 +135,13 @@ impl AiChange {
             "approvalEpoch": self.value(KEY_APPROVAL_EPOCH),
         })
     }
-
-    /// The stored data, for the edits which write it back.
-    pub(crate) fn into_data(self) -> Map<String, Value> {
-        self.data
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn change(data: Value) -> AiChange {
+    fn change(data: &Value) -> AiChange {
         AiChange::from_properties(&json!({PROPERTY: data})).unwrap()
     }
 
@@ -150,18 +149,18 @@ mod tests {
     fn status_follows_php() {
         let none = AiChange::from_properties(&json!({})).unwrap();
         assert_eq!(none.status(Some("PHID-DIFF-a")), Status::None);
-        assert_eq!(change(json!([])).status(Some("PHID-DIFF-a")), Status::None);
+        assert_eq!(change(&json!([])).status(Some("PHID-DIFF-a")), Status::None);
         assert_eq!(
-            change(json!(null)).status(Some("PHID-DIFF-a")),
+            change(&json!(null)).status(Some("PHID-DIFF-a")),
             Status::None
         );
         assert!(AiChange::from_properties(&json!({PROPERTY: "x"})).is_err());
 
-        let pending = change(json!({"changeDiffPHID": "PHID-DIFF-a", "approverPHID": null}));
+        let pending = change(&json!({"changeDiffPHID": "PHID-DIFF-a", "approverPHID": null}));
         assert_eq!(pending.status(Some("PHID-DIFF-a")), Status::Pending);
         assert_eq!(pending.status(Some("PHID-DIFF-b")), Status::Lapsed);
         let approved =
-            change(json!({"changeDiffPHID": "PHID-DIFF-a", "approverPHID": "PHID-USER-x"}));
+            change(&json!({"changeDiffPHID": "PHID-DIFF-a", "approverPHID": "PHID-USER-x"}));
         assert_eq!(approved.status(Some("PHID-DIFF-a")), Status::Approved);
         assert_eq!(approved.status(Some("PHID-DIFF-b")), Status::Lapsed);
     }
@@ -181,7 +180,7 @@ mod tests {
                 "approvalEpoch": null,
             })
         );
-        let pending = change(json!({
+        let pending = change(&json!({
             "kind": "merge-conflict",
             "changeDiffID": 2,
             "changeDiffPHID": "PHID-DIFF-a",

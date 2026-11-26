@@ -26,7 +26,9 @@
 //! merged with Mozilla's `inline.done` states of published inline comments.
 //! "Close Revision" (`close`, which `differential.close` applies too). The
 //! stored custom fields ([`custom_fields`]): Mozilla's Bugzilla bug ID and
-//! uplift request, and the auditors. Transactions without effect are
+//! uplift request, and the auditors. Mozilla's AI change request
+//! (`ai-change.request`, [`ai_change`]), without a diff update.
+//! Transactions without effect are
 //! dropped, as the Conduit editor continues on no effect, so arc's
 //! `differential.updaterevision` (the diff and every field of the message)
 //! is ported when the fields with an effect are.
@@ -46,6 +48,7 @@
 //! event listeners only render pages, and the Bugzilla bug ID and uplift
 //! fields only act on their own transactions.
 
+mod ai_change;
 mod commits;
 mod custom_fields;
 mod dependencies;
@@ -289,6 +292,8 @@ enum Action {
     Close,
     Buildable,
     Custom(custom_fields::Field),
+    /// Mozilla's `ai-change.request`.
+    AiChangeRequest,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -308,6 +313,8 @@ struct Wanted {
     buildable: Option<(String, Option<String>)>,
     /// The stored custom fields set.
     custom_fields: Vec<custom_fields::Wanted>,
+    /// The value of an `ai-change.request`.
+    ai_change_request: Option<Value>,
     /// A new title.
     title: Option<String>,
     /// The new summary or test plan, or both for a new revision.
@@ -435,6 +442,10 @@ fn wanted(
                 wanted.texts.push((field, text.clone()));
                 wanted.order.push(Action::Text(field));
             }
+            (Some("ai-change.request"), Some(value)) if wanted.ai_change_request.is_none() => {
+                wanted.ai_change_request = Some(value.clone());
+                wanted.order.push(Action::AiChangeRequest);
+            }
             (Some("update"), Some(value)) if wanted.update.is_none() => {
                 wanted.update = Some(update::parse(value)?);
                 wanted.order.push(Action::Update);
@@ -515,6 +526,13 @@ fn check_combination(wanted: &Wanted, is_new: bool) -> Result<(), MethodError> {
         return Ok(());
     }
     let has = |action| wanted.order.contains(&action);
+    // `DifferentialAIChangeEditorExtension` refuses a request with a diff
+    // update; closing and a buildable's status set properties too.
+    if has(Action::AiChangeRequest)
+        && (has(Action::Update) || has(Action::Close) || has(Action::Buildable))
+    {
+        return Err(MethodError::Unsupported("several actions"));
+    }
     let reviews = has(Action::Review) || has(Action::Author) || has(Action::Reviewers);
     if has(Action::Close) && (reviews || has(Action::Update)) {
         return Err(MethodError::Unsupported("several actions"));
@@ -1351,6 +1369,8 @@ struct Actions {
     inline_state: Option<(usize, inline_state::Planned)>,
     /// The `core:customfield` transactions with an effect.
     custom_fields: Vec<custom_fields::Planned>,
+    /// The `mozilla.ai-change.request` transaction.
+    ai_change_request: Option<ai_change::PlannedRequest>,
 }
 
 /// The `harbormaster:buildable` transaction
@@ -1404,6 +1424,9 @@ impl Actions {
                         .filter(|edit| edit.field() == *field)
                         .map(|edit| &edit.phid),
                 ),
+                Action::AiChangeRequest => {
+                    phids.extend(self.ai_change_request.iter().map(|edit| &edit.phid));
+                }
                 Action::Stack => {}
             }
         }
@@ -2905,12 +2928,13 @@ async fn plan_review_actions(
     Ok((review, author))
 }
 
-/// The inline state, closing and buildable status transactions, and the
-/// properties they set.
+/// The inline state, closing, buildable status and AI change request
+/// transactions, and the properties they set.
 type StateEdits = (
     Option<(usize, inline_state::Planned)>,
     Option<String>,
     Option<BuildableStatus>,
+    Option<ai_change::PlannedRequest>,
     Vec<(String, Value)>,
 );
 
@@ -2958,7 +2982,15 @@ async fn plan_states(
         }
         None => None,
     };
-    Ok((inline_state, close, buildable, properties))
+    let ai_change_request =
+        plan_ai_change(request, wanted, revision, (actor, &mut properties)).await?;
+    Ok((
+        inline_state,
+        close,
+        buildable,
+        ai_change_request,
+        properties,
+    ))
 }
 
 /// The custom fields with an effect. A reviewer edit with a new diff of an
@@ -2982,6 +3014,21 @@ async fn plan_custom_fields(
         }
     }
     Ok(planned)
+}
+
+/// Mozilla's AI change request, and the property it sets.
+async fn plan_ai_change(
+    request: &ApiRequest<'_>,
+    wanted: &Wanted,
+    revision: &Revision,
+    (actor, property_edits): (&str, &mut Vec<(String, Value)>),
+) -> Result<Option<ai_change::PlannedRequest>, MethodError> {
+    let Some(value) = &wanted.ai_change_request else {
+        return Ok(None);
+    };
+    let planned = ai_change::plan_request(request, revision, value).await?;
+    property_edits.push(ai_change::request_property(&planned, actor, request.now));
+    Ok(Some(planned))
 }
 
 /// How an edit is made.
@@ -3041,7 +3088,7 @@ async fn plan_wanted(
     .await?;
     let (review, (author_action, void)) =
         plan_review_actions(request, &wanted, (&mut revision, &mut facts), &actor).await?;
-    let (inline_state, close, buildable, property_edits) = plan_states(
+    let (inline_state, close, buildable, ai_change_request, property_edits) = plan_states(
         request,
         &mut wanted,
         (&mut revision, &facts),
@@ -3082,6 +3129,7 @@ async fn plan_wanted(
         buildable,
         inline_state,
         custom_fields: custom,
+        ai_change_request,
     };
     // The engine's `core:create` comes first.
     let create = is_new.then(transaction_phid);
@@ -3468,7 +3516,7 @@ async fn write_action(
                 insert_transaction(request, plan, connection, row).await?;
             }
         }
-        Action::Custom(_) | Action::Buildable | Action::Close => {
+        Action::Custom(_) | Action::Buildable | Action::Close | Action::AiChangeRequest => {
             write_metadata_action(request, plan, action, connection).await?;
         }
         Action::Title => {
@@ -3535,7 +3583,7 @@ async fn write_action(
 }
 
 /// The transaction of an action with its own metadata: closing, a
-/// buildable's status, a custom field.
+/// buildable's status, a custom field, an AI change request.
 async fn write_metadata_action(
     request: &ApiRequest<'_>,
     plan: &Plan,
@@ -3566,6 +3614,12 @@ async fn write_metadata_action(
                     &*metadata,
                 );
                 insert_transaction(request, plan, connection, row).await?;
+            }
+        }
+        Action::AiChangeRequest => {
+            if let Some(edit) = &actions.ai_change_request {
+                let metadata = group_metadata(plan, json!({}));
+                ai_change::write_request(request, plan, edit, &metadata, connection).await?;
             }
         }
         Action::Close => {
