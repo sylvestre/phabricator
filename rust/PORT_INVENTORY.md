@@ -188,8 +188,8 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 | Method | PHP status | Port | Note |
 |---|---|---|---|
-| `feed.for_email.query` | unstable | shadowed |  |
-| `feed.for_email.query_id` | unstable | shadowed |  |
+| `feed.for_email.query` | unstable | shadowed | bug summaries fetched with the API key in the `X-Bugzilla-API-Key` header (Bug 2096675) |
+| `feed.for_email.query_id` | unstable | shadowed | as `feed.for_email.query` |
 | `feed.for_email.status` | unstable | shadowed |  |
 | `feed.for_email.status_id` | unstable | shadowed |  |
 

@@ -1766,7 +1766,6 @@ dependencies = [
 name = "phab-app-feed"
 version = "0.1.0"
 dependencies = [
- "form_urlencoded",
  "jiff",
  "pcre2",
  "phab-app-differential",

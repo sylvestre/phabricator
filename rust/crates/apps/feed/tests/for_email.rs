@@ -53,17 +53,20 @@ async fn bugzilla() -> String {
                         Ok(read) => request.extend_from_slice(&buffer[..read]),
                     }
                 }
-                let request = String::from_utf8_lossy(&request);
+                let request = String::from_utf8_lossy(&request).to_lowercase();
                 let path = request.split(' ').nth(1).unwrap_or("");
-                let (status, body) =
-                    if path == "/rest/bug/123?include_fields=summary&api_key=secret" {
-                        (
-                            "200 OK",
-                            r#"{"bugs":[{"summary":"Crash in éditeur / parser"}]}"#,
-                        )
-                    } else {
-                        ("404 Not Found", r#"{"error":true}"#)
-                    };
+                // The key comes in a header, never in the URL (Bug 2096675).
+                let has_key = request.contains("\r\nx-bugzilla-api-key: secret\r\n")
+                    && request.contains("\r\naccept: application/json\r\n")
+                    && request.contains("\r\nuser-agent: phabricator\r\n");
+                let (status, body) = if path == "/rest/bug/123?include_fields=summary" && has_key {
+                    (
+                        "200 OK",
+                        r#"{"bugs":[{"summary":"Crash in éditeur / parser"}]}"#,
+                    )
+                } else {
+                    ("404 Not Found", r#"{"error":true}"#)
+                };
                 let response = format!(
                     "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\
                      Connection: close\r\n\r\n{body}",

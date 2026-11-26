@@ -8,7 +8,6 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-form_urlencoded.workspace = true
 jiff.workspace = true
 pcre2.workspace = true
 phab-app-differential.workspace = true
