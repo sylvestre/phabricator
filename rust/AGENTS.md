@@ -249,9 +249,10 @@ buildables: build commands (restart, abort, pause, resume) as
 `message/*` transactions with their publish task, target messages
 (`pass`, `fail`), build and buildable status changes, new targets with
 their tasks, artifact releases and buildable messages, and the buildable
-status Differential publishes to the revision (the Rust revision
-editor's `harbormaster:buildable` transaction, as the Harbormaster
-application, with its Herald rules); and the targets of
+status Differential publishes to the revision when the diff is its
+active one (the Rust revision editor's `harbormaster:buildable`
+transaction, as the Harbormaster application, with its Herald rules);
+and the targets of
 "Make HTTP Request" steps and Arcanist autotargets. They take PHP's
 `harbormaster.build:<id>` and `harbormaster.buildable:<id>` locks. An HTTP
 step whose URI PHP wouldn't fetch (`phabricator.silent`, a domain which

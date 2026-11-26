@@ -921,13 +921,19 @@ impl Sim {
     }
 
     /// `publishBuildable()` with `DifferentialBuildableEngine`: nothing to
-    /// do for diffs without a revision, manual buildables, buildables still
-    /// building, and when the revision's buildable status stays the same;
-    /// otherwise the revision's editor sets it ([`Op::Publish`]).
+    /// do for diffs without a revision, diffs which aren't the revision's
+    /// active one (Mozilla's Bug 2092718: a superseded diff's builds,
+    /// aborted or not, don't show on the revision), manual buildables,
+    /// buildables still building, and when the revision's buildable status
+    /// stays the same; otherwise the revision's editor sets it
+    /// ([`Op::Publish`]).
     fn publish_buildable(&mut self) -> Result<(), EngineError> {
         let Some(revision) = &self.diff.revision else {
             return Ok(());
         };
+        if revision.active_diff_phid.as_deref() != Some(self.diff.phid.as_str()) {
+            return Ok(());
+        }
         if self.buildable.is_manual || self.buildable.status == buildable_status::BUILDING {
             return Ok(());
         }

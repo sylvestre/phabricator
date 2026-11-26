@@ -133,6 +133,8 @@ pub(super) struct RevisionRow {
     pub(super) repository_phid: Option<String>,
     /// `properties`, decoded.
     pub(super) properties: Value,
+    /// `activeDiffPHID`.
+    pub(super) active_diff_phid: Option<String>,
 }
 
 /// A `harbormaster_buildstep` row.
@@ -363,7 +365,7 @@ pub(super) async fn buildable_object(
 /// viewer: with its repository attached if it still exists.
 async fn load_revision(database: &Database, id: i64) -> Result<Option<RevisionRow>, EngineError> {
     let Some(row) = phab_db::sqlx::query(&format!(
-        "SELECT id, phid, repositoryPHID, properties FROM {} WHERE id = ?",
+        "SELECT id, phid, repositoryPHID, properties, activeDiffPHID FROM {} WHERE id = ?",
         database.table("differential", "differential_revision")
     ))
     .bind(id)
@@ -393,6 +395,7 @@ async fn load_revision(database: &Database, id: i64) -> Result<Option<RevisionRo
         phid: rows::text(&row, "phid")?,
         repository_phid,
         properties: serde_json::from_str(&properties).unwrap_or(Value::Null),
+        active_diff_phid: rows::opt_text(&row, "activeDiffPHID")?,
     }))
 }
 

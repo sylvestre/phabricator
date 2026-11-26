@@ -27,7 +27,8 @@
 //!   (`buildable` plan behavior), and Differential's side of publishing a
 //!   buildable (`DifferentialBuildableEngine::publishBuildable()`): the
 //!   revision's `harbormaster:buildable` transaction, through Differential's
-//!   editor ([`phab_app_differential::edit::publish_buildable()`]), planned
+//!   editor ([`phab_app_differential::edit::publish_buildable()`]), only
+//!   for the revision's active diff (Mozilla's Bug 2092718), planned
 //!   with the rest before anything is written, and written in its own
 //!   transaction where PHP's engine publishes.
 //!

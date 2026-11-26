@@ -511,6 +511,55 @@ async fn publishes_buildables_to_revisions() {
     fixture.finish().await;
 }
 
+/// A buildable of a diff the revision no longer has as its active one
+/// (Mozilla's Bug 2092718, `DifferentialBuildableEngineTestCase`): it
+/// fails, but nothing is published to the revision, whose buildable
+/// status stays as it was.
+#[tokio::test]
+async fn leaves_buildables_of_superseded_diffs_unpublished() {
+    let Some(fixture) = fixture().await else {
+        return;
+    };
+    fixture
+        .execute(
+            "UPDATE `{ns}_differential`.differential_revision SET activeDiffPHID = 'PHID-DIFF-2'",
+        )
+        .await;
+    fixture.message("PHID-HMBT-run", "fail").await;
+    let id = fixture
+        .schedule("HarbormasterBuildWorker", &json!({"buildID": "1"}))
+        .await;
+    succeeded(fixture.run(id).await);
+    assert_eq!(
+        fixture
+            .value("SELECT buildableStatus FROM `{ns}_harbormaster`.harbormaster_buildable")
+            .await,
+        json!("failed")
+    );
+    assert_eq!(
+        fixture
+            .value(
+                "SELECT CAST(COUNT(*) AS CHAR) FROM `{ns}_differential`.differential_transaction"
+            )
+            .await,
+        json!("0")
+    );
+    assert_eq!(
+        fixture
+            .value("SELECT properties FROM `{ns}_differential`.differential_revision")
+            .await,
+        json!("{}")
+    );
+    let queued = fixture.queued(id).await;
+    assert!(
+        queued
+            .iter()
+            .all(|(class, ..)| class != "PhabricatorApplicationTransactionPublishWorker"),
+        "{queued:?}"
+    );
+    fixture.finish().await;
+}
+
 /// Herald rules Differential's editor doesn't evaluate leave the publishing
 /// of the buildable, and the whole task, to PHP.
 #[tokio::test]
