@@ -1,6 +1,7 @@
 //! Differential objects, loaded the way the PHP queries load them and
 //! described for the policy filter.
 
+pub mod ai_change;
 pub mod buckets;
 pub mod changeset_search;
 pub mod commit;

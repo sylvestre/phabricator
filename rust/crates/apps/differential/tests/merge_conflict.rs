@@ -223,9 +223,11 @@ async fn custom_fields(context: &Context, id: i64) -> Map<String, Value> {
         .as_object()
         .expect("fields")
         .clone();
+    // The custom fields, without the extensions which follow them.
     let custom: Map<String, Value> = fields
         .into_iter()
         .skip_while(|(key, _)| key != "bugzilla.bug-id")
+        .filter(|(key, _)| key != "aiChange")
         .collect();
     let query = call(context, "differential.query", json!({"ids": [id]})).await;
     let mut auxiliary = query[0]["auxiliary"]

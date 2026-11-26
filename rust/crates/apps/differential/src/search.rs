@@ -6,8 +6,9 @@
 //! `projects` and date constraints (with plain values, not usernames nor
 //! functions like `viewer()`; projects without subprojects or
 //! milestones), the builtin orders but `relevance`, paging, every field
-//! and every attachment. `query`, `affectedPaths`, order vectors and saved
-//! queries are left to PHP (`MethodError::Unsupported`).
+//! (Mozilla's `aiChange` too) and every attachment. `query`,
+//! `affectedPaths`, order vectors and saved queries are left to PHP
+//! (`MethodError::Unsupported`).
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -18,6 +19,7 @@ use phab_core::Phid;
 use phab_db::{Database, rows};
 use serde_json::{Map, Value, json};
 
+use crate::ai_change::{self, AiChange};
 use crate::merge_conflict;
 use crate::storage::{self, Revision};
 
@@ -1244,6 +1246,13 @@ impl<'a> PageData<'a> {
             map.insert(
                 "uplift.request".to_owned(),
                 uplift_request(custom(UPLIFT_FIELD)),
+            );
+            // DifferentialAIChangeSearchEngineExtension, after the custom
+            // fields (9000) and Mozilla's reviewers extension (9001).
+            let ai_change = AiChange::from_properties(&extra.properties)?;
+            map.insert(
+                ai_change::CONDUIT_KEY.to_owned(),
+                ai_change.conduit_value(revision.active_diff_phid.as_ref().map(Phid::as_str)),
             );
         }
         Ok(json!({

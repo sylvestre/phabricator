@@ -81,7 +81,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `differential.query` | frozen | shadowed |  |
 | `differential.querydiffs` | frozen | shadowed |  |
 | `differential.revision.edit` | stable | ported, not routed | write; ported for the actions `parity/writes/` covers (with Mozilla's `inline.done`, `parity/writes/inline-done.json`), waits for the user's go-ahead (moz-phab, Lando). |
-| `differential.revision.search` | stable | shadowed |  |
+| `differential.revision.search` | stable | shadowed | with Mozilla's `fields.aiChange` (`DifferentialAIChangeSearchEngineExtension`, Bug 2091563; `parity/ai-change.json`, after `scripts/seed-dev-ai-change.sql`) |
 | `differential.setdiffproperty` | stable | Rust |  |
 | `differential.updaterevision` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the update and field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: revisions the caller doesn't own, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 

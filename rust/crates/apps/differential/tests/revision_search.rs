@@ -308,3 +308,78 @@ async fn leaves_the_rest_to_php() {
 
     test_db.drop_databases().await;
 }
+
+/// The `aiChange` field (`DifferentialAIChangeSearchEngineExtension`):
+/// `none` without the property, else its status for the active diff.
+#[tokio::test]
+async fn returns_the_ai_change() {
+    let Some((test_db, context)) = setup().await else {
+        return;
+    };
+    let pending = json!({
+        "mozilla.ai-change": {
+            "kind": "merge-conflict", "changeDiffID": 2, "changeDiffPHID": "PHID-DIFF-2",
+            "baseDiffID": 1, "summary": "Kept the beta API.", "confidence": "high",
+            "details": null, "requesterPHID": "PHID-USER-bob", "requestEpoch": 1_700_000_000,
+            "approverPHID": null, "approvalEpoch": null,
+        }
+    });
+    let mut approved = pending.clone();
+    approved["mozilla.ai-change"]["changeDiffPHID"] = json!("PHID-DIFF-3");
+    approved["mozilla.ai-change"]["approverPHID"] = json!("PHID-USER-alice");
+    approved["mozilla.ai-change"]["approvalEpoch"] = json!(1_700_000_100);
+    let mut lapsed = pending.clone();
+    lapsed["mozilla.ai-change"]["changeDiffPHID"] = json!("PHID-DIFF-1");
+    for (id, properties) in [(2, &pending), (3, &approved), (4, &lapsed)] {
+        test_db
+            .execute(&format!(
+                "UPDATE `{{ns}}_differential`.differential_revision SET properties = \
+                 '{properties}' WHERE id = {id}"
+            ))
+            .await;
+    }
+    let Response::Envelope(Envelope {
+        result,
+        error_code: None,
+        ..
+    }) = query(&context, json!({"ids": [1, 2, 3, 4]})).await
+    else {
+        panic!("expected an answer");
+    };
+    let found: Vec<(i64, Value)> = result["data"]
+        .as_array()
+        .expect("data")
+        .iter()
+        .map(|revision| {
+            let fields = revision["fields"].as_object().expect("fields");
+            // The extension's field comes last.
+            assert_eq!(fields.keys().last().map(String::as_str), Some("aiChange"));
+            (revision["id"].as_i64().unwrap(), fields["aiChange"].clone())
+        })
+        .collect();
+    let stored = |status: &str, approver: Value, epoch: Value| {
+        json!({
+            "status": status, "kind": "merge-conflict", "changeDiffID": 2, "baseDiffID": 1,
+            "requesterPHID": "PHID-USER-bob", "requestEpoch": 1_700_000_000,
+            "approverPHID": approver, "approvalEpoch": epoch,
+        })
+    };
+    let none = json!({
+        "status": "none", "kind": null, "changeDiffID": null, "baseDiffID": null,
+        "requesterPHID": null, "requestEpoch": null, "approverPHID": null,
+        "approvalEpoch": null,
+    });
+    assert_eq!(
+        found,
+        vec![
+            (4, stored("lapsed", Value::Null, Value::Null)),
+            (
+                3,
+                stored("approved", json!("PHID-USER-alice"), json!(1_700_000_100))
+            ),
+            (2, stored("pending", Value::Null, Value::Null)),
+            (1, none),
+        ]
+    );
+    test_db.drop_databases().await;
+}
