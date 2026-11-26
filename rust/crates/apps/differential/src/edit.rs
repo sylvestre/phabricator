@@ -22,7 +22,8 @@
 //! or tags. Inline comments ([`inlines`]): the `inline` transactions, and
 //! the actor's drafts the comment form publishes ([`apply_with_drafts()`]),
 //! with any of these, and the "Done" states marked in a draft which the
-//! first comment, inline comment or update publishes ([`inline_state`]).
+//! first comment, inline comment or update publishes ([`inline_state`]),
+//! merged with Mozilla's `inline.done` states of published inline comments.
 //! "Close Revision" (`close`, which `differential.close` applies too). The
 //! stored custom fields ([`custom_fields`]): Mozilla's Bugzilla bug ID and
 //! uplift request, and the auditors. Transactions without effect are
@@ -335,9 +336,14 @@ struct Wanted {
     form_comment: bool,
     /// The texts of the inline comments the edit publishes, once planned.
     inline_texts: Vec<String>,
-    /// How many actions come before the first comment, inline comment or
-    /// diff update (that one included), which the inline state follows.
+    /// The `inline.done` transactions.
+    inline_done: Vec<inline_state::Done>,
+    /// How many actions come before the first comment, inline comment,
+    /// diff update (that one included) or `inline.done`, which the inline
+    /// state follows.
     state_trigger: Option<usize>,
+    /// Whether that first one is an `inline.done`.
+    state_explicit_first: bool,
     /// Whether transactions without effect are dropped
     /// (`setContinueOnNoEffect()`), once planned.
     continues: bool,
@@ -382,9 +388,8 @@ fn wanted(
                 wanted.comment_position = wanted.inlines.len();
                 wanted.state_trigger.get_or_insert(wanted.order.len());
             }
-            (Some("inline"), Some(value)) if !drafts => {
-                wanted.inlines.push(inlines::parse(value)?);
-                wanted.state_trigger.get_or_insert(wanted.order.len());
+            (Some(kind @ ("inline" | "inline.done")), Some(value)) if !drafts => {
+                wanted_inline(&mut wanted, kind, value)?;
             }
             // Reviewing as the defaults; a list of reviewers is left to PHP.
             (Some(kind @ ("accept" | "reject" | "resign")), Some(Value::Bool(true)))
@@ -453,6 +458,22 @@ fn wanted(
     Ok(wanted)
 }
 
+/// An `inline` or an `inline.done` transaction, either of which may
+/// expand the inline state.
+fn wanted_inline(wanted: &mut Wanted, kind: &str, value: &Value) -> Result<(), MethodError> {
+    if kind == "inline" {
+        wanted.inlines.push(inlines::parse(value)?);
+        wanted.state_trigger.get_or_insert(wanted.order.len());
+        return Ok(());
+    }
+    wanted.inline_done.push(inline_state::parse_done(value)?);
+    if wanted.state_trigger.is_none() {
+        wanted.state_trigger = Some(wanted.order.len());
+        wanted.state_explicit_first = true;
+    }
+    Ok(())
+}
+
 /// The transactions of a new revision: a diff and a title, which PHP
 /// requires, and lists or texts. Comments, actions and stack edits of new
 /// revisions are left to PHP.
@@ -473,8 +494,13 @@ fn check_creation(wanted: &Wanted) -> Result<(), MethodError> {
                 | Action::Custom(_)
         )
     };
-    // Inline comments "can not be added while creating a revision".
-    if wanted.comment.is_some() || !wanted.inlines.is_empty() || !wanted.order.iter().all(ported) {
+    // Inline comments "can not be added while creating a revision", nor
+    // marked as done.
+    if wanted.comment.is_some()
+        || !wanted.inlines.is_empty()
+        || !wanted.inline_done.is_empty()
+        || !wanted.order.iter().all(ported)
+    {
         return Err(MethodError::Unsupported("creations not ported"));
     }
     Ok(())
@@ -2889,16 +2915,25 @@ type StateEdits = (
 );
 
 /// The transactions which set states: the inline state the first comment,
-/// inline comment or update expands (`expandTransaction()`), closing and
-/// a buildable's status.
+/// inline comment, update or `inline.done` expands (`expandTransaction()`)
+/// with the `inline.done` states, closing and a buildable's status.
 async fn plan_states(
     request: &ApiRequest<'_>,
     wanted: &mut Wanted,
     (revision, facts): (&mut Revision, &Facts),
     (actor, is_new): (&str, bool),
 ) -> Result<StateEdits, MethodError> {
+    // An inline state requires CAN_EDIT (`getLegacyRequiredCapabilities()`),
+    // even without effect.
+    if !wanted.inline_done.is_empty() && !can_edit(request, revision).await? {
+        return Err(MethodError::Unsupported("edits the actor may not make"));
+    }
+    let states = inline_state::Wanted {
+        explicit: &wanted.inline_done,
+        explicit_first: wanted.state_explicit_first,
+    };
     let inline_state = match wanted.state_trigger {
-        Some(at) if !is_new => inline_state::plan(request, revision, actor)
+        Some(at) if !is_new => inline_state::plan(request, revision, actor, &states)
             .await?
             .map(|state| (at, state)),
         _ => None,
