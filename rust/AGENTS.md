@@ -3,7 +3,7 @@
 How to build, run and roll out `phab-server`, the Rust service that takes
 over Phabricator one route at a time. [`README.md`](README.md) explains the
 design, [`TESTING.md`](TESTING.md) the tests a component needs before it
-serves traffic.
+serves traffic. [`DEPLOY.md`](DEPLOY.md) is the one-page version.
 
 ## What gets deployed
 
