@@ -18,7 +18,7 @@ Installed applications: every application in `src/applications/` and `moz-extens
 
 | | Rust | shadowed | partial | ported, not routed | not ported | total |
 |---|---|---|---|---|---|---|
-| Conduit methods | 28 | 76 | – | 13 | 3 | 120 |
+| Conduit methods | 39 | 76 | – | 2 | 3 | 120 |
 | Web routes | 55 | – | 84 | 10 | 229 | 378 |
 
 All 3 methods not ported write.
@@ -63,12 +63,12 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Method | PHP status | Port | Note |
 |---|---|---|---|
 | `differential.changeset.search` | stable | shadowed |  |
-| `differential.close` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the `close` action through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
-| `differential.createcomment` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the action and comment through the Rust editor (`legacy_edit.rs`); left to PHP: `attach_inlines` with draft inline comments, revisions the caller can't edit, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
+| `differential.close` | frozen | Rust | write (frozen; `differential.revision.edit` replaces it): the `close` action through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
+| `differential.createcomment` | frozen | Rust | write (frozen; `differential.revision.edit` replaces it): the action and comment through the Rust editor (`legacy_edit.rs`); left to PHP: `attach_inlines` with draft inline comments, revisions the caller can't edit, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 | `differential.creatediff` | stable | Rust | with Mozilla's `properties` (Bug 2074873); floats in property values and names the unique key compares as the same go to PHP |
-| `differential.createinline` | stable | ported, not routed | write: draft inline comments (Lando, moz-phab), the comment's row as PHP saves it. Left to PHP: values PHP casts or compares loosely, paths several files of the diff have, revisions the caller can't see. Scenarios in `parity/writes/inline.json`. |
+| `differential.createinline` | stable | Rust | write: draft inline comments (Lando, moz-phab), the comment's row as PHP saves it. Left to PHP: values PHP casts or compares loosely, paths several files of the diff have, revisions the caller can't see. Scenarios in `parity/writes/inline.json`. |
 | `differential.createrawdiff` | stable | Rust | write; `viewPolicy` too (object and custom policies left to PHP). |
-| `differential.createrevision` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the commit message field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
+| `differential.createrevision` | frozen | Rust | write (frozen; `differential.revision.edit` replaces it): the commit message field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 | `differential.diff.search` | stable | shadowed |  |
 | `differential.getalldiffs` | deprecated | shadowed |  |
 | `differential.getcommitmessage` | stable | shadowed |  |
@@ -83,7 +83,7 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | `differential.revision.edit` | stable | ported, not routed | write; ported for the actions `parity/writes/` covers (with Mozilla's `inline.done`, `parity/writes/inline-done.json`, and `ai-change.request` and `ai-change.approve`, `parity/writes/ai-change.json` after `scripts/seed-dev-ai-change.sql`), waits for the user's go-ahead (moz-phab, Lando). |
 | `differential.revision.search` | stable | shadowed | with Mozilla's `fields.aiChange` (`DifferentialAIChangeSearchEngineExtension`, Bug 2091563; `parity/ai-change.json`, after `scripts/seed-dev-ai-change.sql`) |
 | `differential.setdiffproperty` | stable | Rust |  |
-| `differential.updaterevision` | frozen | ported, not routed | write (frozen; `differential.revision.edit` replaces it): the update and field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: revisions the caller doesn't own, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
+| `differential.updaterevision` | frozen | Rust | write (frozen; `differential.revision.edit` replaces it): the update and field transactions through the Rust editor (`legacy_edit.rs`); left to PHP: revisions the caller doesn't own, what the editor leaves to PHP. Scenarios in `parity/writes/legacy.json`. |
 
 ### Diffusion
 
@@ -152,19 +152,19 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 | Method | PHP status | Port | Note |
 |---|---|---|---|
 | `harbormaster.artifact.search` | stable | shadowed |  |
-| `harbormaster.build.edit` | stable | ported, not routed | write: there are no edit types (PHP's MFA extension is disabled, so `mfa` is unknown, as in PHP); edits without transactions save the build and queue the publish task, and unknown builds and types are errors. Left to PHP: creations, builds the viewer can't see, parameters Lisk would encode differently. |
+| `harbormaster.build.edit` | stable | Rust | write: there are no edit types (PHP's MFA extension is disabled, so `mfa` is unknown, as in PHP); edits without transactions save the build and queue the publish task, and unknown builds and types are errors. Left to PHP: creations, builds the viewer can't see, parameters Lisk would encode differently. |
 | `harbormaster.build.search` | stable | shadowed |  |
-| `harbormaster.buildable.edit` | stable | ported, not routed | write: as `harbormaster.build.edit`, for buildables. |
+| `harbormaster.buildable.edit` | stable | Rust | write: as `harbormaster.build.edit`, for buildables. |
 | `harbormaster.buildable.search` | stable | shadowed |  |
 | `harbormaster.buildplan.edit` | stable | Rust | write: `name` and `behavior.*` of existing plans the actor can edit (no mail, feed or Herald). Left to PHP: creations, policies, projects, subscribers, empty names, edits without effect. |
 | `harbormaster.buildplan.search` | stable | shadowed |  |
-| `harbormaster.createartifact` | stable | ported, not routed | write; waits for a CI or Lando contract run. |
+| `harbormaster.createartifact` | stable | Rust | write; no CI client on the dev stack: verified by write parity only. |
 | `harbormaster.log.search` | stable | shadowed |  |
-| `harbormaster.queryautotargets` | stable | ported, not routed | write (creates the autotargets it returns); waits for a CI contract run. |
+| `harbormaster.queryautotargets` | stable | Rust | write (creates the autotargets it returns); no CI client on the dev stack: verified by write parity only. |
 | `harbormaster.querybuildables` | stable | shadowed |  |
 | `harbormaster.querybuilds` | deprecated | shadowed |  |
-| `harbormaster.sendmessage` | stable | ported, not routed | write; waits for a Lando or CI contract run. |
-| `harbormaster.step.edit` | stable | ported, not routed | write: the text and select custom fields of the step implementations (`custom.*`, `core:customfield` into `details`) of steps the actor can edit, and edits without transactions. Left to PHP: creations, credentials, unknown implementations, steps the viewer can't see or edit. |
+| `harbormaster.sendmessage` | stable | Rust | write; no CI client on the dev stack: verified by write parity only. |
+| `harbormaster.step.edit` | stable | Rust | write: the text and select custom fields of the step implementations (`custom.*`, `core:customfield` into `details`) of steps the actor can edit, and edits without transactions. Left to PHP: creations, credentials, unknown implementations, steps the viewer can't see or edit. |
 | `harbormaster.step.search` | stable | shadowed |  |
 | `harbormaster.target.search` | stable | shadowed |  |
 
@@ -791,6 +791,6 @@ Web routes count each PHP route once; a Diffusion route stands for its three spe
 
 ## Routing what is ported
 
-Every read-only method ported is routed. The "ported, not routed" methods write and wait for a contract run (`differential.revision.edit` with moz-phab and Lando, the Harbormaster methods CI and Lando call) or the login review (`auth.logout`).
+Every method ported is routed, except `differential.revision.edit`, which waits for the moz-phab and Lando contract runs, and `auth.logout`, which waits for the login review. The Harbormaster methods CI and Lando call are verified by write parity only: the dev stack has no CI client.
 
 Rebuild this file's tables when routes or methods change: the counts come from the code, not from usage. Usage counts (nginx logs, `conduit_methodcalllog`, RUST_PORT_PLAN.md §2) should order what is ported next.

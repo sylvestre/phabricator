@@ -14,8 +14,9 @@ For each side, the script resets the working copy to its first commit,
 runs `setup` and `command` there with fixed Git dates (so both sides make
 the same commits), records the rows added and removed, as
 `write-parity.py` does, and restores the databases. The PHP side runs with
-nginx as it is; the Rust side runs with `--methods` added to the write
-location of `rust/nginx/rust-routes.conf`, which is put back afterwards.
+`--methods` taken out of the write location of
+`rust/nginx/rust-routes.conf`, the Rust side with them in it; the file is
+put back afterwards.
 
 The client's home holds an `.arcrc` with `token` for the stack, a Git
 identity, and moz-phab's configuration without updates nor telemetry. Its output is
@@ -100,13 +101,19 @@ def reload_nginx():
     time.sleep(1)
 
 
-def route_to_rust(original, methods):
-    pattern = "|".join(re.escape(m) for m in methods)
-    routed, count = WRITE_LOCATION.subn(
-        lambda match: f"{match.group(1)}|{pattern})", original, count=1)
+def routed(original, methods, to_rust):
+    """The routes with `methods` in the write location (`to_rust`) or out
+    of it."""
+    def edit(match):
+        names = [name for name in match.group(1)[len("location ~ ^/api/("):].split("|")
+                 if name.replace("\\", "") not in methods]
+        if to_rust:
+            names += [re.escape(m) for m in methods]
+        return "location ~ ^/api/(" + "|".join(names) + ")"
+    edited, count = WRITE_LOCATION.subn(edit, original, count=1)
     if count != 1:
         raise SystemExit("no write location in rust-routes.conf")
-    return routed
+    return edited
 
 
 def client_home(token):
@@ -202,8 +209,8 @@ def main():
                     results = []
                     for side in ("php", "rust"):
                         with open(ROUTES, "w") as routes:
-                            routes.write(original if side == "php" else
-                                         route_to_rust(original, methods))
+                            routes.write(routed(original, methods,
+                                                side == "rust"))
                         reload_nginx()
                         results.append(run_side(scenario, args.workdir, env,
                                                 saved, before, known))
