@@ -247,27 +247,28 @@ async fn author_projects(
 
 /// The changesets of the active diff, in ID order (`loadChangesets()`),
 /// with their hunks, each with its absolute repository path
-/// (`getAbsoluteRepositoryPathForChangeset()`).
+/// (`getAbsoluteRepositoryPathForChangeset()`). As in PHP's
+/// `needActiveDiffs()`, the active diff is the revision's diff with the
+/// highest ID, not `activeDiffPHID`. The diff an update attaches isn't
+/// the revision's yet: it counts too.
 async fn changesets(
     database: &Database,
     revision: &Revision,
 ) -> Result<Vec<(String, Changeset)>, MethodError> {
-    let Some(diff) = &revision.active_diff_phid else {
-        return Err(MethodError::Unsupported(
-            "Herald diff fields of revisions without diffs",
-        ));
-    };
     let sql = format!(
-        "SELECT id, sourceControlPath FROM {} WHERE phid = ?",
+        "SELECT id, sourceControlPath FROM {} WHERE (revisionID = ? AND ? > 0) OR phid = ? \
+         ORDER BY id DESC LIMIT 1",
         database.table("differential", "differential_diff")
     );
     let Some(row) = phab_db::sqlx::query(&sql)
-        .bind(diff.as_str())
+        .bind(revision.id)
+        .bind(revision.id)
+        .bind(revision.active_diff_phid.as_ref().map(Phid::as_str))
         .fetch_optional(database.pool())
         .await?
     else {
         return Err(MethodError::Unsupported(
-            "Herald diff fields of missing diffs",
+            "Herald diff fields of revisions without diffs",
         ));
     };
     // The diff's path is a URI's: only plain paths are ported.
