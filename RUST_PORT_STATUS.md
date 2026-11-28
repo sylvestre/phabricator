@@ -1039,3 +1039,24 @@ shows only the known presentation gaps. Workspace tests: 1519 passed.
 Bugs the comparisons caught: diffs no one may see were accepted; the attach form didn't
 subscribe the actor nor mark the default diff (`core.default`); Herald edits upgraded
 `configVersion` (PHP reloads the rule first); dry runs skipped already-applied rules.
+
+## 2026-11-28: AI change review (Bug 2091563)
+
+- `differential.revision.search` returns `fields.aiChange` (none, pending, approved,
+  lapsed); `differential.revision.edit` takes `ai-change.request` and
+  `ai-change.approve` (with PHP's checks, combined with accept too); the revision page
+  shows the AI change box and the "I checked the AI change" checkbox, whose comment form
+  post is ported. `feed.for_email.*` sends the Bugzilla key as a header (Bug 2096675).
+- Left to PHP: refused requests and approvals (PHP's error messages), approvals by
+  daemons, two AI change transactions in one edit or with update/close/buildables, the
+  mail of these edits, unusual stored values.
+- Herald's diff fields now use the revision's highest-ID diff, as PHP's
+  `needActiveDiffs()`; `activeDiffPHID` differs only when a revision has a newer diff
+  than its active one.
+- The dev seed (`seed-dev-ai-change.sql`) had stored PHIDs as MySQL binary JSON and
+  properties in MySQL's JSON spacing; both are fixed, and the older diff is on D52.
+
+Verified against PHP, 0 different: Conduit writes 412 same / 236 to PHP before the seed
+fix, then the 46 seed-affected scenarios same or to PHP; web writes 104 / 94, then the
+15 likewise; Herald web writes (admin) 18 / 9; workers 55 / 14; AI change writes 6 / 22,
+web 2 / 3; shadow replay 0 differed. Workspace tests: 1548 passed.
