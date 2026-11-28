@@ -1060,3 +1060,25 @@ Verified against PHP, 0 different: Conduit writes 412 same / 236 to PHP before t
 fix, then the 46 seed-affected scenarios same or to PHP; web writes 104 / 94, then the
 15 likewise; Herald web writes (admin) 18 / 9; workers 55 / 14; AI change writes 6 / 22,
 web 2 / 3; shadow replay 0 differed. Workspace tests: 1548 passed.
+
+## 2026-11-28 (later): routing what is verified
+
+- Web (opt-in users): the diff forms (create, update, attach), the Herald rule editor,
+  new rules, webhook test and key, project members/watchers/silence/subproject warning,
+  dashboard and panel archiving, panel and portal renaming, build commands: 17 routes,
+  now "partial" (what Rust doesn't port is replayed against PHP with its body).
+- Conduit: `differential.createinline`, the legacy `close`, `createcomment`,
+  `createrevision`, `updaterevision`, and `harbormaster.build.edit`, `buildable.edit`,
+  `step.edit`, `createartifact`, `queryautotargets`, `sendmessage`. The Harbormaster
+  ones have no CI client on the dev stack: write parity only.
+- Not routed: `differential.revision.edit` (moz-phab contract below) and the W7 login.
+- Inventory: Conduit 39 Rust / 76 shadowed / 2 ported not routed / 3 not ported; web
+  55 Rust / 84 partial / 10 ported not routed (all W7) / 229 not ported. nginx routing
+  test: 181 ok.
+- `scripts/client-parity.py` + `parity/clients/moz-phab.json`: real moz-phab 2.26
+  submits on both sides. moz-phab 2.26 talks urllib3 directly (no proxy), so the client
+  gets a `sitecustomize.py` resolving only the stack's name (which also stops its Sentry
+  reports). Result: rows identical, but Rust handed every `differential.revision.edit`
+  of moz-phab to PHP ("creations PHP refuses", "several actions") and
+  `differential.setdiffproperty` `local:commits` too ("values with floats"); porting
+  these call shapes is under way.
