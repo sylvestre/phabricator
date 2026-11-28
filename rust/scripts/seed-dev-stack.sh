@@ -50,6 +50,17 @@ echo "Adding a Git repository and its commits..."
 docker exec -i phabricator-phabdb-1 sh -c "$mysql 2>/dev/null" < "$repo/rust/scripts/seed-dev-git.sql"
 docker exec -i phabricator-phabdb-1 sh -c "$mysql 2>/dev/null" < "$repo/rust/scripts/seed-dev-herald.sql"
 docker exec -i phabricator-phabdb-1 sh -c "$mysql 2>/dev/null" < "$repo/rust/scripts/seed-dev-ai-change.sql"
+# JSON_SET writes MySQL's JSON text ("a": 1, "b": 2); store the properties
+# as PHP's phutil_json_encode() does, like every revision PHP saves.
+docker exec phabricator-phabricator-1 php -r '
+  require_once "/app/phabricator/scripts/init/init-script.php";
+  $table = new DifferentialRevision();
+  $conn = $table->establishConnection("w");
+  foreach (queryfx_all($conn, "SELECT id, properties FROM %T WHERE id IN (3, 4, 5, 6)",
+      $table->getTableName()) as $row) {
+    queryfx($conn, "UPDATE %T SET properties = %s WHERE id = %d", $table->getTableName(),
+      phutil_json_encode(phutil_json_decode($row["properties"])), $row["id"]);
+  }'
 docker exec phabricator-phabricator-1 sh -c 'cd /app/phabricator && \
   ./bin/config set --database merge.conflict.enabled true && \
   ./bin/config set --database merge.conflict.repository-phids "[\"PHID-REPO-paritygit000000\"]"' >/dev/null
